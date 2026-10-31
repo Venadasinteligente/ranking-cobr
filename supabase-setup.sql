@@ -759,14 +759,44 @@ create policy "membros veem resultados" on public.torneio_lancamentos
 alter table public.players add column if not exists avatar jsonb
   check (avatar is null or (jsonb_typeof(avatar) = 'object' and length(avatar::text) <= 400));
 
--- p_avatar null = tira o avatar. Devolve: ok | sem_jogador | sem_permissao | invalido | nao_existe
+-- Skins lendárias: só quem já foi campeão de temporada. Quantas temporadas (meses já fechados) o jogador ganhou,
+-- com a mesma conta do site: 1 pt a cada 1.000 de massa + bônus por meta de 100K (+30, +40, +50...);
+-- desempate por partidas de 100K+, maior massa e quem fez primeiro. Mês no horário de Brasília.
+create or replace function public.titulos_temporada(p_player uuid)
+returns integer
+language sql stable security definer set search_path = public
+as $$
+  with s as (
+    select lower(regexp_replace(regexp_replace(btrim(player), '^\[?\s*COBR\s*\]?\s*', '', 'i'), '\s+', ' ', 'g')) as k, mass, created_at,
+           date_trunc('month', created_at at time zone 'America/Sao_Paulo') as mes
+    from scores
+  ), j as (
+    select k, mes, count(*) filter (where mass >= 100000) as cem, max(mass) as melhor,
+           sum(mass / 1000 + (mass / 100000) * 30 + 10 * (mass / 100000) * (mass / 100000 - 1) / 2) as pts
+    from s group by k, mes
+  ), r as (
+    select j.k, j.mes, row_number() over (partition by j.mes order by j.pts desc, j.cem desc, j.melhor desc,
+           (select min(s.created_at) from s where s.k = j.k and s.mes = j.mes and s.mass = j.melhor)) as pos
+    from j where j.pts > 0
+  )
+  select count(*)::int from r
+  where r.pos = 1
+    and r.mes < date_trunc('month', now() at time zone 'America/Sao_Paulo')
+    and r.k = (select lower(regexp_replace(regexp_replace(btrim(nick), '^\[?\s*COBR\s*\]?\s*', '', 'i'), '\s+', ' ', 'g')) from players where id = p_player);
+$$;
+revoke all on function public.titulos_temporada(uuid) from public, anon;
+grant execute on function public.titulos_temporada(uuid) to authenticated;
+
+-- p_avatar null = tira o avatar. Devolve: ok | sem_jogador | sem_permissao | invalido | bloqueada | nao_existe
+-- (bloqueada = skin lendária de quem não ganhou temporadas suficientes; nem admin passa por cima)
 create or replace function public.jogador_avatar(p_avatar jsonb, p_player uuid default null)
 returns text
 language plpgsql security definer set search_path = public
-as $
+as $$
 declare
   v_meu uuid := (select player_id from player_contas where user_id = auth.uid());
   v_player uuid := coalesce(p_player, v_meu);
+  v_req int;
 begin
   if v_player is null then return 'sem_jogador'; end if;
   if v_player is distinct from v_meu and not is_admin() then return 'sem_permissao'; end if;
@@ -775,11 +805,17 @@ begin
                 where length(e.key) > 12 or jsonb_typeof(e.value) <> 'string' or length(e.value #>> '{}') > 16)) then
     return 'invalido';
   end if;
+  -- skin lendária: 1 título libera naja e gelo; 2, inferno e cósmica; 3, o dragão
+  if p_avatar ? 'skin' then
+    v_req := case p_avatar ->> 'skin' when 'naja' then 1 when 'gelo' then 1 when 'inferno' then 2 when 'cosmica' then 2 when 'dragao' then 3 end;
+    if v_req is null then return 'invalido'; end if;
+    if titulos_temporada(v_player) < v_req then return 'bloqueada'; end if;
+  end if;
   update players set avatar = p_avatar where id = v_player;
   if not found then return 'nao_existe'; end if;
   return 'ok';
 end;
-$;
+$$;
 revoke all on function public.jogador_avatar(jsonb, uuid) from public, anon;
 grant execute on function public.jogador_avatar(jsonb, uuid) to authenticated;
 

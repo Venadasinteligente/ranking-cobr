@@ -1716,6 +1716,7 @@ ${frente}
       const ok = k === 'pele' || k === 'cor2' || k === 'cor3' ? AV_CORES[a[k]] : k === 'fundo' ? AV_FUNDOS[a[k]] : AV_PARTES[k].includes(a[k]);
       o[k] = ok ? a[k] : v;
     }
+    if (AV_SKINS[a.skin]) o.skin = a.skin;
     return o;
   }
   const avSorteia = (l) => l[Math.floor(Math.random() * l.length)];
@@ -1729,18 +1730,280 @@ ${frente}
       fundo: avSorteia(Object.keys(AV_FUNDOS)), estampa: avSorteia(AV_PARTES.estampa),
     };
   }
+  // ---------- skins lendárias ----------
+  // Só pra quem já foi campeão de temporada: a skin troca a cobra inteira (corpo, cabeça, rosto e fundo)
+  // por uma arte pronta e animada. titulos = quantas temporadas precisa ter ganhado.
+  // O banco confere de novo na hora de salvar (jogador_avatar), então não dá pra burlar pelo site.
+  const AV_SKINS = {
+    naja: { nome: 'Naja de Ouro', titulos: 1, anel: ['#FFF3B0', '#F2C14E', '#1F4FD8', '#2EC4B6', '#B07A12', '#FFF3B0'] },
+    gelo: { nome: 'Zero Absoluto', titulos: 1, anel: ['#FFFFFF', '#8BE3FF', '#2C7FD6', '#B9F3FF', '#5B6CFF', '#FFFFFF'] },
+    inferno: { nome: 'Inferno', titulos: 2, anel: ['#FFE066', '#FF7A00', '#E0120F', '#2A0000', '#FF7A00', '#FFE066'] },
+    cosmica: { nome: 'Cósmica', titulos: 2, anel: ['#7DF9FF', '#C77DFF', '#FF5FB7', '#3A1C9A', '#7DF9FF', '#FFFFFF'] },
+    dragao: { nome: 'Dragão Imperial', titulos: 3, anel: ['#FFF7C2', '#FFD84D', '#E0122E', '#FFD84D', '#7A0010', '#FFF7C2'] },
+  };
+  const RARIDADE = { 1: 'LENDÁRIA', 2: 'MÍTICA', 3: 'SUPREMA' };
+  // [x, y, raio] de cada gomo do corpo, do rabo até o pescoço (o mesmo desenho do avatar comum)
+  const AV_GOMOS = Array.from({ length: 9 }, (_, i) => {
+    const u = i / 8, bz = (p0, p1, p2, p3) => (1 - u) ** 3 * p0 + 3 * (1 - u) ** 2 * u * p1 + 3 * (1 - u) * u * u * p2 + u ** 3 * p3;
+    return [+bz(-4, 26, 82, 56).toFixed(1), +bz(100, 80, 112, 76).toFixed(1), +(11 + 5 * Math.min(1, u * 1.6)).toFixed(1)];
+  });
+  const AV_CAB = 'M50 21C67 21 79 32 79 46C79 61 66 72 50 72C34 72 21 61 21 46C21 32 33 21 50 21Z';
+  const AV_OL = [[38.5, 45], [61.5, 45]];
+  // faísca de 4 pontas (cx, cy, raio)
+  const estrelinha = (x, y, r) => `M${x} ${y - r}Q${x + r * .14} ${y - r * .14} ${x + r} ${y}Q${x + r * .14} ${y + r * .14} ${x} ${y + r}Q${x - r * .14} ${y + r * .14} ${x - r} ${y}Q${x - r * .14} ${y - r * .14} ${x} ${y - r}Z`;
+  const f1 = (n) => +n.toFixed(1);
+
+  // devolve { fundo, arte, defs }: fundo fica fora da escala, arte é a cobra (dentro do zoom de 1.14)
+  function skinArte(s, id) {
+    const u = (g) => `url(#${id}${g})`;
+    const tr = (cor, w = 1.6) => `stroke="${cor}" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round"`;
+    const rg = (g, stops, cx = .36, cy = .3, r = .75) => `<radialGradient id="${id}${g}" cx="${cx}" cy="${cy}" r="${r}">${stops.map(([o, c, op = 1]) => `<stop offset="${o}" stop-color="${c}" stop-opacity="${op}"/>`).join('')}</radialGradient>`;
+    const lg = (g, stops, x2 = 0, y2 = 1) => `<linearGradient id="${id}${g}" x1="0" y1="0" x2="${x2}" y2="${y2}">${stops.map(([o, c, op = 1]) => `<stop offset="${o}" stop-color="${c}" stop-opacity="${op}"/>`).join('')}</linearGradient>`;
+    const brilho = (b = 1.6) => `<filter id="${id}n" x="-1" y="-1" width="3" height="3"><feGaussianBlur stdDeviation="${b}" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`
+      + `<filter id="${id}b" x="-.5" y="-.5" width="2" height="2"><feGaussianBlur stdDeviation="3"/></filter>`;
+    let defs = brilho() + `<clipPath id="${id}k"><path d="${AV_CAB}"/></clipPath>`;
+    // reflexo que passa pela cabeça de tempos em tempos
+    const reflexo = `<g clip-path="${u('k')}"><rect class="sk-reflexo" x="10" y="0" width="12" height="100" transform="skewX(-22)" fill="#fff" fill-opacity=".38"/></g>`;
+    const gomos = (fn) => AV_GOMOS.map(([x, y, r], i) => fn(x, y, r, i)).join('');
+    const luzGomo = (x, y, r, op = .3) => `<ellipse cx="${f1(x - r * .32)}" cy="${f1(y - r * .48)}" rx="${f1(r * .38)}" ry="${f1(r * .18)}" transform="rotate(-25 ${f1(x - r * .32)} ${f1(y - r * .48)})" fill="#fff" fill-opacity="${op}"/>`;
+    const sombraPescoco = `<ellipse cx="52" cy="72" rx="22" ry="5.5" fill="#000" fill-opacity=".38"/>`;
+    const estrelas = (lista, cor = '#fff') => lista.map(([x, y, r, d], i) => `<path class="sk-pisca" style="animation-delay:${d ?? (i * .37) % 2.4}s" d="${estrelinha(x, y, r)}" fill="${cor}"/>`).join('');
+    let fundo = '', arte = '';
+
+    if (s === 'naja') {
+      // faraó: ouro, lápis-lazúli e turquesa; capuz de naja aberto e o sol do deserto atrás
+      const OURO = [[0, '#FFF8D6'], [.3, '#FFD95A'], [.65, '#D99A1E'], [1, '#6B3D00']];
+      defs += rg('f', [[0, '#1C3E9E'], [.55, '#0A1A52'], [1, '#02061A']], .5, .36, .75)
+        + rg('s', [[0, '#FFFBE0'], [.35, '#FFD95A'], [.8, '#F29A00', .5], [1, '#F29A00', 0]], .5, .5, .5)
+        + rg('h', OURO, .38, .28) + rg('p', OURO) + lg('c', [[0, '#FFE58A'], [.5, '#E0A526'], [1, '#7A4A00']])
+        + rg('l', [[0, '#6E9BFF'], [.5, '#1F4FD8'], [1, '#0B2470']]) + rg('t', [[0, '#C8FFF8'], [.5, '#2EC4B6'], [1, '#0B6B63']])
+        + rg('o', [[0, '#F6FFB8'], [.5, '#3BE8C8'], [1, '#04605A']], .45, .4, .6)
+        + `<clipPath id="${id}cp"><path d="M50 16C68 16 86 30 88 52C90 68 80 80 66 84L34 84C20 80 10 68 12 52C14 30 32 16 50 16Z"/></clipPath>`;
+      const raios = Array.from({ length: 16 }, (_, i) => {
+        const g = Math.PI * 2 * i / 16, p = (d) => `${f1(50 + 80 * Math.cos(g + d))},${f1(40 + 80 * Math.sin(g + d))}`;
+        return `<polygon points="50,40 ${p(-.06)} ${p(.06)}"/>`;
+      }).join('');
+      fundo = `<rect width="100" height="100" fill="${u('f')}"/>`
+        + estrelas([[12, 14, 1.6], [86, 12, 1.4], [92, 34, 1], [8, 38, 1.1], [24, 6, .9], [74, 4, 1]])
+        + `<g class="sk-gira" style="animation-duration:40s"><g fill="#FFD95A" fill-opacity=".16">${raios}</g></g>`
+        + `<circle cx="50" cy="40" r="38" fill="${u('s')}"/>`
+        + `<path d="M58 100L80 72L102 100Z" fill="#1A0F2E"/><path d="M80 72L102 100H88Z" fill="#000" fill-opacity=".35"/><path d="M76 100L92 80L108 100Z" fill="#120A22"/>`;
+      // capuz aberto (atrás da cabeça), com as faixas do colar egípcio
+      const capuz = 'M50 16C68 16 86 30 88 52C90 68 80 80 66 84L34 84C20 80 10 68 12 52C14 30 32 16 50 16Z';
+      const faixas = [[1, 'l'], [2, 'c'], [3, 't'], [4, 'c'], [5, 'l']].map(([n, g]) => {
+        const k = 1 - n * .09;
+        return `<path d="M50 ${f1(15 + n * 4)}C${f1(50 + 35 * k)} ${f1(15 + n * 4)} ${f1(50 + 38 * k)} ${f1(52)} ${f1(50 + 38 * k)} ${f1(56)}C${f1(50 + 38 * k)} ${f1(72)} ${f1(50 + 20 * k)} 84 50 84C${f1(50 - 20 * k)} 84 ${f1(50 - 38 * k)} 72 ${f1(50 - 38 * k)} 56C${f1(50 - 38 * k)} 52 ${f1(50 - 35 * k)} ${f1(15 + n * 4)} 50 ${f1(15 + n * 4)}Z" fill="${u(g)}" stroke="#3A1E00" stroke-width=".9"/>`;
+      }).join('');
+      const corpo = gomos((x, y, r, i) => {
+        const lapis = (AV_GOMOS.length - 1 - i) % 2 === 1;
+        return `<circle cx="${x}" cy="${y}" r="${r}" fill="${u(lapis ? 'l' : 'p')}" ${tr('#3A1E00', 1.3)}/>`
+          + (lapis ? `<circle cx="${x}" cy="${y}" r="${f1(r * .7)}" fill="none" stroke="#FFD95A" stroke-width="1.4"/>` : `<path d="${gema(x, y - r * .1, r * .4)}" fill="${u('t')}" ${tr('#0B4B45', .9)}/>`)
+          + luzGomo(x, y, r, .35);
+      });
+      const olho = ([x, y], lado) => `<path d="M${x - 10 * lado} ${y - 1}Q${x} ${y - 11} ${x + 11 * lado} ${y - 3}L${x + 17 * lado} ${y - 5}L${x + 12 * lado} ${y + 1}Q${x} ${y + 9} ${x - 10 * lado} ${y - 1}Z" fill="#0A0A10"/>`
+        + `<ellipse cx="${x}" cy="${y - .5}" rx="7.4" ry="6" fill="${u('o')}" filter="${u('n')}"/>`
+        + `<ellipse cx="${x}" cy="${y - .5}" rx="1.6" ry="5.2" fill="#05070A"/><circle cx="${x - 2.6 * lado}" cy="${y - 3}" r="1.4" fill="#fff"/>`
+        + `<path d="M${x - 9 * lado} ${y - 6}Q${x + 2 * lado} ${y - 14} ${x + 14 * lado} ${y - 9}" fill="none" stroke="#1F4FD8" stroke-width="2.2" stroke-linecap="round"/>`;
+      arte = `<g filter="${u('b')}" opacity=".7"><path d="${capuz}" fill="#FFB020" fill-opacity=".5"/></g>`
+        + `<path d="${capuz}" fill="${u('c')}" ${tr('#3A1E00', 1.8)}/><g clip-path="${u('cp')}">${faixas}</g>`
+        + `<path d="${capuz}" fill="none" ${tr('#3A1E00', 1.8)}/>`
+        + corpo + sombraPescoco
+        + `<path d="${AV_CAB}" fill="${u('h')}" ${tr('#3A1E00', 1.8)}/>`
+        + `<g clip-path="${u('k')}"><path d="M50 18L56 21L53 36L47 36L44 21Z" fill="${u('l')}" ${tr('#0B2470', .8)}/><path d="M18 60C30 74 70 74 82 60V80H18Z" fill="#5A3000" fill-opacity=".22"/></g>`
+        + `<path d="M50 23C53 23 55 26 55 29C55 33 50 37 50 37C50 37 45 33 45 29C45 26 47 23 50 23Z" fill="${u('t')}" ${tr('#3A1E00', 1.2)} filter="${u('n')}"/>`
+        + `<ellipse cx="48.4" cy="27.6" rx="1.4" ry="2" fill="#fff" fill-opacity=".8"/>`
+        + `<ellipse cx="38" cy="29" rx="10" ry="4.5" transform="rotate(-18 38 29)" fill="#fff" fill-opacity=".38"/>`
+        + reflexo + `<path d="${AV_CAB}" fill="none" ${tr('#3A1E00', 1.8)}/>`
+        + olho(AV_OL[0], -1) + olho(AV_OL[1], 1)
+        + `<ellipse cx="46" cy="57" rx="1.3" ry="1" fill="#3A1E00"/><ellipse cx="54" cy="57" rx="1.3" ry="1" fill="#3A1E00"/>`
+        + `<path d="M41 62Q50 67 59 61.5" fill="none" ${tr('#3A1E00', 2.2)}/>`
+        + `<path d="M48.8 64.4H51.2V68.6L53.4 72.6L50.9 70.6L50 72.4L49.1 70.6L46.6 72.6L48.8 68.6Z" fill="#E8174F" ${tr('#5A0618', .8)}/>`;
+    }
+
+    if (s === 'gelo') {
+      // zero absoluto: cristal de gelo, coroa de estalactites e aurora boreal no céu
+      const GELO = [[0, '#F4FEFF'], [.35, '#A9EEFF'], [.7, '#3D8EE0'], [1, '#0D2F7A']];
+      defs += rg('f', [[0, '#0E2D5C'], [.6, '#061631'], [1, '#01040C']], .5, .3, .8)
+        + lg('a1', [[0, '#3DFFB0', 0], [.5, '#3DFFB0', .75], [1, '#3DFFB0', 0]], 1, 0) + lg('a2', [[0, '#7A5BFF', 0], [.5, '#B07CFF', .6], [1, '#7A5BFF', 0]], 1, 0)
+        + rg('h', GELO, .38, .26) + rg('p', GELO) + lg('c', [[0, '#FFFFFF'], [.45, '#C9F6FF'], [1, '#4BA8F0']])
+        + rg('o', [[0, '#FFFFFF'], [.4, '#CFFBFF'], [1, '#2BB8FF']], .5, .5, .55);
+      const neve = [[8, 1.2, 0], [20, .8, 1.6], [33, 1, 3.1], [70, 1.1, .7], [82, .8, 2.3], [93, 1.2, 3.8], [55, .7, 4.6], [44, .9, 2.8]];
+      fundo = `<rect width="100" height="100" fill="${u('f')}"/>`
+        + `<g filter="${u('b')}"><path class="sk-aurora" d="M-10 30C10 14 30 34 50 20C70 6 90 26 110 12V30C90 44 70 24 50 38C30 52 10 32 -10 46Z" fill="${u('a1')}"/>`
+        + `<path class="sk-aurora" style="animation-delay:-3s;animation-duration:9s" d="M-10 16C14 4 30 22 52 10C74 -2 92 14 110 4V16C92 28 74 12 52 24C30 36 14 18 -10 30Z" fill="${u('a2')}"/></g>`
+        + estrelas([[14, 8, 1.1], [86, 10, 1.3], [92, 42, .9], [6, 50, 1]], '#E6FBFF')
+        + neve.map(([x, r, d]) => `<circle class="sk-neve" style="animation-delay:-${d}s" cx="${x}" cy="0" r="${r}" fill="#fff" fill-opacity=".85"/>`).join('');
+      const facetas = (x, y, r) => `<path d="M${x} ${f1(y - r)}L${f1(x + r * .5)} ${y}L${x} ${f1(y + r * .6)}L${f1(x - r * .55)} ${f1(y + r * .1)}Z" fill="#fff" fill-opacity=".18"/><path d="M${x} ${f1(y - r)}L${f1(x + r * .5)} ${y}L${f1(x + r)} ${f1(y - r * .2)}" fill="none" stroke="#fff" stroke-opacity=".55" stroke-width=".8"/>`;
+      const corpo = gomos((x, y, r) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${u('p')}" ${tr('#0A2A66', 1.3)}/>${facetas(x, y, r)}${luzGomo(x, y, r, .5)}`);
+      // coroa de gelo: 5 pontas, a do meio maior
+      const ponta = (x, base, alt, larg) => `<path d="M${f1(x - larg)} ${base}L${f1(x - larg * .25)} ${f1(base - alt * .55)}L${x} ${f1(base - alt)}L${f1(x + larg * .3)} ${f1(base - alt * .5)}L${f1(x + larg)} ${base}Z" fill="${u('c')}" ${tr('#1D5FB8', 1.1)}/><path d="M${x} ${f1(base - alt)}L${f1(x - larg * .25)} ${f1(base - alt * .55)}L${f1(x - larg * .1)} ${base}" fill="none" stroke="#fff" stroke-opacity=".9" stroke-width=".8"/>`;
+      const coroa = ponta(29, 31, 13, 5) + ponta(71, 31, 13, 5) + ponta(39, 25, 19, 5.5) + ponta(61, 25, 19, 5.5) + ponta(50, 23, 26, 6.5);
+      const rachas = `<g fill="none" stroke="#fff" stroke-opacity=".5" stroke-width=".9"><path d="M24 40L33 47L29 58M33 47L42 50"/><path d="M76 38L68 46L72 57M68 46L60 49"/><path d="M40 66L50 60L60 66"/></g>`
+        + `<g fill="#fff" fill-opacity=".12"><path d="M21 46L35 28L45 46Z"/><path d="M79 46L65 28L55 46Z"/></g>`;
+      const olho = ([x, y]) => `<path d="M${x - 9} ${y + 1}Q${x} ${y - 10} ${x + 9} ${y + 1}Q${x} ${y + 7} ${x - 9} ${y + 1}Z" fill="#06122E" ${tr('#0A2A66', 1.4)}/>`
+        + `<ellipse class="sk-pulsa" cx="${x}" cy="${y - .4}" rx="6" ry="4.2" fill="${u('o')}" filter="${u('n')}"/>`
+        + `<path d="${gema(x, y - .4, 2.6)}" fill="#0B5FD8"/><circle cx="${x - 2.4}" cy="${y - 2.2}" r="1.2" fill="#fff"/>`;
+      arte = corpo + sombraPescoco
+        + `<g filter="${u('b')}" opacity=".8"><path d="M50 -4L62 20H38Z" fill="#9FF0FF" fill-opacity=".55"/></g>`
+        + coroa
+        + `<path d="${AV_CAB}" fill="${u('h')}" ${tr('#0A2A66', 1.8)}/>`
+        + `<g clip-path="${u('k')}">${rachas}<path d="M18 62C30 76 70 76 82 62V80H18Z" fill="#06205A" fill-opacity=".3"/></g>`
+        + `<ellipse cx="38" cy="29" rx="10" ry="4.5" transform="rotate(-18 38 29)" fill="#fff" fill-opacity=".55"/>`
+        + reflexo + `<path d="${AV_CAB}" fill="none" ${tr('#0A2A66', 1.8)}/>`
+        + `<path d="M22 50L19 56L24 54ZM78 50L81 56L76 54ZM34 70L33 76L37 72ZM66 70L67 76L63 72Z" fill="#E6FBFF" ${tr('#4BA8F0', .6)}/>`
+        + AV_OL.map(olho).join('')
+        + `<ellipse cx="46" cy="56" rx="1.3" ry="1" fill="#0A2A66" fill-opacity=".8"/><ellipse cx="54" cy="56" rx="1.3" ry="1" fill="#0A2A66" fill-opacity=".8"/>`
+        + `<path d="M41 62H59" ${tr('#0A2A66', 2.2)}/><path d="M44 62L45.6 66.5L47.2 62ZM56 62L54.4 66.5L52.8 62Z" fill="#fff" ${tr('#0A2A66', .7)}/>`
+        + `<g class="sk-halito" fill="#DDF8FF" fill-opacity=".5" filter="${u('b')}"><ellipse cx="50" cy="70" rx="7" ry="3"/></g>`
+        + estrelas([[50, -2, 3.2, 0], [37, 5, 2, .8], [65, 8, 2.2, 1.5], [26, 18, 1.6, 2]]);
+    }
+
+    if (s === 'inferno') {
+      // inferno: obsidiana rachada com lava por dentro, chifres de demônio e o fogo subindo
+      defs += rg('f', [[0, '#5A0A00'], [.55, '#220200'], [1, '#050000']], .5, .7, .8)
+        + lg('fg', [[0, '#FFE066'], [.35, '#FF8A00'], [.75, '#E0120F'], [1, '#600000', 0]], 0, -1)
+        + rg('h', [[0, '#5A5560'], [.4, '#25222A'], [1, '#050407']], .38, .26) + rg('p', [[0, '#4A4550'], [.5, '#1E1B22'], [1, '#050407']])
+        + lg('c', [[0, '#FFE066'], [.18, '#FF7A00'], [.45, '#7A0A00'], [1, '#120000']]) + rg('o', [[0, '#FFFBD0'], [.35, '#FFD000'], [.75, '#FF5A00'], [1, '#A00000']], .5, .5, .6)
+        + rg('g', [[0, '#FFD000'], [.6, '#FF5A00'], [1, '#600000']], .5, .4, .7)
+        + AV_OL.map(([x, y], i) => `<clipPath id="${id}i${i}"><circle cx="${x}" cy="${y}" r="8.4"/></clipPath>`).join('');
+      const chamas = [[6, 30, 0], [22, 38, .25], [40, 26, .5], [60, 34, .15], [78, 40, .4], [94, 30, .6]];
+      fundo = `<rect width="100" height="100" fill="${u('f')}"/>`
+        + `<g filter="${u('b')}">${chamas.map(([x, h, d]) => `<path class="sk-chama" style="animation-delay:-${d}s" d="M${x - 12} 104C${x - 12} ${100 - h * .5} ${x - 4} ${100 - h * .6} ${x} ${100 - h}C${x + 4} ${100 - h * .6} ${x + 12} ${100 - h * .5} ${x + 12} 104Z" fill="${u('fg')}"/>`).join('')}</g>`
+        + [[12, 0], [30, 1.2], [47, .5], [66, 1.9], [84, .9], [92, 2.4], [20, 2.8]].map(([x, d], i) => `<circle class="sk-brasa" style="animation-delay:-${d}s" cx="${x}" cy="96" r="${i % 2 ? .9 : 1.3}" fill="#FFB020"/>`).join('');
+      const lava = (d, w = 1.4) => `<path class="sk-lava" d="${d}" fill="none" stroke="#FF6A00" stroke-width="${w + 1.6}" stroke-linecap="round" stroke-linejoin="round" opacity=".55" filter="${u('n')}"/><path class="sk-lava" d="${d}" fill="none" stroke="#FFE066" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`;
+      const corpo = gomos((x, y, r, i) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${u('p')}" ${tr('#000', 1.3)}/>`
+        + lava(`M${f1(x - r * .7)} ${f1(y - r * .2)}L${f1(x - r * .1)} ${f1(y + r * .1)}L${f1(x + r * .2)} ${f1(y - r * .5)}M${f1(x - r * .1)} ${f1(y + r * .1)}L${f1(x + (i % 2 ? .5 : .1) * r)} ${f1(y + r * .6)}`, 1.1)
+        + luzGomo(x, y, r, .14));
+      // chifres curvos com a ponta em brasa
+      const chifre = (l) => {
+        const X = (v) => f1(50 + (v - 50) * l);
+        return `<path d="M${X(31)} 31C${X(24)} 27 ${X(20)} 20 ${X(24)} 10C${X(27)} 17 ${X(32)} 20 ${X(38)} 21C${X(42)} 22 ${X(44)} 24 ${X(45)} 27Z" fill="${u('c')}" ${tr('#000', 1.4)}/>`
+          + `<path d="M${X(29)} 27C${X(25)} 23 ${X(23)} 18 ${X(24.5)} 13" fill="none" stroke="#FFE066" stroke-opacity=".5" stroke-width=".9"/>`
+          + `<path class="sk-pulsa" d="M${X(24)} 11C${X(22)} 8 ${X(24)} 6 ${X(24.5)} 3.5C${X(26.5)} 6.5 ${X(27)} 9 ${X(24)} 11Z" fill="#FFB020" filter="${u('n')}"/>`;
+      };
+      arte = corpo + sombraPescoco + chifre(1) + chifre(-1)
+        + `<path d="${AV_CAB}" fill="${u('h')}" ${tr('#000', 1.8)}/>`
+        + `<g clip-path="${u('k')}">${lava('M21 36L30 40L33 50L27 60M30 40L40 34L46 22M33 50L42 54', 1.3)}${lava('M79 34L70 40L68 52L74 62M70 40L60 33L56 22M68 52L58 55', 1.3)}${lava('M38 72L44 66L50 69L56 65L63 72', 1.1)}</g>`
+        + `<ellipse cx="38" cy="29" rx="10" ry="4.5" transform="rotate(-18 38 29)" fill="#fff" fill-opacity=".16"/>`
+        + `<path d="${AV_CAB}" fill="none" ${tr('#000', 1.8)}/>`
+        + AV_OL.map(([x, y], i) => {
+          const l = i ? 1 : -1;
+          return `<circle cx="${x}" cy="${y}" r="8.4" fill="#0A0000" ${tr('#000', 1.4)}/><circle class="sk-pulsa" cx="${x}" cy="${y + .6}" r="6.4" fill="${u('o')}" filter="${u('n')}"/>`
+            + `<ellipse cx="${x}" cy="${y + .6}" rx="1.5" ry="5.6" fill="#1A0000"/>`
+            + `<g clip-path="${u('i' + i)}"><path d="M${x + 11 * l} ${y - 13}L${x - 11 * l} ${y - 13}L${x - 11 * l} ${y - 1.5}L${x + 10 * l} ${y - 8}Z" fill="#141118"/><path d="M${x + 10.5 * l} ${y - 8.2}L${x - 10.5 * l} ${y - 1.8}" ${tr('#FF6A00', 1.8)}/></g>`
+            + `<circle cx="${x}" cy="${y}" r="8.4" fill="none" ${tr('#000', 1.4)}/>`;
+        }).join('')
+        + `<path d="M37.5 58.5Q50 75 62.5 58.5Q50 63.5 37.5 58.5Z" fill="${u('g')}" ${tr('#000', 1.8)}/>`
+        + `<path d="M42 60.6L44.3 68L46.6 61.8ZM58 60.6L55.7 68L53.4 61.8Z" fill="#FFF4E0" ${tr('#000', .9)}/>`
+        + `<ellipse cx="46" cy="55" rx="1.3" ry="1" fill="#FF6A00"/><ellipse cx="54" cy="55" rx="1.3" ry="1" fill="#FF6A00"/>`;
+    }
+
+    if (s === 'cosmica') {
+      // cósmica: o corpo é uma janela pro espaço, com nebulosa, estrelas e um anel de planeta
+      defs += rg('f', [[0, '#2A0E5E'], [.55, '#0B0424'], [1, '#000']], .5, .4, .8)
+        + rg('gx', [[0, '#FFFFFF'], [.12, '#FFD6F5'], [.4, '#C77DFF', .6], [1, '#3A1C9A', 0]], .5, .5, .5)
+        + rg('h', [[0, '#3B2C8F'], [.55, '#120A3D'], [1, '#05021A']], .4, .3) + rg('p', [[0, '#34287F'], [.6, '#110935'], [1, '#04021A']])
+        + rg('n1', [[0, '#FF5FB7', .85], [1, '#FF5FB7', 0]], .5, .5, .5) + rg('n2', [[0, '#2FE3F2', .75], [1, '#2FE3F2', 0]], .5, .5, .5)
+        + lg('r', [[0, '#FFE3A3'], [.5, '#FF9FE0'], [1, '#7DF9FF']], 1, 0) + lg('ct', [[0, '#7DF9FF'], [.5, '#C77DFF'], [1, '#FF5FB7']], 1, 1)
+        + rg('o', [[0, '#FFFFFF'], [.3, '#E9FDFF'], [.7, '#7DF9FF'], [1, '#3A6BFF']], .5, .5, .55)
+        + `<pattern id="${id}st" width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="3" cy="4" r=".55" fill="#fff"/><circle cx="13" cy="9" r=".4" fill="#fff" fill-opacity=".8"/><circle cx="8" cy="16" r=".7" fill="#fff"/><circle cx="17" cy="17" r=".35" fill="#fff"/></pattern>`;
+      const braco = (rot) => `<path d="M50 44C64 30 86 36 84 52C82 62 70 64 64 58" fill="none" stroke="#C77DFF" stroke-opacity=".5" stroke-width="5" stroke-linecap="round" transform="rotate(${rot} 50 44)"/>`;
+      fundo = `<rect width="100" height="100" fill="${u('f')}"/><rect width="100" height="100" fill="${u('st')}" opacity=".7"/>`
+        + `<g class="sk-gira" style="animation-duration:60s"><g filter="${u('b')}">${braco(0)}${braco(180)}</g><ellipse cx="50" cy="44" rx="34" ry="34" fill="${u('gx')}" opacity=".5"/></g>`
+        + estrelas([[10, 12, 2.2], [88, 20, 1.8], [80, 6, 1.1], [16, 44, 1.3], [92, 52, 1.5], [30, 4, 1.1], [70, 64, 1]]);
+      const nebulosa = (dx = 0, dy = 0) => `<circle cx="${30 + dx}" cy="${36 + dy}" r="14" fill="${u('n1')}"/><circle cx="${66 + dx}" cy="${58 + dy}" r="16" fill="${u('n2')}"/><circle cx="${58 + dx}" cy="${28 + dy}" r="9" fill="${u('n1')}" opacity=".6"/>`;
+      const corpo = gomos((x, y, r, i) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${u('p')}"/>`
+        + `<circle cx="${f1(x + (i % 2 ? 3 : -3))}" cy="${f1(y - 2)}" r="${f1(r * .7)}" fill="${u(i % 2 ? 'n1' : 'n2')}"/>`
+        + `<circle cx="${x}" cy="${y}" r="${r}" fill="${u('st')}"/><circle cx="${x}" cy="${y}" r="${r}" fill="none" stroke="${u('ct')}" stroke-width="1.4"/>`);
+      const anel = (metade) => `<path d="${metade ? 'M8 50A42 11 -12 0 0 92 32' : 'M8 50A42 11 -12 0 1 92 32'}" fill="none" stroke="${u('r')}" stroke-width="${metade ? 3.4 : 2.6}" stroke-linecap="round" ${metade ? '' : 'stroke-opacity=".55"'}/>`
+        + (metade ? `<path class="sk-orbita" d="M8 50A42 11 -12 0 0 92 32" fill="none" stroke="#fff" stroke-width="3.6" stroke-linecap="round" stroke-dasharray="4 120" filter="${u('n')}"/>` : '');
+      arte = corpo + sombraPescoco + anel(false)
+        + `<g filter="${u('b')}" opacity=".9"><path d="${AV_CAB}" fill="none" stroke="#C77DFF" stroke-width="4"/></g>`
+        + `<path d="${AV_CAB}" fill="${u('h')}"/>`
+        + `<g clip-path="${u('k')}">${nebulosa()}<rect width="100" height="100" fill="${u('st')}"/>`
+        + estrelas([[30, 30, 1.6, .3], [70, 30, 1.3, 1.1], [26, 58, 1.1, 1.9], [74, 62, 1.5, .7], [50, 26, 1.2, 2.2]]) + `</g>`
+        + `<path d="${AV_CAB}" fill="none" stroke="${u('ct')}" stroke-width="2"/>`
+        + `<ellipse cx="38" cy="29" rx="10" ry="4.5" transform="rotate(-18 38 29)" fill="#fff" fill-opacity=".22"/>`
+        + AV_OL.map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="8.4" fill="#05021A" stroke="${u('ct')}" stroke-width="1.4"/>`
+          + `<circle cx="${x}" cy="${y}" r="6" fill="${u('o')}" filter="${u('n')}"/>`
+          + `<path class="sk-gira" style="animation-duration:${i ? 7 : 9}s" d="${estrelinha(x, y, 4.6)}" fill="#fff"/><circle cx="${x}" cy="${y}" r="1.3" fill="#1A0A4A"/>`).join('')
+        + `<path d="M41 60.5Q50 68 59 60.5" fill="none" stroke="#7DF9FF" stroke-width="2.2" stroke-linecap="round" filter="${u('n')}"/>`
+        + `<circle cx="46" cy="55.6" r="1" fill="#7DF9FF" fill-opacity=".7"/><circle cx="54" cy="55.6" r="1" fill="#7DF9FF" fill-opacity=".7"/>`
+        + anel(true);
+    }
+
+    if (s === 'dragao') {
+      // dragão imperial: escamas carmim e ouro, chifres de galho, bigodes ao vento,
+      // a pérola de fogo flutuando e uma tempestade de raios dourados atrás
+      const OURO = [[0, '#FFF8D6'], [.3, '#FFD95A'], [.7, '#D9930E'], [1, '#5E3300']];
+      defs += rg('f', [[0, '#5A0418'], [.55, '#1E0008'], [1, '#040002']], .5, .38, .8)
+        + rg('h', [[0, '#FF6B6B'], [.4, '#E0122E'], [.8, '#8A0018'], [1, '#3A0008']], .38, .26) + rg('p', [[0, '#FF6B6B'], [.5, '#C8102E'], [1, '#4A000C']])
+        + rg('ou', OURO) + lg('c', [[0, '#FFF8D6'], [.35, '#FFD95A'], [.75, '#C88200'], [1, '#5E3300']])
+        + rg('o', [[0, '#FFFFFF'], [.3, '#FFF3A0'], [.7, '#FFB000'], [1, '#B05A00']], .5, .5, .6)
+        + rg('pe', [[0, '#FFFFFF'], [.35, '#FFF1C9'], [.7, '#FFB347'], [1, '#FF5A00']], .38, .32, .7)
+        + rg('aura', [[0, '#FFD95A', .9], [.5, '#FF7A00', .35], [1, '#FF7A00', 0]], .5, .5, .5)
+        + `<pattern id="${id}es" width="8" height="6" patternUnits="userSpaceOnUse"><path d="M0 6A4 4 0 0 1 8 6M-4 3A4 4 0 0 1 4 3M4 3A4 4 0 0 1 12 3" fill="none" stroke="#FFD95A" stroke-opacity=".5" stroke-width=".7"/></pattern>`;
+      const raios = Array.from({ length: 20 }, (_, i) => {
+        const g = Math.PI * 2 * i / 20, l = i % 2 ? 60 : 90, p = (d) => `${f1(50 + l * Math.cos(g + d))},${f1(44 + l * Math.sin(g + d))}`;
+        return `<polygon points="50,44 ${p(-.05)} ${p(.05)}"/>`;
+      }).join('');
+      const raio = (d, atraso) => `<path class="sk-raio" style="animation-delay:-${atraso}s" d="${d}" fill="none" stroke="#FFF6C9" stroke-width="1.6" stroke-linejoin="round" filter="${u('n')}"/>`;
+      fundo = `<rect width="100" height="100" fill="${u('f')}"/>`
+        + `<g class="sk-gira" style="animation-duration:24s"><g fill="#FFD95A" fill-opacity=".13">${raios}</g></g>`
+        + `<circle cx="50" cy="44" r="40" fill="${u('aura')}" opacity=".55"/>`
+        + raio('M10 0L16 14L11 16L19 32', 0) + raio('M92 4L84 18L90 20L80 38', 1.7)
+        + `<g fill="#1A0006" opacity=".9"><circle cx="10" cy="98" r="16"/><circle cx="30" cy="104" r="16"/><circle cx="88" cy="98" r="14"/></g>`;
+      // espinhos dourados nas costas + barriga de placas de ouro
+      const corpo = gomos((x, y, r, i) => (i > 0 && i < 8 ? `<path d="M${f1(x - r * .5)} ${f1(y - r * .8)}L${f1(x - r * .1)} ${f1(y - r * 1.55)}L${f1(x + r * .35)} ${f1(y - r * .85)}Z" fill="${u('c')}" ${tr('#3A0008', 1)}/>` : '')
+        + `<circle cx="${x}" cy="${y}" r="${r}" fill="${u('p')}" ${tr('#2A0006', 1.3)}/><circle cx="${x}" cy="${y}" r="${r}" fill="${u('es')}"/>`
+        + `<path d="M${f1(x - r * .62)} ${f1(y + r * .25)}Q${x} ${f1(y + r * .05)} ${f1(x + r * .62)} ${f1(y + r * .25)}L${f1(x + r * .5)} ${f1(y + r * .62)}Q${x} ${f1(y + r * .45)} ${f1(x - r * .5)} ${f1(y + r * .62)}Z" fill="${u('ou')}" ${tr('#5E3300', .8)}/>`
+        + luzGomo(x, y, r, .28));
+      const chifre = (l) => {
+        const X = (v) => f1(50 + (v - 50) * l);
+        return `<path d="M${X(40)} 26C${X(36)} 21 ${X(32)} 17 ${X(29)} 11C${X(32.5)} 13.5 ${X(34.5)} 15.5 ${X(35.5)} 16.5C${X(35)} 13 ${X(35.5)} 10 ${X(37)} 7C${X(38.5)} 11 ${X(39.5)} 15 ${X(41)} 18.5C${X(43)} 21 ${X(44.5)} 23 ${X(46)} 25Z" fill="${u('c')}" ${tr('#3A1A00', 1.3)}/>`
+          + `<path d="M${X(38.5)} 23C${X(35)} 19 ${X(32.5)} 16 ${X(31)} 13" fill="none" stroke="#FFF8D6" stroke-opacity=".7" stroke-width=".8"/>`;
+      };
+      const bigode = (l, atraso) => {
+        const d = `M${50 + 7 * l} 57.5C${50 + 16 * l} 55 ${50 + 24 * l} 59 ${50 + 30 * l} 55C${50 + 36 * l} 51 ${50 + 38 * l} 45 ${50 + 34 * l} 43`;
+        return `<g class="sk-bigode" style="animation-delay:-${atraso}s;transform-origin:${l > 0 ? '0% 100%' : '100% 100%'}"><path d="${d}" fill="none" stroke="#3A1A00" stroke-width="3.4" stroke-linecap="round"/><path d="${d}" fill="none" stroke="${u('c')}" stroke-width="1.9" stroke-linecap="round"/></g>`;
+      };
+      arte = corpo + sombraPescoco + chifre(1) + chifre(-1)
+        + `<g class="sk-flutua"><circle cx="50" cy="12" r="8.5" fill="${u('aura')}"/><circle cx="50" cy="12" r="4.4" fill="${u('pe')}" filter="${u('n')}"/>`
+        + `<path d="M45.5 12.5C45.5 6.5 49 6 50 2C51 6 54.5 6.5 54.5 12.5" fill="#FF8A00" fill-opacity=".55" filter="${u('n')}"/><circle cx="48.6" cy="10.6" r="1.2" fill="#fff"/></g>`
+        + `<path d="${AV_CAB}" fill="${u('h')}" ${tr('#2A0006', 1.8)}/>`
+        + `<g clip-path="${u('k')}"><rect width="100" height="100" fill="${u('es')}" opacity=".8"/>`
+        + `<path d="M50 21L54 24.5L52.5 31L50 33L47.5 31L46 24.5Z" fill="${u('ou')}" ${tr('#5E3300', .9)}/>`
+        + `<path d="M18 60C30 74 70 74 82 60V80H18Z" fill="#2A0006" fill-opacity=".3"/></g>`
+        + `<circle cx="50" cy="26.6" r="1.8" fill="#22E07A" ${tr('#0B4B2A', .7)} filter="${u('n')}"/>`
+        + `<ellipse cx="38" cy="29" rx="10" ry="4.5" transform="rotate(-18 38 29)" fill="#fff" fill-opacity=".3"/>`
+        + reflexo + `<path d="${AV_CAB}" fill="none" ${tr('#2A0006', 1.8)}/>`
+        // olho de fogo com fenda e a sobrancelha de ouro (bravo: o canto de dentro desce)
+        + AV_OL.map(([x, y], i) => {
+          const l = i ? 1 : -1, sob = `M${x + 11 * l} ${y - 12}Q${x + 2 * l} ${y - 12} ${x - 9 * l} ${y - 7}`;
+          return `<path d="M${x - 9} ${y + 1}Q${x} ${y - 10} ${x + 9} ${y + 1}Q${x} ${y + 8} ${x - 9} ${y + 1}Z" fill="#1A0004"/>`
+            + `<ellipse class="sk-pulsa" cx="${x}" cy="${y}" rx="6.6" ry="5" fill="${u('o')}" filter="${u('n')}"/><ellipse cx="${x}" cy="${y}" rx="1.4" ry="4.6" fill="#7A0010"/><circle cx="${x - 2.4 * l}" cy="${y - 2.2}" r="1.2" fill="#fff"/>`
+            + `<path d="${sob}" fill="none" stroke="#3A1A00" stroke-width="4.4" stroke-linecap="round"/><path d="${sob}" fill="none" stroke="${u('c')}" stroke-width="2.6" stroke-linecap="round"/>`;
+        }).join('')
+        + `<path d="M37.5 58.5Q50 73 62.5 58.5Q50 63 37.5 58.5Z" fill="#2A0006" ${tr('#2A0006', 1.6)}/>`
+        + `<path d="M41.6 60.4L43.8 67L46 61.6ZM58.4 60.4L56.2 67L54 61.6Z" fill="#FFF8E8" ${tr('#2A0006', .8)}/>`
+        + `<ellipse cx="45.5" cy="55" rx="1.6" ry="1.1" fill="#2A0006"/><ellipse cx="54.5" cy="55" rx="1.6" ry="1.1" fill="#2A0006"/>`
+        + bigode(-1, 0) + bigode(1, 1.2)
+        + estrelas([[16, 2, 2.4, .2], [84, 4, 2.2, 1.3], [8, 52, 1.6, .8], [94, 56, 1.8, 2]], '#FFF6C9');
+    }
+    return { fundo, arte, defs };
+  }
   let numAv = 0;
   function avatarSVG(av, zoom = false) {
     const a = avLimpo(av) || AV_PADRAO;
     const id = 'av' + (++numAv);
+    if (a.skin) { const k = skinArte(a.skin, id); return avEmbrulho(id, zoom, k.defs, k.fundo, k.arte); }
     const c = AV_CORES[a.pele], c2 = AV_CORES[a.cor2], c3 = AV_CORES[a.cor3];
     const [f1, f2] = AV_FUNDOS[a.fundo];
     const linha = tom(c, -.68);
     const tr = (cor = linha, w = 1.6) => `stroke="${cor}" stroke-width="${w}" stroke-linejoin="round" stroke-linecap="round"`;
     const grad = (gid, cor, cx = .36, cy = .3) => `<radialGradient id="${id}${gid}" cx="${cx}" cy="${cy}" r=".75"><stop offset="0" stop-color="${tom(cor, .45)}"/><stop offset=".55" stop-color="${cor}"/><stop offset="1" stop-color="${tom(cor, -.42)}"/></radialGradient>`;
     const lin = (gid, cor) => `<linearGradient id="${id}${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${tom(cor, .35)}"/><stop offset=".5" stop-color="${cor}"/><stop offset="1" stop-color="${tom(cor, -.4)}"/></linearGradient>`;
-    const CAB = 'M50 21C67 21 79 32 79 46C79 61 66 72 50 72C34 72 21 61 21 46C21 32 33 21 50 21Z';
-    const OL = [[38.5, 45], [61.5, 45]]; // centro dos olhos
+    const CAB = AV_CAB, OL = AV_OL; // OL = centro dos olhos
     let defs = grad('p', c) + grad('q', c2) + lin('x', c3) + grad('y', c3)
       + `<radialGradient id="${id}h" gradientUnits="userSpaceOnUse" cx="42" cy="32" r="44"><stop offset="0" stop-color="${tom(c, .5)}"/><stop offset=".5" stop-color="${c}"/><stop offset="1" stop-color="${tom(c, -.45)}"/></radialGradient>`
       + `<radialGradient id="${id}f" cx=".5" cy=".38" r=".7"><stop offset="0" stop-color="${f1}"/><stop offset="1" stop-color="${f2}"/></radialGradient>`
@@ -1770,11 +2033,7 @@ ${frente}
     fundo += `<circle cx="50" cy="44" r="40" fill="${c}" fill-opacity=".16"/>`;
 
     // corpo: gomos (como no jogo) vindo do rabo, embaixo à esquerda, e subindo até o pescoço
-    const bz = (u, p0, p1, p2, p3) => (1 - u) ** 3 * p0 + 3 * (1 - u) ** 2 * u * p1 + 3 * (1 - u) * u * u * p2 + u ** 3 * p3;
-    const gomos = Array.from({ length: 9 }, (_, i) => {
-      const u = i / 8;
-      return [+bz(u, -4, 26, 82, 56).toFixed(1), +bz(u, 100, 80, 112, 76).toFixed(1), +(11 + 5 * Math.min(1, u * 1.6)).toFixed(1)];
-    });
+    const gomos = AV_GOMOS;
     const corGomo = (i) => (a.padrao === 'listras' && (gomos.length - 1 - i) % 2 ? 'q' : 'p');
     let corpo = gomos.map(([x, y, r], i) => {
       let s = `<circle cx="${x}" cy="${y}" r="${r}" fill="url(#${id}${corGomo(i)})" ${tr(linha, 1.3)}/>`;
@@ -1929,16 +2188,22 @@ ${frente}
         break;
     }
     const temMascara = a.rosto === 'mascara';
-    // o bicho cresce um pouco a partir da testa pra encher o círculo.
-    // zoom: só a cara (nos botões do editor, pra ver a diferença de olho, boca...)
+    return avEmbrulho(id, zoom, defs, fundo, `${corpo}${atras}${cabeca}${olhos}${aro}${temMascara ? '' : narinas + bocas[a.boca]}${topo}${rosto}`);
+  }
+  // o bicho cresce um pouco a partir da testa pra encher o círculo.
+  // zoom: só a cara (nos botões do editor, pra ver a diferença de olho, boca...)
+  function avEmbrulho(id, zoom, defs, fundo, bicho) {
     return `<svg class="av-arte" viewBox="${zoom ? '14 6 72 72' : '0 0 100 100'}" aria-hidden="true"><defs>${defs}<clipPath id="${id}c"><circle cx="50" cy="50" r="50"/></clipPath></defs>`
       + `<g clip-path="${zoom ? 'none' : `url(#${id}c)`}">${fundo}`
-      + `<g transform="translate(50 32) scale(1.14) translate(-50 -32)">${corpo}${atras}${cabeca}${olhos}${aro}${temMascara ? '' : narinas + bocas[a.boca]}${topo}${rosto}</g></g></svg>`;
+      + `<g transform="translate(50 32) scale(1.14) translate(-50 -32)">${bicho}</g></g></svg>`;
   }
   // o avatar no lugar da bolinha / do escudo: moldura da cor da patente e o escudo dela no cantinho
+  // com skin lendária a moldura vira a da skin (as cores dela girando)
   function avatarFoto(av, p, cls) {
-    const anel = p.diamante ? 'anel-dia' : p.nivel >= ESC_NIVEIS.length - 1 ? 'anel-len' : '';
-    const a = el(cls === 'avatar' ? 'div' : 'span', { class: `${cls} av-img ${anel}`, style: `--pc:${p.cor}`, 'aria-hidden': 'true' });
+    const sk = AV_SKINS[(avLimpo(av) || {}).skin];
+    const anel = sk ? 'anel-skin' : p.diamante ? 'anel-dia' : p.nivel >= ESC_NIVEIS.length - 1 ? 'anel-len' : '';
+    const cores = sk ? ';' + sk.anel.map((c, i) => `--sk${i + 1}:${c}`).join(';') : '';
+    const a = el(cls === 'avatar' ? 'div' : 'span', { class: `${cls} av-img ${anel}`, style: `--pc:${p.cor}${cores}`, 'aria-hidden': 'true' });
     a.innerHTML = avatarSVG(av) + (p.nivel ? `<span class="av-selo ${p.diamante ? 'esc-dia' : ''}">${escudoSVG(p, '')}</span>` : '');
     return a;
   }
@@ -1961,7 +2226,11 @@ ${frente}
     cabeca: [['NA CABEÇA', 'cabeca', 'partes'], ['COR', 'cor3', 'cor']],
     rosto: [['NO ROSTO', 'rosto', 'partes'], ['COR', 'cor3', 'cor']],
     fundo: [['FUNDO', 'fundo', 'fundo'], ['ESTAMPA', 'estampa', 'partes']],
+    lendarias: [['SKINS LENDÁRIAS', 'skin', 'skins']],
   };
+  // quantas temporadas o jogador já ganhou (é o que libera as skins lendárias)
+  const titulosDe = (k) => contarTitulos(montarTemporadas()).get(k) || 0;
+  const ICONE_CADEADO = '<rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>';
   const ICONE_DADO = '<rect x="3.5" y="3.5" width="17" height="17" rx="4"/><circle cx="8.5" cy="8.5" r="1.2" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/><circle cx="15.5" cy="8.5" r="1.2" fill="currentColor"/><circle cx="8.5" cy="15.5" r="1.2" fill="currentColor"/>';
   const ICONE_AVATAR = '<circle cx="12" cy="12" r="9"/><circle cx="9" cy="10.5" r="1.4"/><circle cx="15" cy="10.5" r="1.4"/><path d="M8.5 15c2 1.8 5 1.8 7 0"/>';
   let avd = null; // { k, av, aba }
@@ -1969,27 +2238,53 @@ ${frente}
   function abrirAvatar(k) {
     const r = elenco.get(k);
     if (!r || !podeMudarAvatar(k)) return;
-    avd = { k, av: avLimpo(r.avatar) || avAleatorio(), aba: 'cobra', tinha: !!r.avatar };
+    const av = avLimpo(r.avatar) || avAleatorio();
+    avd = { k, av, aba: av.skin ? 'lendarias' : 'cobra', tinha: !!r.avatar, titulos: titulosDe(k) };
     $('tituloAvatar').replaceChildren(lerEu() === k ? 'SEU ' : `${r.nick.toUpperCase()} · `, el('span', { class: 'laranja', text: 'AVATAR' }));
     $('btnAvTirar').hidden = !avd.tinha;
     desenharAvatarEditor();
     $('dlgAvatar').showModal();
     $('dlgAvatar').focus();
   }
+  // mexer em qualquer peça volta pra cobra montada (a skin sai)
   function mudarAvatar(campo, valor) {
     avd.av = { ...avd.av, [campo]: valor };
+    if (campo !== 'skin' || !valor) delete avd.av.skin;
     desenharAvatarEditor(true);
   }
+  const skinTrancada = (s) => !!s && AV_SKINS[s].titulos > avd.titulos;
   function desenharAvatarEditor(manterRolagem = false) {
     const { av, aba } = avd;
     const p = patenteDe(ptsPat(avd.k)).atual;
-    trocar($('avdPreview'), avatarFoto(av, p, 'av av-xg'));
+    // skin trancada dá pra ver (e babar), mas não dá pra salvar
+    const trava = skinTrancada(av.skin);
+    const sk = AV_SKINS[av.skin];
+    trocar($('avdPreview'), avatarFoto(av, p, 'av av-xg'), sk ? el('span', { class: `avd-raro raro-${sk.titulos} ${trava ? 'trancada' : ''}` },
+      trava ? [svg(ICONE_CADEADO, 13), `CAMPEÃO ${sk.titulos}×`] : RARIDADE[sk.titulos]) : null);
+    $('avdPreview').classList.toggle('avd-trancado', trava);
+    $('btnAvSalvar').disabled = trava;
+    $('btnAvSalvar').textContent = trava ? 'Bloqueada' : 'Salvar';
     document.querySelectorAll('.aba[data-avaba]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.avaba === aba)));
     const corpo = $('avdCorpo');
     const rol = corpo.scrollTop;
     const zoom = aba === 'olhos' || aba === 'boca' || aba === 'rosto';
     trocar(corpo, AV_ABAS[aba].map(([rot, campo, tipo]) => {
       let itens;
+      if (tipo === 'skins') {
+        const op = (v) => {
+          const s = AV_SKINS[v], tranca = skinTrancada(v);
+          const b = el('button', { type: 'button', class: `avd-op avd-skin ${s ? 'raro-' + s.titulos : ''} ${tranca ? 'trancada' : ''}`, role: 'radio', 'aria-checked': String((av.skin || '') === v),
+            'aria-label': s ? `${s.nome}, ${RARIDADE[s.titulos].toLowerCase()}${tranca ? `, só pra campeão ${s.titulos}×` : ''}` : 'Minha cobra', onclick: () => mudarAvatar('skin', v) });
+          b.innerHTML = avatarSVG({ ...av, skin: v || undefined });
+          if (tranca) b.append(el('span', { class: 'avd-cadeado' }, svg(ICONE_CADEADO, 16)));
+          b.append(el('span', { class: 'avd-nome', text: s ? s.nome : 'Minha cobra' }));
+          if (s) b.append(el('span', { class: 'avd-req' }, svg(ICONE_COROA, 11), tranca ? `CAMPEÃO ${s.titulos}×` : RARIDADE[s.titulos]));
+          return b;
+        };
+        itens = el('div', { class: 'avd-grade avd-grade-skin', role: 'radiogroup', 'aria-label': rot }, op(''), ...Object.keys(AV_SKINS).map(op));
+        return el('section', { class: 'avd-sec' }, el('h3', { class: 'avd-rot avd-rot-lenda' }, rot,
+          el('span', { class: 'avd-titulos', text: avd.titulos ? `${avd.titulos} ${avd.titulos === 1 ? 'TÍTULO' : 'TÍTULOS'}` : 'SÓ CAMPEÃO' })), itens);
+      }
       if (tipo === 'partes') {
         itens = el('div', { class: 'avd-grade', role: 'radiogroup', 'aria-label': rot }, ...AV_PARTES[campo].map((v) => {
           const b = el('button', { type: 'button', class: 'avd-op', role: 'radio', 'aria-checked': String(av[campo] === v), onclick: () => mudarAvatar(campo, v) });
@@ -2016,6 +2311,7 @@ ${frente}
       if (!DEMO) {
         const res = await sb.rpc('jogador_avatar', { p_avatar: novo, p_player: r.id });
         if (res.error) throw new Error(res.error.message);
+        if (res.data === 'bloqueada') { toast('Essa skin é só pra campeão de temporada.', true); return; }
         if (res.data !== 'ok') throw new Error(res.data);
       }
       r.avatar = novo;
@@ -2449,6 +2745,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
         linhaRegra('Campeão', 'mais pontos no mês leva a taça'),
         linhaRegra('Coroa', 'o campeão usa a temporada seguinte inteira'),
         linhaRegra('Perde a coroa', 'se não ganhar de novo'),
+        linhaRegra('Skins lendárias', 'só quem já foi campeão (pra sempre)'),
         linhaRegra('Pontos do mês', 'zeram no dia 1'),
         linhaRegra('Patente', `cai ${CAI_NA_VIRADA} no dia 1`),
         linhaRegra('Insígnia', 'a patente final fica no perfil'),
