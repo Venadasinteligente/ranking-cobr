@@ -2080,6 +2080,158 @@ revoke all on function public.dono_painel(integer) from public, anon;
 grant execute on function public.site_marcar(text, text, text, boolean) to authenticated;
 grant execute on function public.dono_painel(integer) to authenticated;
 
+-- 9) Backup automático: a cada 6 horas o banco guarda uma cópia de todas as tabelas (e da lista
+--    de contas, sem senha) no schema backup, que o site não enxerga: nem admin logado lê ou apaga.
+--    Fica tudo dos últimos 3 dias e, pra trás, a primeira cópia de cada dia até 60 dias.
+--    Os arquivos (prints, fotos e áudios do chat) não entram, só a lista de quais existiam.
+--
+--    Pra conferir o que mudou desde uma cópia:  select * from backup.comparar(<id da cópia>);
+--    Pra ver as cópias:  select id, criado_em, motivo, linhas from backup.copias order by id desc;
+--    Pra devolver o que foi apagado:  select backup.restaurar(<id>, 'scores');
+--      (modo 'faltando', o padrão, só põe de volta as linhas que sumiram; 'tudo' troca a tabela
+--       inteira pela da cópia e apaga em cascata o que depende dela. Restaure as tabelas-mãe
+--       primeiro: players antes de player_contas, chat_mensagens antes de chat_reacoes...)
+--    Cópia na mão antes de mexer em algo grande:  select backup.fazer('antes de ...');
+create extension if not exists pg_cron with schema pg_catalog;
+create schema if not exists backup;
+revoke all on schema backup from public, anon, authenticated;
+
+create table if not exists backup.copias (
+  id        bigint generated always as identity primary key,
+  criado_em timestamptz not null default now(),
+  motivo    text not null default 'automatico',
+  linhas    jsonb not null,   -- tabela -> quantas linhas tinha
+  dados     jsonb not null    -- tabela -> as linhas
+);
+revoke all on backup.copias from public, anon, authenticated;
+
+create or replace function backup.fazer(p_motivo text default 'automatico')
+returns bigint
+language plpgsql set search_path = public
+as $$
+declare
+  v_tab    text;
+  v_json   jsonb;
+  v_dados  jsonb := '{}'::jsonb;
+  v_linhas jsonb := '{}'::jsonb;
+  v_id     bigint;
+begin
+  for v_tab in select tablename from pg_tables where schemaname = 'public' order by tablename loop
+    execute format('select coalesce(jsonb_agg(to_jsonb(t)), ''[]''::jsonb) from public.%I t', v_tab) into v_json;
+    v_dados := v_dados || jsonb_build_object(v_tab, v_json);
+    v_linhas := v_linhas || jsonb_build_object(v_tab, jsonb_array_length(v_json));
+  end loop;
+
+  select coalesce(jsonb_agg(jsonb_build_object('id', id, 'email', email, 'created_at', created_at,
+           'confirmado', email_confirmed_at, 'meta', raw_user_meta_data)), '[]'::jsonb)
+    into v_json from auth.users;
+  v_dados := v_dados || jsonb_build_object('auth.users', v_json);
+  v_linhas := v_linhas || jsonb_build_object('auth.users', jsonb_array_length(v_json));
+
+  select coalesce(jsonb_agg(jsonb_build_object('bucket', bucket_id, 'nome', name, 'created_at', created_at)), '[]'::jsonb)
+    into v_json from storage.objects;
+  v_dados := v_dados || jsonb_build_object('storage.objects', v_json);
+  v_linhas := v_linhas || jsonb_build_object('storage.objects', jsonb_array_length(v_json));
+
+  insert into backup.copias (motivo, linhas, dados)
+  values (coalesce(nullif(btrim(p_motivo), ''), 'automatico'), v_linhas, v_dados)
+  returning id into v_id;
+
+  -- Faxina: depois de 3 dias, só a primeira automática de cada dia; depois de 60 dias, nada.
+  delete from backup.copias c
+  where c.criado_em < now() - interval '60 days'
+     or (c.motivo = 'automatico' and c.criado_em < now() - interval '3 days'
+         and exists (select 1 from backup.copias o
+                     where o.motivo = 'automatico' and o.criado_em < c.criado_em
+                       and (o.criado_em at time zone 'America/Sao_Paulo')::date
+                         = (c.criado_em at time zone 'America/Sao_Paulo')::date));
+  delete from cron.job_run_details where end_time < now() - interval '14 days';
+  return v_id;
+end;
+$$;
+
+-- Quantas linhas cada tabela tinha na cópia e quantas tem agora.
+create or replace function backup.comparar(p_copia bigint)
+returns table (tabela text, na_copia integer, agora integer)
+language plpgsql set search_path = public
+as $$
+declare
+  v_linhas jsonb;
+  v_tab    text;
+  v_agora  integer;
+begin
+  select c.linhas into v_linhas from backup.copias c where c.id = p_copia;
+  if v_linhas is null then raise exception 'não existe a cópia %', p_copia; end if;
+  for v_tab in select k from jsonb_object_keys(v_linhas) k order by k loop
+    v_agora := null;
+    if v_tab = 'auth.users' then select count(*) into v_agora from auth.users;
+    elsif v_tab = 'storage.objects' then select count(*) into v_agora from storage.objects;
+    elsif to_regclass(format('public.%I', v_tab)) is not null then
+      execute format('select count(*) from public.%I', v_tab) into v_agora;
+    end if;
+    tabela := v_tab; na_copia := (v_linhas ->> v_tab)::integer; agora := v_agora;
+    return next;
+  end loop;
+end;
+$$;
+
+-- Põe de volta uma tabela da cópia sem disparar os avisos (bot do chat, notificação).
+-- Devolve quantas linhas entraram.
+create or replace function backup.restaurar(p_copia bigint, p_tabela text, p_modo text default 'faltando')
+returns integer
+language plpgsql set search_path = public
+as $$
+declare
+  v_linhas jsonb;
+  v_cols   text;
+  v_n      integer;
+begin
+  if p_modo not in ('faltando', 'tudo') then raise exception 'modo tem que ser faltando ou tudo'; end if;
+  if to_regclass(format('public.%I', p_tabela)) is null then raise exception 'não existe a tabela %', p_tabela; end if;
+  select c.dados -> p_tabela into v_linhas from backup.copias c where c.id = p_copia;
+  if v_linhas is null then raise exception 'a cópia % não tem a tabela %', p_copia, p_tabela; end if;
+
+  select string_agg(quote_ident(column_name), ', ' order by ordinal_position) into v_cols
+  from information_schema.columns
+  where table_schema = 'public' and table_name = p_tabela and is_generated = 'NEVER';
+
+  execute format('alter table public.%I disable trigger user', p_tabela);
+  if p_modo = 'tudo' then execute format('delete from public.%I', p_tabela); end if;
+  execute format('insert into public.%1$I (%2$s) overriding system value
+                  select %2$s from jsonb_populate_recordset(null::public.%1$I, $1)
+                  on conflict do nothing', p_tabela, v_cols) using v_linhas;
+  get diagnostics v_n = row_count;
+  execute format('alter table public.%I enable trigger user', p_tabela);
+  return v_n;
+end;
+$$;
+
+revoke all on function backup.fazer(text) from public, anon, authenticated;
+revoke all on function backup.comparar(bigint) from public, anon, authenticated;
+revoke all on function backup.restaurar(bigint, text, text) from public, anon, authenticated;
+
+select cron.schedule('backup-automatico', '0 */6 * * *', 'select backup.fazer()');
+
+-- 10) Freio de cadastro: no máximo 10 contas novas por hora e 30 por dia. Robô criando conta
+--     em massa trava aqui (o site mostra "Muitas contas novas criadas agora").
+--     A verificação "não sou robô" e a senha forte ficam na configuração do Auth do Supabase.
+create or replace function public.freio_cadastro()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if (select count(*) from auth.users where created_at > now() - interval '1 hour') >= 10
+     or (select count(*) from auth.users where created_at > now() - interval '1 day') >= 30 then
+    raise exception 'cadastros demais agora';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.freio_cadastro() from public, anon, authenticated;
+drop trigger if exists freio_cadastro on auth.users;
+create trigger freio_cadastro before insert on auth.users
+  for each row execute function public.freio_cadastro();
+
 -- Pronto! Se apareceu "Success. No rows returned", deu certo.
 --
 -- Pra dar acesso de admin a alguém (depois de criar a conta em
