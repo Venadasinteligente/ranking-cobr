@@ -1309,6 +1309,8 @@ end;
 $$;
 
 -- apagar: o membro apaga a dele; ADM apaga a de membro; mensagem de ADM ou do Dono, só o Dono.
+-- A mensagem sai de vez (sem "mensagem apagada"); reações, denúncias e bonde vão junto, e quem
+-- respondeu perde só a citação. Fica o registro no admin_log quando é a de outra pessoa.
 -- Devolve o caminho da foto ou do áudio (pro site apagar o arquivo também) ou null.
 drop function if exists public.chat_apagar(bigint);
 create function public.chat_apagar(p_msg bigint)
@@ -1324,9 +1326,7 @@ begin
     if chat_protegido(m.user_id) and not is_admin() then raise exception 'acesso negado' using errcode = '42501'; end if;
     perform exigir_mod('chat_apagar', jsonb_build_object('msg', m.id, 'canal', m.canal, 'autor', m.nome, 'texto', m.txt));
   end if;
-  update chat_mensagens set apagada = true, fixada = false, txt = '' where id = p_msg;
-  delete from chat_reacoes where msg_id = p_msg;
-  delete from chat_denuncias where msg_id = p_msg;
+  delete from chat_mensagens where id = p_msg;
   return case when m.tipo in ('foto', 'audio') then m.dados ->> 'path' end;
 end;
 $$;
@@ -1342,12 +1342,13 @@ begin
   perform exigir_mod('chat_limpar', jsonb_build_object('quem', chat_nome(p_user), 'horas', p_horas));
   select coalesce(jsonb_agg(dados ->> 'path') filter (where tipo in ('foto', 'audio') and dados ? 'path'), '[]'::jsonb), count(*) into v_fotos, v_qtd
   from chat_mensagens where user_id = p_user and not apagada and (p_horas is null or created_at > now() - make_interval(hours => p_horas));
-  delete from chat_reacoes where msg_id in (select id from chat_mensagens where user_id = p_user and not apagada and (p_horas is null or created_at > now() - make_interval(hours => p_horas)));
-  update chat_mensagens set apagada = true, fixada = false, txt = ''
+  delete from chat_mensagens
   where user_id = p_user and not apagada and (p_horas is null or created_at > now() - make_interval(hours => p_horas));
   return jsonb_build_object('qtd', v_qtd, 'fotos', v_fotos);
 end;
 $$;
+-- (as que foram apagadas antes, quando ficava "mensagem apagada" no lugar, saem de vez também)
+delete from public.chat_mensagens where apagada;
 
 create or replace function public.chat_fixar(p_msg bigint, p_fixar boolean)
 returns void

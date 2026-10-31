@@ -6087,9 +6087,12 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   function sumiuMsg(id) {
     const m = chat.porId.get(id);
     if (!m) return;
-    chat.porId.delete(id);
+    chat.porId.delete(id); chat.reac.delete(id); chat.bonde.delete(id);
     chat.msgs[m.canal] = chat.msgs[m.canal].filter((x) => x.id !== id);
-    if (chatVisivel() && chat.canal === m.canal) desenharMsgsChat(false);
+    // quem respondeu fica só sem a citação (o banco faz o mesmo)
+    for (const x of chat.msgs[m.canal]) if (x.resp === id) x.resp = null;
+    if ((chat.resp && chat.resp.id === id) || (chat.editando && chat.editando.id === id)) cancelarRespChat();
+    if (chatVisivel() && chat.canal === m.canal) { desenharMsgsChat(false); desenharFixadaChat(); }
     atualizarBadgesChat();
   }
   function mexerReac(id, emoji, user, liga, redesenhar = true) {
@@ -6891,12 +6894,12 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     }
   }
   function apagarChat(m, nick, meu) {
-    confirmar('APAGAR MENSAGEM?', meu ? 'Ela some pra todo mundo.' : `Mensagem de ${nick}. Some pra todo mundo e fica no histórico da moderação.`, 'Apagar', async () => {
+    confirmar('APAGAR MENSAGEM?', meu ? 'Ela some de vez pra todo mundo.' : `Mensagem de ${nick}. Some de vez pra todo mundo e fica no histórico da moderação.`, 'Apagar', async () => {
       try {
         const foto = await chatRpc('chat_apagar', { p_msg: m.id });
         tocarChat('msg', m.id);
         if (foto) apagarFotos([foto]);
-        atualizarMsg({ id: m.id, apagada: true, fixada: false, txt: '' });
+        sumiuMsg(m.id);
         toast('Mensagem apagada.');
         if (admChat()) contarDenuncias();
       } catch (e) { erroChat(e); }
@@ -7065,8 +7068,8 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   async function limparMensagens(user, horas, avisar = true) {
     const r = await chatRpc('chat_limpar', { p_user: user, p_horas: horas });
     apagarFotos(r && r.fotos);
-    for (const m of chat.porId.values()) {
-      if (m.user_id === user && !m.apagada && (horas == null || Date.now() - Date.parse(m.created_at) < horas * 3600000)) atualizarMsg({ id: m.id, apagada: true, fixada: false, txt: '' });
+    for (const m of [...chat.porId.values()]) {
+      if (m.user_id === user && (horas == null || Date.now() - Date.parse(m.created_at) < horas * 3600000)) sumiuMsg(m.id);
     }
     if (avisar) toast(`${(r && r.qtd) || 0} mensagens apagadas.`);
   }
@@ -7126,7 +7129,6 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   }
   function itemDenuncia(x) {
     const nick = nickDoPlayer(null, x.nome);
-    const m = chat.porId.get(x.msg_id);
     const acao = (txt, cls, fn) => el('button', { type: 'button', class: `btn ${cls}`, onclick: fn, text: txt });
     return el('div', { class: 'mod-item' },
       el('div', { class: 'mod-cab' }, avatarChat(nick, 'av-p'), el('b', { text: nick }),
@@ -7142,7 +7144,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
             const foto = await chatRpc('chat_apagar', { p_msg: x.msg_id });
             tocarChat('msg', x.msg_id);
             if (foto) apagarFotos([foto]);
-            if (m) atualizarMsg({ id: m.id, apagada: true, fixada: false, txt: '' });
+            sumiuMsg(x.msg_id);
             toast('Mensagem apagada.');
             abrirModeracao();
           } catch (e) { erroChat(e); }
