@@ -1737,7 +1737,7 @@ ${frente}
   const AV_SKINS = {
     naja: { nome: 'Naja de Ouro', titulos: 1, anel: ['#FFF3B0', '#F2C14E', '#1F4FD8', '#2EC4B6', '#B07A12', '#FFF3B0'] },
     gelo: { nome: 'Zero Absoluto', titulos: 1, anel: ['#FFFFFF', '#8BE3FF', '#2C7FD6', '#B9F3FF', '#5B6CFF', '#FFFFFF'] },
-    inferno: { nome: 'Inferno', titulos: 2, anel: ['#FFE066', '#FF7A00', '#E0120F', '#2A0000', '#FF7A00', '#FFE066'] },
+    ciborgue: { nome: 'Ciborgue', titulos: 2, anel: ['#E8FFE0', '#7CFF4F', '#1FAF5A', '#C9D1DA', '#0B3D24', '#E8FFE0'] },
     cosmica: { nome: 'Cósmica', titulos: 2, anel: ['#7DF9FF', '#C77DFF', '#FF5FB7', '#3A1C9A', '#7DF9FF', '#FFFFFF'] },
     dragao: { nome: 'Dragão Imperial', titulos: 3, anel: ['#FFF7C2', '#FFD84D', '#E0122E', '#FFD84D', '#7A0010', '#FFF7C2'] },
   };
@@ -1858,44 +1858,45 @@ ${frente}
         + estrelas([[50, -2, 3.2, 0], [37, 5, 2, .8], [65, 8, 2.2, 1.5], [26, 18, 1.6, 2]]);
     }
 
-    if (s === 'inferno') {
-      // inferno: obsidiana rachada com lava por dentro, chifres de demônio e o fogo subindo
-      defs += rg('f', [[0, '#5A0A00'], [.55, '#220200'], [1, '#050000']], .5, .7, .8)
-        + lg('fg', [[0, '#FFE066'], [.35, '#FF8A00'], [.75, '#E0120F'], [1, '#600000', 0]], 0, -1)
-        + rg('h', [[0, '#5A5560'], [.4, '#25222A'], [1, '#050407']], .38, .26) + rg('p', [[0, '#4A4550'], [.5, '#1E1B22'], [1, '#050407']])
-        + lg('c', [[0, '#FFE066'], [.18, '#FF7A00'], [.45, '#7A0A00'], [1, '#120000']]) + rg('o', [[0, '#FFFBD0'], [.35, '#FFD000'], [.75, '#FF5A00'], [1, '#A00000']], .5, .5, .6)
-        + rg('g', [[0, '#FFD000'], [.6, '#FF5A00'], [1, '#600000']], .5, .4, .7)
-        + AV_OL.map(([x, y], i) => `<clipPath id="${id}i${i}"><circle cx="${x}" cy="${y}" r="8.4"/></clipPath>`).join('');
-      const chamas = [[6, 30, 0], [22, 38, .25], [40, 26, .5], [60, 34, .15], [78, 40, .4], [94, 30, .6]];
+    if (s === 'ciborgue') {
+      // ciborgue: cobra de metal cromado, circuitos neon com dados correndo, visor que escaneia e chuva de código atrás
+      const CROMO = [[0, '#FFFFFF'], [.3, '#DDE3EA'], [.65, '#7D8896'], [1, '#262C35']];
+      defs += rg('f', [[0, '#0B3D24'], [.55, '#04170D'], [1, '#010503']], .5, .4, .8)
+        + rg('h', CROMO, .38, .26) + rg('p', CROMO) + lg('v', [[0, '#0E2A1A'], [.5, '#03100A'], [1, '#000']])
+        + rg('led', [[0, '#F4FFE8'], [.4, '#9CFF6B'], [1, '#1FAF5A']], .5, .5, .55)
+        + `<clipPath id="${id}vi"><path d="M21 37.5C35 34 65 34 79 37.5L78 52C65 55 35 55 22 52Z"/></clipPath>`;
+      // chuva de código: colunas de tracinhos verdes descendo, a ponta mais clara
+      const colunas = [[5, 3.1, 0], [15, 2.6, 1.4], [26, 3.6, .6], [37, 2.9, 2.2], [63, 3.3, 1], [74, 2.7, 2.6], [85, 3.5, .3], [95, 3, 1.8]];
       fundo = `<rect width="100" height="100" fill="${u('f')}"/>`
-        + `<g filter="${u('b')}">${chamas.map(([x, h, d]) => `<path class="sk-chama" style="animation-delay:-${d}s" d="M${x - 12} 104C${x - 12} ${100 - h * .5} ${x - 4} ${100 - h * .6} ${x} ${100 - h}C${x + 4} ${100 - h * .6} ${x + 12} ${100 - h * .5} ${x + 12} 104Z" fill="${u('fg')}"/>`).join('')}</g>`
-        + [[12, 0], [30, 1.2], [47, .5], [66, 1.9], [84, .9], [92, 2.4], [20, 2.8]].map(([x, d], i) => `<circle class="sk-brasa" style="animation-delay:-${d}s" cx="${x}" cy="96" r="${i % 2 ? .9 : 1.3}" fill="#FFB020"/>`).join('');
-      const lava = (d, w = 1.4) => `<path class="sk-lava" d="${d}" fill="none" stroke="#FF6A00" stroke-width="${w + 1.6}" stroke-linecap="round" stroke-linejoin="round" opacity=".55" filter="${u('n')}"/><path class="sk-lava" d="${d}" fill="none" stroke="#FFE066" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`;
-      const corpo = gomos((x, y, r, i) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${u('p')}" ${tr('#000', 1.3)}/>`
-        + lava(`M${f1(x - r * .7)} ${f1(y - r * .2)}L${f1(x - r * .1)} ${f1(y + r * .1)}L${f1(x + r * .2)} ${f1(y - r * .5)}M${f1(x - r * .1)} ${f1(y + r * .1)}L${f1(x + (i % 2 ? .5 : .1) * r)} ${f1(y + r * .6)}`, 1.1)
-        + luzGomo(x, y, r, .14));
-      // chifres curvos com a ponta em brasa
-      const chifre = (l) => {
-        const X = (v) => f1(50 + (v - 50) * l);
-        return `<path d="M${X(31)} 31C${X(24)} 27 ${X(20)} 20 ${X(24)} 10C${X(27)} 17 ${X(32)} 20 ${X(38)} 21C${X(42)} 22 ${X(44)} 24 ${X(45)} 27Z" fill="${u('c')}" ${tr('#000', 1.4)}/>`
-          + `<path d="M${X(29)} 27C${X(25)} 23 ${X(23)} 18 ${X(24.5)} 13" fill="none" stroke="#FFE066" stroke-opacity=".5" stroke-width=".9"/>`
-          + `<path class="sk-pulsa" d="M${X(24)} 11C${X(22)} 8 ${X(24)} 6 ${X(24.5)} 3.5C${X(26.5)} 6.5 ${X(27)} 9 ${X(24)} 11Z" fill="#FFB020" filter="${u('n')}"/>`;
-      };
-      arte = corpo + sombraPescoco + chifre(1) + chifre(-1)
-        + `<path d="${AV_CAB}" fill="${u('h')}" ${tr('#000', 1.8)}/>`
-        + `<g clip-path="${u('k')}">${lava('M21 36L30 40L33 50L27 60M30 40L40 34L46 22M33 50L42 54', 1.3)}${lava('M79 34L70 40L68 52L74 62M70 40L60 33L56 22M68 52L58 55', 1.3)}${lava('M38 72L44 66L50 69L56 65L63 72', 1.1)}</g>`
-        + `<ellipse cx="38" cy="29" rx="10" ry="4.5" transform="rotate(-18 38 29)" fill="#fff" fill-opacity=".16"/>`
-        + `<path d="${AV_CAB}" fill="none" ${tr('#000', 1.8)}/>`
-        + AV_OL.map(([x, y], i) => {
-          const l = i ? 1 : -1;
-          return `<circle cx="${x}" cy="${y}" r="8.4" fill="#0A0000" ${tr('#000', 1.4)}/><circle class="sk-pulsa" cx="${x}" cy="${y + .6}" r="6.4" fill="${u('o')}" filter="${u('n')}"/>`
-            + `<ellipse cx="${x}" cy="${y + .6}" rx="1.5" ry="5.6" fill="#1A0000"/>`
-            + `<g clip-path="${u('i' + i)}"><path d="M${x + 11 * l} ${y - 13}L${x - 11 * l} ${y - 13}L${x - 11 * l} ${y - 1.5}L${x + 10 * l} ${y - 8}Z" fill="#141118"/><path d="M${x + 10.5 * l} ${y - 8.2}L${x - 10.5 * l} ${y - 1.8}" ${tr('#FF6A00', 1.8)}/></g>`
-            + `<circle cx="${x}" cy="${y}" r="8.4" fill="none" ${tr('#000', 1.4)}/>`;
-        }).join('')
-        + `<path d="M37.5 58.5Q50 75 62.5 58.5Q50 63.5 37.5 58.5Z" fill="${u('g')}" ${tr('#000', 1.8)}/>`
-        + `<path d="M42 60.6L44.3 68L46.6 61.8ZM58 60.6L55.7 68L53.4 61.8Z" fill="#FFF4E0" ${tr('#000', .9)}/>`
-        + `<ellipse cx="46" cy="55" rx="1.3" ry="1" fill="#FF6A00"/><ellipse cx="54" cy="55" rx="1.3" ry="1" fill="#FF6A00"/>`;
+        + `<g stroke="#7CFF4F" stroke-opacity=".08" stroke-width=".6" fill="none"><path d="M0 20H100M0 40H100M0 60H100M0 80H100M20 0V100M40 0V100M60 0V100M80 0V100"/></g>`
+        + colunas.map(([x, dur, atraso]) => `<g class="sk-codigo" style="animation-duration:${dur}s;animation-delay:-${atraso}s">${Array.from({ length: 7 }, (_, i) => `<rect x="${x - .8}" y="${i * 5}" width="1.6" height="${i % 3 ? 2.6 : 3.4}" rx=".4" fill="${i === 6 ? '#F4FFE8' : '#7CFF4F'}" fill-opacity="${f1(.12 + i * .14)}"/>`).join('')}</g>`).join('');
+      const circuito = (d) => `<path d="${d}" fill="none" stroke="#1FAF5A" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" opacity=".55"/>`
+        + `<path class="sk-circuito" d="${d}" fill="none" stroke="#B8FF8F" stroke-width="1.1" stroke-linecap="round" stroke-dasharray="3 5" filter="${u('n')}"/>`;
+      const corpo = gomos((x, y, r) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${u('p')}" ${tr('#1A1F26', 1.3)}/>`
+        + `<circle cx="${x}" cy="${y}" r="${f1(r * .62)}" fill="none" stroke="#7CFF4F" stroke-width="1.1" stroke-opacity=".8" filter="${u('n')}"/>`
+        + `<circle class="sk-pulsa" cx="${x}" cy="${y}" r="${f1(r * .2)}" fill="${u('led')}"/>` + luzGomo(x, y, r, .45));
+      const parafuso = (x, y) => `<circle cx="${x}" cy="${y}" r="4.4" fill="${u('p')}" ${tr('#1A1F26', 1.2)}/><circle cx="${x}" cy="${y}" r="1.8" fill="${u('led')}" filter="${u('n')}"/>`;
+      arte = corpo + sombraPescoco
+        // antena com a luz piscando
+        + `<path d="M50 22V9" stroke="#4A525E" stroke-width="2.4" stroke-linecap="round"/><path d="M50 22V9" stroke="#DDE3EA" stroke-width=".9" stroke-linecap="round"/>`
+        + `<circle class="sk-pulsa" cx="50" cy="7.5" r="3.2" fill="${u('led')}" filter="${u('n')}"/>`
+        + `<path d="${AV_CAB}" fill="${u('h')}" ${tr('#1A1F26', 1.8)}/>`
+        + `<g clip-path="${u('k')}">`
+        + `<path d="M50 21V36M30 26L36 35M70 26L64 35M21 58H32L37 64M79 58H68L63 64" fill="none" stroke="#2A313B" stroke-opacity=".55" stroke-width="1"/>`
+        + circuito('M27 31H33L37 27H44M73 31H67L63 27H56') + circuito('M24 60L30 66H40M76 60L70 66H60')
+        + `<path d="M18 60C30 74 70 74 82 60V80H18Z" fill="#0B0F14" fill-opacity=".25"/></g>`
+        + `<ellipse cx="38" cy="29" rx="10" ry="4.5" transform="rotate(-18 38 29)" fill="#fff" fill-opacity=".5"/>`
+        + reflexo + `<path d="${AV_CAB}" fill="none" ${tr('#1A1F26', 1.8)}/>`
+        + parafuso(21.5, 47) + parafuso(78.5, 47)
+        // visor: vidro escuro, dois olhos de luz e a linha que escaneia de um lado pro outro
+        + `<path d="M19 36.5C34 32.5 66 32.5 81 36.5L80 53C66 56.5 34 56.5 20 53Z" fill="#14181E" ${tr('#0A0C10', 1.6)}/>`
+        + `<path d="M21 37.5C35 34 65 34 79 37.5L78 52C65 55 35 55 22 52Z" fill="${u('v')}"/>`
+        + `<g clip-path="${u('vi')}">${AV_OL.map(([x, y]) => `<ellipse cx="${x}" cy="${y}" rx="7.4" ry="3.6" fill="#7CFF4F" filter="${u('n')}"/><ellipse cx="${x}" cy="${y}" rx="4.2" ry="1.6" fill="#F4FFE8"/>`).join('')}`
+        + `<rect class="sk-scan" x="48.5" y="33" width="3" height="24" fill="#B8FF8F" fill-opacity=".45" filter="${u('n')}"/>`
+        + `<path d="M26 39C38 37 52 37 62 38" stroke="#fff" stroke-opacity=".35" stroke-width="1.4" stroke-linecap="round"/></g>`
+        // boca de grade (alto-falante)
+        + `<rect x="40" y="59" width="20" height="7.5" rx="3.75" fill="#14181E" ${tr('#0A0C10', 1.3)}/>`
+        + `<g stroke="#7CFF4F" stroke-width="1.2" stroke-linecap="round" opacity=".85">${[44, 47.3, 50.6, 53.9, 57].map((x) => `<path d="M${x - .6} 61V64.5"/>`).join('')}</g>`;
     }
 
     if (s === 'cosmica') {
