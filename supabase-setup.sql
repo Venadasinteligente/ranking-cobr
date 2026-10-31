@@ -940,6 +940,11 @@ create table if not exists public.chat_canais_cfg (
 alter table public.chat_canais_cfg add column if not exists desligado boolean not null default false;
 alter table public.chat_canais_cfg drop constraint if exists chat_canais_cfg_canal_check;
 alter table public.chat_canais_cfg add constraint chat_canais_cfg_canal_check check (char_length(canal) between 1 and 12);
+-- #geral, #bonde, #recordes e #avisos: o Dono troca nome, ícone (null = o do site), quem vê e quem escreve (null = o padrão)
+alter table public.chat_canais_cfg add column if not exists nome text check (char_length(nome) between 1 and 24);
+alter table public.chat_canais_cfg add column if not exists emoji text check (char_length(emoji) between 1 and 8);
+alter table public.chat_canais_cfg add column if not exists ve text check (ve in ('todos', 'adm', 'escolhidos'));
+alter table public.chat_canais_cfg add column if not exists fala text check (fala in ('todos', 'adm'));
 
 -- palavras que viram *** (lista editada pelos ADMs)
 create table if not exists public.chat_palavroes (
@@ -960,11 +965,13 @@ create table if not exists public.chat_canais (
   criado_por  uuid references auth.users (id) on delete set null,
   created_at  timestamptz not null default now()
 );
+-- canal: um criado ou um do site com ve = 'escolhidos' (por isso sem chave pra chat_canais; chat_apagar_canal limpa)
 create table if not exists public.chat_canal_membros (
-  canal       text not null references public.chat_canais (id) on delete cascade,
+  canal       text not null check (char_length(canal) between 1 and 12),
   user_id     uuid not null references auth.users (id) on delete cascade,
   primary key (canal, user_id)
 );
+alter table public.chat_canal_membros drop constraint if exists chat_canal_membros_canal_fkey;
 -- a sala dos ADMs já vem pronta (sem criador: só o Dono edita ou apaga)
 insert into public.chat_canais (id, nome, emoji, ve, fala) values ('adm', 'adm', '🛡️', 'adm', 'todos') on conflict (id) do nothing;
 
@@ -1026,14 +1033,19 @@ as $$
     select 1 from chat_punicoes where user_id = auth.uid() and tipo = 'ban' and (ate is null or ate > now()));
 $$;
 
--- quem vê o canal: os do site, todo membro; os criados pelos ADMs, conforme o "ve" (Dono e ADMs veem todos)
+-- quem vê o canal conforme o "ve" (Dono e ADMs veem todos): o dos do site fica em chat_canais_cfg (sem nada = todo membro)
 create or replace function public.chat_ve_canal_de(p_user uuid, p_canal text)
 returns boolean
 language sql stable security definer set search_path = public
 as $$
-  select p_canal in ('geral', 'bonde', 'recordes', 'avisos') or exists (
-    select 1 from chat_canais c where c.id = p_canal and (c.ve = 'todos' or chat_protegido(p_user)
-      or (c.ve = 'escolhidos' and exists (select 1 from chat_canal_membros x where x.canal = c.id and x.user_id = p_user))));
+  select case when p_canal in ('geral', 'bonde', 'recordes', 'avisos') then
+      coalesce((select g.ve from chat_canais_cfg g where g.canal = p_canal), 'todos') = 'todos' or chat_protegido(p_user)
+      or (exists (select 1 from chat_canais_cfg g where g.canal = p_canal and g.ve = 'escolhidos')
+          and exists (select 1 from chat_canal_membros x where x.canal = p_canal and x.user_id = p_user))
+    else exists (
+      select 1 from chat_canais c where c.id = p_canal and (c.ve = 'todos' or chat_protegido(p_user)
+        or (c.ve = 'escolhidos' and exists (select 1 from chat_canal_membros x where x.canal = c.id and x.user_id = p_user))))
+    end;
 $$;
 
 -- os canais que a conta logada vê (as regras de leitura usam isto)
@@ -1041,8 +1053,8 @@ create or replace function public.chat_meus_canais()
 returns text[]
 language sql stable security definer set search_path = public
 as $$
-  select array['geral', 'bonde', 'recordes', 'avisos'] || coalesce((
-    select array_agg(c.id) from chat_canais c where chat_ve_canal_de(auth.uid(), c.id)), '{}');
+  select coalesce((select array_agg(b) from unnest(array['geral', 'bonde', 'recordes', 'avisos']) b where chat_ve_canal_de(auth.uid(), b)), '{}'::text[])
+      || coalesce((select array_agg(c.id) from chat_canais c where chat_ve_canal_de(auth.uid(), c.id)), '{}'::text[]);
 $$;
 
 -- fala no chat: pode ler e não está silenciado (ADM nunca fica de fora)
@@ -1096,8 +1108,9 @@ create policy "membros leem status" on public.chat_status for select to authenti
 drop policy if exists "membros leem adms" on public.chat_adms;
 create policy "membros leem adms" on public.chat_adms for select to authenticated using ((select public.chat_pode_ler()));
 drop policy if exists "membros leem canais" on public.chat_canais_cfg;
+-- os 4 do site todo membro lê (o site precisa saber que um deles ficou escondido pra tirar da lista)
 create policy "membros leem canais" on public.chat_canais_cfg for select to authenticated
-  using ((select public.chat_pode_ler()) and canal = any ((select public.chat_meus_canais())::text[]));
+  using ((select public.chat_pode_ler()) and (canal in ('geral', 'bonde', 'recordes', 'avisos') or canal = any ((select public.chat_meus_canais())::text[])));
 drop policy if exists "membros leem canais criados" on public.chat_canais;
 create policy "membros leem canais criados" on public.chat_canais for select to authenticated
   using ((select public.chat_pode_ler()) and id = any ((select public.chat_meus_canais())::text[]));
@@ -1154,11 +1167,12 @@ declare
   novo bigint;
 begin
   perform chat_exigir_voz();
-  if p_canal = 'recordes' or not chat_ve_canal_de(auth.uid(), p_canal) then raise exception 'canal invalido'; end if;
-  if (p_canal = 'avisos' or exists (select 1 from chat_canais where id = p_canal and fala = 'adm')) and not v_mod then
+  select * into v_cfg from chat_canais_cfg where canal = p_canal;
+  if p_canal = 'recordes' or coalesce(v_cfg.desligado, false) or not chat_ve_canal_de(auth.uid(), p_canal) then raise exception 'canal invalido'; end if;
+  if (coalesce(v_cfg.fala, case when p_canal = 'avisos' then 'adm' else 'todos' end) = 'adm'
+      or exists (select 1 from chat_canais where id = p_canal and fala = 'adm')) and not v_mod then
     raise exception 'acesso negado' using errcode = '42501';
   end if;
-  select * into v_cfg from chat_canais_cfg where canal = p_canal;
   if coalesce(v_cfg.travado, false) and not v_mod then raise exception 'travado' using errcode = 'P0001'; end if;
   if p_tipo not in ('msg', 'bonde', 'foto', 'audio') then raise exception 'tipo invalido'; end if;
   if p_tipo = 'msg' and (char_length(v_txt) < 1 or char_length(v_txt) > 500) then raise exception 'texto invalido'; end if;
@@ -1399,21 +1413,23 @@ begin
 end;
 $$;
 
--- só o Dono: desliga o #recordes (some do chat e as massas param de cair lá) ou liga de volta
+-- só o Dono: desliga #bonde, #recordes ou #avisos (some do chat pra todo mundo; no #recordes as massas param de cair)
+-- ou liga de volta. O #geral fica sempre.
 create or replace function public.dono_canal(p_canal text, p_ligado boolean)
 returns void
 language plpgsql security definer set search_path = public
 as $$
 begin
-  if p_canal is distinct from 'recordes' then raise exception 'canal invalido'; end if;
+  if p_canal is null or p_canal not in ('bonde', 'recordes', 'avisos') then raise exception 'canal invalido'; end if;
   perform exigir_admin('dono_canal', jsonb_build_object('canal', p_canal, 'ligado', p_ligado));
   insert into chat_canais_cfg (canal, desligado) values (p_canal, not coalesce(p_ligado, true))
   on conflict (canal) do update set desligado = excluded.desligado;
 end;
 $$;
 
--- ADM cria um canal (p_id null) ou edita. Quem criou e o Dono mexem; o #adm, só o Dono. Devolve o id.
+-- ADM cria um canal (p_id null) ou edita. Quem criou e o Dono mexem; o #adm e os 4 do site, só o Dono. Devolve o id.
 -- p_membros: as contas que veem o canal quando ve = 'escolhidos' (Dono e ADMs já veem sempre)
+-- Nos do site p_emoji vazio = o ícone do site; o #geral é sempre de todo mundo e no #recordes só o site escreve.
 create or replace function public.chat_salvar_canal(p_id text, p_nome text, p_emoji text, p_ve text, p_fala text, p_membros uuid[] default '{}')
 returns text
 language plpgsql security definer set search_path = public
@@ -1427,7 +1443,16 @@ begin
   if not is_chat_adm() then raise exception 'acesso negado' using errcode = '42501'; end if;
   if char_length(v_nome) < 1 then raise exception 'nome invalido'; end if;
   if p_ve not in ('todos', 'adm', 'escolhidos') or p_fala not in ('todos', 'adm') then raise exception 'tipo invalido'; end if;
-  if v_id is null then
+  if v_id in ('geral', 'bonde', 'recordes', 'avisos') then
+    if not is_admin() then raise exception 'acesso negado' using errcode = '42501'; end if;
+    perform exigir_mod('chat_canal_editar', jsonb_build_object('canal', v_id, 'nome', v_nome,
+      'antes', coalesce((select nome from chat_canais_cfg where canal = v_id), v_id), 've', p_ve, 'fala', p_fala));
+    insert into chat_canais_cfg (canal, nome, emoji, ve, fala)
+    values (v_id, v_nome, nullif(left(btrim(coalesce(p_emoji, '')), 8), ''),
+            case when v_id = 'geral' then 'todos' else p_ve end, case when v_id = 'recordes' then null else p_fala end)
+    on conflict (canal) do update set nome = excluded.nome, emoji = excluded.emoji, ve = excluded.ve, fala = excluded.fala;
+    if v_id = 'geral' then p_ve := 'todos'; end if;
+  elsif v_id is null then
     if (select count(*) from chat_canais) >= 20 then raise exception 'muitos canais' using errcode = 'P0001'; end if;
     perform exigir_mod('chat_canal_criar', jsonb_build_object('nome', v_nome, 've', p_ve, 'fala', p_fala));
     insert into chat_canais (nome, emoji, ve, fala, ordem, criado_por)
@@ -1465,6 +1490,7 @@ begin
   select coalesce(jsonb_agg(dados ->> 'path') filter (where tipo in ('foto', 'audio') and dados ? 'path'), '[]'::jsonb) into v_fotos
   from chat_mensagens where canal = c.id;
   delete from chat_mensagens where canal = c.id;
+  delete from chat_canal_membros where canal = c.id;
   delete from chat_canais_cfg where canal = c.id;
   delete from chat_canais where id = c.id;
   return v_fotos;
@@ -1804,7 +1830,7 @@ begin
   if new.canal <> 'avisos' and new.tipo <> 'bonde' and new.resp is null and position('@' in new.txt) = 0
      and not exists (select 1 from push_prefs where tudo) then return new; end if;
   v_autor := coalesce((select nick from players where id = new.player_id), nullif(new.nome, ''), 'Alguém');
-  v_canal := '#' || coalesce((select nome from chat_canais where id = new.canal), new.canal);
+  v_canal := '#' || coalesce((select nome from chat_canais where id = new.canal), (select nome from chat_canais_cfg where canal = new.canal), new.canal);
   v_corpo := case when new.tipo = 'bonde' then coalesce(new.dados ->> 'srv', 'Servidor BR') || case when new.txt <> '' then ' · ' || new.txt else '' end
                   when new.tipo = 'foto' and new.txt = '' then '📷 Foto'
                   when new.tipo = 'audio' then '🎤 Áudio (' || (coalesce((new.dados ->> 'dur')::int, 0) / 60) || ':'

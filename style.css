@@ -2268,6 +2268,7 @@ body[data-pag="chat"] .rodape { display: none; }
   aspect-ratio: 1; padding: 0; min-width: 0; border-radius: 10px; border: 1px solid var(--linha); background: var(--painel-2); cursor: pointer;
   font-size: 20px; line-height: 1; font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
 }
+.canal-emojis button svg { display: block; margin: auto; color: var(--texto); }
 .canal-emojis button[aria-checked="true"] { border-color: var(--laranja); background: var(--laranja-fundo); box-shadow: 0 0 0 1px var(--laranja); }
 .canal-membros { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 12px; background: var(--painel-2); border: 1px solid var(--linha); }
 .canal-lista { display: flex; flex-direction: column; max-height: 240px; overflow-y: auto; }

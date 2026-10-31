@@ -5719,6 +5719,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     equipe: new Map(),                // user_id -> 'dono' | 'adm'
     cfg: new Map(),                   // canal -> { travado, lento }
     criados: [],                      // canais que os ADMs criaram (só os que esta conta vê)
+    meus: null,                       // Set dos canais que esta conta vê (null = ainda não sabe: mostra os do site)
     digitando: new Map(), lido: {}, novas: 0, denuncias: 0, antigas: false,
   };
   // tocou numa notificação com o app fechado: o site abre com ?canal= e o chat vai direto pra ele
@@ -5732,11 +5733,17 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   const admChat = () => !!(chat.eu && chat.eu.adm);
   const donoChat = () => !!(chat.eu && chat.eu.dono);
   const papelDe = (u) => (u ? chat.equipe.get(u) || null : null);
-  const todosCanais = () => [...CANAIS_CHAT, ...chat.criados];
-  const canalChat = (id) => todosCanais().find((c) => c.id === id) || CANAIS_CHAT[0];
+  // os 4 do site com o que o Dono mudou neles (nome, ícone, quem vê, quem escreve)
+  function canalBase(c) {
+    const g = chat.cfg.get(c.id) || {}, fala = c.soSite ? null : g.fala || (c.soAdm ? 'adm' : 'todos');
+    return { ...c, base: true, nome: g.nome || c.nome, emoji: g.emoji || null, ve: g.ve || 'todos', fala, soAdm: fala === 'adm' };
+  }
+  // chat.meus: os do site que esta conta vê (null = todos)
+  const todosCanais = () => [...CANAIS_CHAT.map(canalBase).filter((c) => !chat.meus || chat.meus.has(c.id)), ...chat.criados];
+  const canalChat = (id) => todosCanais().find((c) => c.id === id) || canalBase(CANAIS_CHAT[0]);
   const nomeCanal = (id, nome) => (todosCanais().find((c) => c.id === id) || {}).nome || nome || id;
   const cfgCanal = (c) => chat.cfg.get(c) || { travado: false, lento: 0, desligado: false };
-  // o Dono pode desligar o #recordes: some pra todo mundo até ele ligar de novo
+  // o Dono pode desligar #bonde, #recordes e #avisos: somem pra todo mundo até ele ligar de novo
   const canaisChat = () => todosCanais().filter((c) => !cfgCanal(c.id).desligado);
   const icoCanal = (c, tam) => (c.emoji ? el('span', { class: 'ch-emoji-canal', style: `font-size:${Math.round(tam * 0.9)}px`, 'aria-hidden': 'true', text: c.emoji }) : svg(c.ico, tam));
   function canalCriado(c) {
@@ -5754,7 +5761,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       for (const m of chat.msgs[id]) chat.porId.delete(m.id);
       delete chat.msgs[id];
     }
-    for (const c of chat.criados) if (!chat.msgs[c.id]) { chat.msgs[c.id] = []; chat.temMais[c.id] = false; }
+    for (const c of todosCanais()) if (!chat.msgs[c.id]) { chat.msgs[c.id] = []; chat.temMais[c.id] = false; }
   }
   const horaChat = (iso) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
   const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -5808,7 +5815,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   function limparChat() {
     chat.msgs = Object.fromEntries(CANAIS_CHAT.map((c) => [c.id, []]));
     chat.temMais = {};
-    chat.criados = [];
+    chat.criados = []; chat.meus = null;
     chat.porId.clear(); chat.reac.clear(); chat.bonde.clear(); chat.status.clear(); chat.digitando.clear(); chat.equipe.clear(); chat.cfg.clear();
     chat.resp = null; chat.editando = null; chat.novas = 0; chat.denuncias = 0;
   }
@@ -5837,7 +5844,13 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     chat.eu = re.data;
     limparChat();
     if (!foraDoChat()) {
-      const rc = await sb.from('chat_canais').select('id, nome, emoji, ve, fala, ordem, criado_por').order('ordem').order('created_at');
+      const [rc, rm, rcf] = await Promise.all([
+        sb.from('chat_canais').select('id, nome, emoji, ve, fala, ordem, criado_por').order('ordem').order('created_at'),
+        sb.rpc('chat_meus_canais'),
+        sb.from('chat_canais_cfg').select('canal, travado, lento, desligado, nome, emoji, ve, fala'),
+      ]);
+      for (const c of rcf.data || []) chat.cfg.set(c.canal, c);
+      chat.meus = rm.error ? null : new Set(rm.data || []);
       aplicarCriados(rc.error ? [] : rc.data);
       const canais = todosCanais();
       const rs = await Promise.all(canais.map((c) => sb.from('chat_mensagens').select('*').eq('canal', c.id).order('id', { ascending: false }).limit(POR_CANAL)));
@@ -5846,15 +5859,13 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
         chat.temMais[canais[i].id] = r.data.length === POR_CANAL;
         for (const m of r.data) guardarMsg(m);
       });
-      const [, rst, req, rcf] = await Promise.all([
+      const [, rst, req] = await Promise.all([
         completarMsgs([...chat.porId.values()]),
         sb.from('chat_status').select('user_id, player_id, nome, jogando_ate').gt('jogando_ate', new Date().toISOString()),
         sb.rpc('chat_equipe'),
-        sb.from('chat_canais_cfg').select('canal, travado, lento, desligado'),
       ]);
       for (const s of rst.data || []) chat.status.set(s.user_id, s);
       for (const e of req.data || []) chat.equipe.set(e.user_id, e.papel);
-      for (const c of rcf.data || []) chat.cfg.set(c.canal, c);
       if (admChat()) { await contarDenuncias(false); faxinaSozinha(); }
     }
     depoisDeCarregarChat();
@@ -5931,7 +5942,14 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       .on(...tabela('chat_adms', () => { recarregarEquipe(); recarregarEuChat(); canaisMudaram(); }))
       .on(...tabela('chat_canais', canaisMudaram))
       .on(...tabela('chat_canal_membros', canaisMudaram))
-      .on(...tabela('chat_canais_cfg', (p) => { if (p.new && p.new.canal) chat.cfg.set(p.new.canal, p.new); atualizarBadgesChat(); if (chatVisivel()) desenharChat(); }))
+      .on(...tabela('chat_canais_cfg', (p) => {
+        if (!p.new || !p.new.canal) return;
+        const antes = chat.cfg.get(p.new.canal);
+        chat.cfg.set(p.new.canal, p.new);
+        // o Dono mudou quem vê um canal do site: recarrega (pode ter aparecido ou sumido pra esta conta)
+        if (((antes && antes.ve) || null) !== (p.new.ve || null)) { canaisMudaram(); return; }
+        atualizarBadgesChat(); if (chatVisivel()) desenharChat();
+      }))
       .on(...tabela('chat_denuncias', (p) => {
         if (!admChat()) return;
         contarDenuncias();
@@ -6849,15 +6867,19 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   // ---------- canais criados pelos ADMs ----------
   // Quem cria escolhe nome, ícone, quem vê (todo o clã, só ADMs ou escolhidos) e quem escreve.
   // Quem criou e o Dono editam e apagam; o #adm (que já vem pronto) só o Dono.
+  // Os 4 do site o Dono também edita; #bonde, #recordes e #avisos ele desliga (o #geral fica sempre, pra todo mundo).
   const EMOJIS_CANAL = ['💬', '🛡️', '🏆', '🔥', '🐍', '🎮', '⚔️', '📢', '👑', '💎', '🎯', '🤝', '😂', '📸', '🎉', '🔒'];
   let formCanal = null;
-  const podeEditarCanal = (c) => !!c && !!c.criado && admChat() && (donoChat() || (!!c.criado_por && c.criado_por === euChat()));
+  const podeEditarCanal = (c) => !!c && admChat() && (c.base ? donoChat() : !!c.criado && (donoChat() || (!!c.criado_por && c.criado_por === euChat())));
   async function abrirCanalForm(c = null) {
-    formCanal = { id: c ? c.id : null, emoji: c ? c.emoji : EMOJIS_CANAL[0], ve: c ? c.ve : 'todos', fala: c ? c.fala : 'todos', membros: new Set(), contas: null };
+    formCanal = { id: c ? c.id : null, base: c && c.base ? c : null, emoji: c ? c.emoji : EMOJIS_CANAL[0], ve: c ? c.ve : 'todos', fala: (c && c.fala) || 'todos', membros: new Set(), contas: null };
     trocar($('tituloCanal'), c ? 'EDITAR ' : 'NOVO ', el('span', { class: 'laranja', text: 'CANAL' }));
     $('fCanalNome').value = c ? c.nome : '';
     $('fCanalBusca').value = '';
-    $('btnApagarCanal').hidden = !c;
+    $('btnApagarCanal').hidden = !c || c.id === 'geral';
+    $('btnApagarCanal').textContent = c && c.base ? 'Desligar' : 'Apagar';
+    $('rotCanalVe').hidden = $('canalVe').hidden = !!c && c.id === 'geral';
+    $('rotCanalFala').hidden = $('canalFala').hidden = !!c && !!c.soSite;
     $('btnSalvarCanal').textContent = c ? 'Salvar' : 'Criar';
     desenharCanalForm();
     $('dlgCanal').showModal();
@@ -6880,7 +6902,10 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     const f = formCanal;
     const opc = (campo, valor, txt) => el('button', { type: 'button', class: 'aba', role: 'radio', 'aria-checked': String(f[campo] === valor), text: txt,
       onclick: () => { f[campo] = valor; desenharCanalForm(); } });
-    trocar($('canalEmojis'), EMOJIS_CANAL.map((e) => el('button', { type: 'button', role: 'radio', 'aria-checked': String(f.emoji === e), 'aria-label': e, text: e,
+    // canal do site: o primeiro é o ícone dele mesmo (emoji vazio)
+    trocar($('canalEmojis'), f.base ? el('button', { type: 'button', role: 'radio', 'aria-checked': String(!f.emoji), 'aria-label': 'Ícone do site',
+      onclick: () => { f.emoji = null; desenharCanalForm(); } }, svg(f.base.ico, 18)) : null,
+    EMOJIS_CANAL.map((e) => el('button', { type: 'button', role: 'radio', 'aria-checked': String(f.emoji === e), 'aria-label': e, text: e,
       onclick: () => { f.emoji = e; desenharCanalForm(); } })));
     trocar($('canalVe'), opc('ve', 'todos', 'Todo o clã'), opc('ve', 'adm', 'Só ADMs'), opc('ve', 'escolhidos', 'Escolhidos'));
     trocar($('canalFala'), opc('fala', 'todos', 'Quem vê'), opc('fala', 'adm', 'Só ADMs'));
@@ -6914,7 +6939,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     const bt = $('btnSalvarCanal');
     bt.disabled = true;
     try {
-      const id = await chatRpc('chat_salvar_canal', { p_id: f.id, p_nome: nome, p_emoji: f.emoji, p_ve: f.ve, p_fala: f.fala, p_membros: f.ve === 'escolhidos' ? [...f.membros] : [] });
+      const id = await chatRpc('chat_salvar_canal', { p_id: f.id, p_nome: nome, p_emoji: f.emoji || '', p_ve: f.ve, p_fala: f.fala, p_membros: f.ve === 'escolhidos' ? [...f.membros] : [] });
       $('dlgCanal').close();
       if (DEMO) { aplicarCriados(demoChat.canais); lerLidosChat(); } else await carregarChat();
       abrirCanalChat(id);
@@ -6923,6 +6948,19 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   }
   function apagarCanal() {
     const f = formCanal, c = f && canalChat(f.id);
+    if (c && c.base && c.id !== 'geral') {
+      confirmar('DESLIGAR O CANAL?', `#${c.nome} some pra todo mundo. As mensagens ficam guardadas e dá pra ligar de novo em Moderação › Canais.`, 'Desligar', async () => {
+        try {
+          await chatRpc('dono_canal', { p_canal: c.id, p_ligado: false });
+          chat.cfg.set(c.id, { ...cfgCanal(c.id), canal: c.id, desligado: true });
+          $('dlgCanal').close();
+          atualizarBadgesChat();
+          if (chatVisivel()) desenharChat();
+          toast(`#${c.nome} desligado.`);
+        } catch (e) { erroChat(e); }
+      });
+      return;
+    }
     if (!c || !c.criado) return;
     confirmar('APAGAR O CANAL?', `#${c.nome} e todas as mensagens dele somem pra todo mundo. Não dá pra desfazer.`, 'Apagar', async () => {
       try {
@@ -7079,7 +7117,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       const salvar = async (novo) => {
         try {
           await chatRpc('chat_config_canal', { p_canal: c.id, p_travado: novo.travado, p_lento: novo.lento });
-          chat.cfg.set(c.id, { canal: c.id, ...novo });
+          chat.cfg.set(c.id, { ...cfgCanal(c.id), canal: c.id, ...novo });
           desenharComporChat(); desenharTopoChat(); desenharCanaisChat();
           abrirModeracao('canais');
         } catch (e) { erroChat(e); }
@@ -7097,7 +7135,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     return [
       el('div', { class: 'mod-rot', text: 'TRAVADO: SÓ ADM FALA · LENTO: TEMPO ENTRE MENSAGENS' }),
       ...linhas,
-      donoChat() ? painelRecordes(d.canais && d.canais.recordes) : null,
+      ...(donoChat() ? painelDesligar(d.canais || {}) : []),
       el('div', { class: 'mod-item' },
         el('div', { class: 'mod-cab' }, el('b', { text: 'Palavrões' }), el('span', { class: 'mod-sub', text: 'viram *** no chat' })),
         caixa,
@@ -7110,21 +7148,23 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       donoChat() ? painelFaxina(d.faxina) : null,
     ];
   }
-  // só o Dono: desliga o #recordes pra todo mundo, ou liga de volta
-  function painelRecordes(cfg) {
-    const ligado = !(cfg && cfg.desligado);
-    return el('div', { class: 'mod-item mod-canal' },
-      el('div', { class: 'mod-cab' }, svg(ICONE_CHAMA, 16), el('b', { text: '#recordes' }), el('span', { class: 'mod-sub', text: 'só o Dono liga e desliga' })),
-      el('div', { class: 'mod-canal-ops' },
-        el('button', { type: 'button', class: 'ch-switch', role: 'switch', 'aria-checked': String(ligado), onclick: async () => {
-          try {
-            await chatRpc('dono_canal', { p_canal: 'recordes', p_ligado: !ligado });
-            chat.cfg.set('recordes', { ...cfgCanal('recordes'), canal: 'recordes', desligado: ligado });
-            atualizarBadgesChat(); desenharChat();
-            toast(ligado ? '#recordes desligado.' : '#recordes ligado de novo.');
-            abrirModeracao('canais');
-          } catch (e) { erroChat(e); }
-        } }, el('i'), ligado ? 'Ligado' : 'Desligado')));
+  // só o Dono: desliga #bonde, #recordes ou #avisos pra todo mundo, ou liga de volta (o #geral fica sempre)
+  function painelDesligar(canais) {
+    return CANAIS_CHAT.filter((x) => x.id !== 'geral').map((x) => {
+      const c = canalBase(x), ligado = !(canais[c.id] && canais[c.id].desligado);
+      return el('div', { class: 'mod-item mod-canal' },
+        el('div', { class: 'mod-cab' }, icoCanal(c, 16), el('b', { text: `#${c.nome}` }), el('span', { class: 'mod-sub', text: 'só o Dono liga e desliga' })),
+        el('div', { class: 'mod-canal-ops' },
+          el('button', { type: 'button', class: 'ch-switch', role: 'switch', 'aria-checked': String(ligado), onclick: async () => {
+            try {
+              await chatRpc('dono_canal', { p_canal: c.id, p_ligado: !ligado });
+              chat.cfg.set(c.id, { ...cfgCanal(c.id), canal: c.id, desligado: ligado });
+              atualizarBadgesChat(); desenharChat();
+              toast(ligado ? `#${c.nome} desligado.` : `#${c.nome} ligado de novo.`);
+              abrirModeracao('canais');
+            } catch (e) { erroChat(e); }
+          } }, el('i'), ligado ? 'Ligado' : 'Desligado')));
+    });
   }
   // só o Dono: quanto a faxina vai levar, e o botão pra fazer na hora
   function painelFaxina(fx) {
@@ -7132,7 +7172,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     const num = (n, um, varios, rot) => el('div', { class: 'mod-fx-num' }, el('b', { text: fmt(n) }), el('span', { text: `${n === 1 ? um : varios} ${rot}` }));
     const bt = el('button', { type: 'button', class: 'btn btn-perigo', text: 'Limpar agora', disabled: !fx });
     bt.addEventListener('click', () => confirmar('LIMPAR O CHAT AGORA?',
-      `Some ${f.fotos === 1 ? '1 foto ou áudio' : `${fmt(f.fotos)} fotos e áudios`} com mais de 30 dias e ${f.msgs === 1 ? '1 mensagem' : `${fmt(f.msgs)} mensagens`} com mais de 90. #avisos e fixadas ficam. Não dá pra desfazer.`,
+      `Some ${f.fotos === 1 ? '1 foto ou áudio' : `${fmt(f.fotos)} fotos e áudios`} com mais de 30 dias e ${f.msgs === 1 ? '1 mensagem' : `${fmt(f.msgs)} mensagens`} com mais de 90. #${nomeCanal('avisos')} e fixadas ficam. Não dá pra desfazer.`,
       'Limpar', async () => {
         bt.disabled = true;
         try {
@@ -7145,7 +7185,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       el('div', { class: 'mod-cab' }, svg(ICONE_LIXO, 16), el('b', { text: 'Faxina' }),
         el('span', { class: 'mod-sub', text: f.ultima ? `última ${haQuanto(f.ultima)}` : 'sozinha quando um ADM abre o chat' })),
       el('div', { class: 'mod-fx' }, num(f.fotos, 'foto/áudio', 'fotos e áudios', '+30 dias'), num(f.msgs, 'mensagem', 'mensagens', '+90 dias')),
-      el('div', { class: 'mod-sub', text: '#avisos e fixadas nunca somem' }),
+      el('div', { class: 'mod-sub', text: `#${nomeCanal('avisos')} e fixadas nunca somem` }),
       el('div', { class: 'linha-btns' }, bt));
   }
   // só o Dono: quem é ADM do chat, e expulsar do clã
@@ -7214,7 +7254,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       chat_faxina: `${d.manual ? 'fez a faxina' : 'faxina automática'}: ${d.fotos || 0} ${d.fotos === 1 ? 'foto' : 'fotos'} e ${d.msgs || 0} ${d.msgs === 1 ? 'mensagem' : 'mensagens'}`,
       dono_promover: `tornou ${d.quem || '?'} ADM do chat`, dono_rebaixar: `tirou o ADM de ${d.quem || '?'}`,
       dono_expulsar: `expulsou ${d.quem || '?'} do clã`,
-      dono_canal: `${d.ligado ? 'ligou' : 'desligou'} o #${d.canal || 'recordes'}`,
+      dono_canal: `${d.ligado ? 'ligou' : 'desligou'} o #${nomeCanal(d.canal || 'recordes')}`,
     }[h.acao] || 'fez uma alteração';
   }
 
@@ -7738,7 +7778,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       el('div', { class: 'av-estado' }, el('span', { class: `ch-bola ${ligado ? 'on' : ''}` }), el('span', { text: estado }), botao),
       problemaPush ? ajudaPush(problemaPush) : null,
       el('div', { class: 'mod-rot', text: 'ME AVISAR QUANDO' }),
-      el('div', { class: 'av-prefs' }, chave('tudo', 'Todas as mensagens', tudoMudou), chave('mencao', 'Me marcarem com @'), chave('resposta', 'Responderem minha mensagem'), chave('aviso', 'Sair aviso no #avisos'), chave('bonde', 'Alguém chamar o bonde')),
+      el('div', { class: 'av-prefs' }, chave('tudo', 'Todas as mensagens', tudoMudou), chave('mencao', 'Me marcarem com @'), chave('resposta', 'Responderem minha mensagem'), chave('aviso', `Sair aviso no #${nomeCanal('avisos')}`), chave('bonde', 'Alguém chamar o bonde')),
       canaisRot, canais,
       el('div', { class: 'mod-rot', text: 'APP DO CLÃ' }),
       app);
@@ -8056,6 +8096,15 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       case 'chat_contas': return [...jogadores.filter((r) => r.ativo && r.id !== 'dj7').map((r) => ({ user_id: u(r.id), player_id: r.id, nome: r.nick })), ...(admin && !euId ? [{ user_id: 'eu', player_id: null, nome: admin.nome }] : [])];
       case 'chat_salvar_canal': {
         const dados = { nome: a.p_nome.slice(0, 24), emoji: a.p_emoji, ve: a.p_ve, fala: a.p_fala };
+        const base = CANAIS_CHAT.find((x) => x.id === a.p_id);
+        if (base) {
+          const g = chat.cfg.get(base.id) || {};
+          chat.cfg.set(base.id, { ...cfgCanal(base.id), canal: base.id, nome: dados.nome, emoji: a.p_emoji || null,
+            ve: base.id === 'geral' ? 'todos' : a.p_ve, fala: base.soSite ? null : a.p_fala });
+          demoChat.membros.set(base.id, new Set(a.p_ve === 'escolhidos' && base.id !== 'geral' ? a.p_membros : []));
+          log('chat_canal_editar', { canal: base.id, ...dados, antes: g.nome || base.nome });
+          return base.id;
+        }
         let c = demoChat.canais.find((x) => x.id === a.p_id);
         if (c) { Object.assign(c, dados); log('chat_canal_editar', { canal: c.id, ...dados }); }
         else {
@@ -8082,13 +8131,13 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   function regrasChat() {
     return [
       el('ul', { class: 'rg-lista' },
-        linhaRegra('#geral', 'papo do clã'),
-        linhaRegra('#bonde', 'chamada pra jogar junto'),
-        cfgCanal('recordes').desligado ? null : linhaRegra('#recordes', 'cada massa registrada cai sozinha'),
-        linhaRegra('#avisos', 'só ADM escreve'),
+        linhaRegra(`#${nomeCanal('geral')}`, 'papo do clã'),
+        cfgCanal('bonde').desligado ? null : linhaRegra(`#${nomeCanal('bonde')}`, 'chamada pra jogar junto'),
+        cfgCanal('recordes').desligado ? null : linhaRegra(`#${nomeCanal('recordes')}`, 'cada massa registrada cai sozinha'),
+        cfgCanal('avisos').desligado ? null : linhaRegra(`#${nomeCanal('avisos')}`, canalBase(CANAIS_CHAT[3]).soAdm ? 'só ADM escreve' : 'recado pro clã todo'),
         linhaRegra('#adm', 'só Dono e ADMs veem'),
         linhaRegra('Canal novo', 'o ADM cria e escolhe quem vê e quem escreve'),
-        linhaRegra('Massa de 100k+', 'aparece também no #geral'),
+        linhaRegra('Massa de 100k+', `aparece também no #${nomeCanal('geral')}`),
         linhaRegra('Editar', 'até 15 min depois de mandar')),
       tituloRegra('NOTIFICAÇÕES'),
       el('ul', { class: 'rg-lista' },
@@ -8104,7 +8153,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       el('ul', { class: 'rg-lista' },
         linhaRegra('Foto', 'some depois de 30 dias'),
         linhaRegra('Mensagem', 'some depois de 90 dias'),
-        linhaRegra('#avisos e fixadas', 'nunca somem')),
+        linhaRegra(`#${nomeCanal('avisos')} e fixadas`, 'nunca somem')),
       tituloRegra('QUEM MANDA'),
       el('ul', { class: 'rg-lista' },
         linhaRegra('Dono', 'o site todo e escolhe os ADMs'),
