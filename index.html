@@ -372,13 +372,21 @@
           <div class="chat-mencoes" id="chatMencoes" hidden></div>
           <div class="chat-caixa" id="chatCaixa" hidden>
             <div class="chat-resp" id="chatResp" hidden></div>
-            <div class="chat-linha">
+            <div class="chat-linha" id="chatLinha">
               <button type="button" class="chat-ico" id="chatBondeBtn" aria-label="Chamar o bonde pra jogar" title="Chamar o bonde"></button>
               <button type="button" class="chat-ico" id="chatFotoBtn" aria-label="Mandar foto" title="Mandar foto"></button>
               <input type="file" id="chatFotoArq" accept="image/*" hidden>
               <button type="button" class="chat-ico" id="chatEmojiBtn" aria-label="Emoji" title="Emoji"></button>
               <input id="chatTxt" name="chatTxt" type="text" maxlength="500" enterkeyhint="send" aria-label="Mensagem">
               <button type="submit" class="chat-enviar" id="chatEnviar" aria-label="Enviar" disabled></button>
+              <button type="button" class="chat-enviar chat-mic" id="chatAudioBtn" aria-label="Gravar áudio" title="Gravar áudio" hidden></button>
+            </div>
+            <div class="chat-linha chat-gravando" id="chatGravando" hidden>
+              <button type="button" class="chat-ico" id="chatAudioLixo" aria-label="Jogar o áudio fora" title="Jogar fora"></button>
+              <span class="ch-rec" aria-hidden="true"></span>
+              <span class="ch-rec-tempo" id="chatAudioTempo">0:00</span>
+              <span class="ch-rec-onda" id="chatAudioOnda" aria-hidden="true"></span>
+              <button type="button" class="chat-enviar" id="chatAudioEnviar" aria-label="Enviar áudio" title="Enviar áudio"></button>
             </div>
           </div>
           <div class="chat-trancado" id="chatTrancado">Carregando…</div>

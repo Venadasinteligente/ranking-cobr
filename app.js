@@ -5690,6 +5690,9 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   const ICONE_SETA = '<path d="M5 12h14M13 6l6 6-6 6"/>';
   const ICONE_DESCE = '<path d="M12 5v14M6 13l6 6 6-6"/>';
   const ICONE_FOTO = '<rect x="3" y="5" width="18" height="15" rx="2"/><circle cx="12" cy="12.5" r="3.5"/><path d="M8 5l1.5-2h5L16 5"/>';
+  const ICONE_MIC = '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>';
+  const ICONE_PLAY = '<path d="M8 5.5v13l10.5-6.5z" fill="currentColor"/>';
+  const ICONE_PAUSA = '<rect x="7" y="5" width="3.5" height="14" rx="1" fill="currentColor" stroke="none"/><rect x="13.5" y="5" width="3.5" height="14" rx="1" fill="currentColor" stroke="none"/>';
   const ICONE_MAIS = '<path d="M12 5v14M5 12h14"/>';
   const ICONE_SINO = '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>';
   const CANAIS_CHAT = [
@@ -5795,6 +5798,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     else if (/travado/.test(t)) toast('Canal travado pelo ADM.', true);
     else if (/tarde/.test(t)) toast('Só dá pra editar até 15 minutos depois de mandar.', true);
     else if (/foto/.test(t)) toast('Não deu pra enviar essa foto. Tenta outra.', true);
+    else if (/audio/.test(t)) toast('Não deu pra enviar o áudio. Tenta de novo.', true);
     else if (/muitos canais/.test(t)) toast('Já tem 20 canais criados. Apague um antes.', true);
     else if ((e && e.code === '42501') || /acesso negado/.test(t)) toast('Sem permissão pra isso.', true);
     else toast('Não deu agora. Tenta de novo.', true);
@@ -6092,6 +6096,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     if (m.tipo === 'massa') return `${nomeDe(chave(m.dados.player || ''), m.dados.player || '')} fez ${fmt(m.dados.mass || 0)} de massa`;
     if (m.tipo === 'bonde') return `bonde · ${(m.dados && m.dados.srv) || 'Servidor BR'}`;
     if (m.tipo === 'foto') return m.txt ? `📷 ${m.txt}` : '📷 Foto';
+    if (m.tipo === 'audio') return `🎤 Áudio ${tempoAudio((m.dados && m.dados.dur) || 0)}`;
     return m.txt;
   }
   // a partida dessa massa fez o jogador subir de patente na temporada?
@@ -6180,6 +6185,92 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     urlFoto(d.path).then((u) => { if (u) img.src = u; else box.classList.add('sem'); });
     return [box, m.txt ? textoChat(m.txt, m.editada) : null];
   }
+  // áudio: o desenho da onda vem na mensagem (um dígito de 0 a 9 por barrinha). Toca um por vez.
+  const BARRAS_AUDIO = 40;
+  const tempoAudio = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+  const tocando = { a: null, id: null, m: null, box: null, vel: 1, vez: 0, raf: 0 };
+  const velTxt = () => `${String(tocando.vel).replace('.', ',')}x`;
+  const durDe = (a, m) => (a && isFinite(a.duration) && a.duration > 0 ? a.duration : (m && m.dados && m.dados.dur) || 1);
+  function cartaoAudio(m) {
+    const d = m.dados || {};
+    if (d.expirada || !d.path) return el('div', { class: 'ch-foto sem ch-foto-exp' }, svg(ICONE_MIC, 18), 'áudio expirado');
+    const onda = /^[0-9]+$/.test(d.onda || '') ? [...d.onda].map(Number) : [];
+    const box = el('div', { class: 'ch-audio' });
+    box.append(
+      el('button', { type: 'button', class: 'ch-au-play', 'aria-label': 'Tocar áudio', onclick: () => tocarAudio(m, box) }, svg(ICONE_PLAY, 16)),
+      el('div', { class: 'ch-au-onda', onclick: (e) => pularAudio(m, box, e) },
+        ...Array.from({ length: BARRAS_AUDIO }, (_, i) => el('i', { style: `--h:${(onda.length ? onda[Math.floor((i * onda.length) / BARRAS_AUDIO)] : 2) / 9}` }))),
+      el('button', { type: 'button', class: 'ch-au-vel', 'aria-label': 'Velocidade do áudio', onclick: velAudio, text: velTxt() }),
+      el('span', { class: 'ch-au-tempo', text: tempoAudio(d.dur || 0) }));
+    // a linha é redesenhada (reação nova etc.) enquanto toca: o player novo assume
+    if (tocando.id === m.id && tocando.a) { tocando.box = box; pintarAudio(box, tocando.a, durDe(tocando.a, m)); }
+    return box;
+  }
+  function pintarAudio(box, a, dur) {
+    const p = a ? Math.min(1, a.currentTime / dur) : 0, toca = !!a && !a.paused;
+    box.classList.toggle('toca', !!a);
+    box.querySelectorAll('.ch-au-onda i').forEach((b, i) => b.classList.toggle('on', i < Math.round(p * BARRAS_AUDIO)));
+    box.querySelector('.ch-au-tempo').textContent = tempoAudio(a ? a.currentTime : dur);
+    const bt = box.querySelector('.ch-au-play');
+    if (bt.dataset.toca !== String(toca)) {
+      bt.dataset.toca = String(toca);
+      bt.replaceChildren(svg(toca ? ICONE_PAUSA : ICONE_PLAY, 16));
+      bt.setAttribute('aria-label', toca ? 'Pausar áudio' : 'Tocar áudio');
+    }
+  }
+  function rodarAudio() {
+    const t = tocando;
+    cancelAnimationFrame(t.raf);
+    if (!t.a) return;
+    if (!t.box.isConnected) { pararAudio(); return; } // a mensagem sumiu ou trocou de canal
+    pintarAudio(t.box, t.a, durDe(t.a, t.m));
+    if (!t.a.paused) t.raf = requestAnimationFrame(rodarAudio);
+  }
+  function pararAudio() {
+    const t = tocando, a = t.a;
+    cancelAnimationFrame(t.raf);
+    t.vez++;
+    if (a) { a.onplay = a.onpause = a.onended = a.onerror = null; a.pause(); }
+    if (t.box && t.m) pintarAudio(t.box, null, (t.m.dados && t.m.dados.dur) || 0);
+    Object.assign(t, { a: null, id: null, m: null, box: null });
+  }
+  async function tocarAudio(m, box) {
+    const t = tocando;
+    if (t.id === m.id && t.a) {
+      t.box = box;
+      if (t.a.paused) t.a.play().catch(() => {}); else t.a.pause();
+      return;
+    }
+    pararAudio();
+    const vez = t.vez, bt = box.querySelector('.ch-au-play');
+    bt.disabled = true;
+    const url = await urlFoto(m.dados.path);
+    bt.disabled = false;
+    if (vez !== t.vez) return;
+    if (!url) { toast('Não deu pra carregar o áudio.', true); return; }
+    const a = new Audio(url);
+    a.playbackRate = t.vel;
+    Object.assign(t, { a, id: m.id, m, box });
+    a.onplay = rodarAudio;
+    a.onpause = rodarAudio;
+    a.onended = pararAudio;
+    a.onerror = () => { pararAudio(); toast('Este aparelho não conseguiu tocar esse áudio.', true); };
+    try { await a.play(); } catch (e) { if (t.a === a && e.name !== 'AbortError') a.onerror(); }
+  }
+  async function pularAudio(m, box, e) {
+    const r = e.currentTarget.getBoundingClientRect(), f = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    const t = tocando;
+    if (t.id !== m.id || !t.a) await tocarAudio(m, box);
+    if (t.id !== m.id || !t.a) return;
+    t.a.currentTime = f * durDe(t.a, m);
+    rodarAudio();
+  }
+  function velAudio() {
+    const t = tocando;
+    t.vel = t.vel === 1 ? 1.5 : t.vel === 1.5 ? 2 : 1;
+    if (t.a) t.a.playbackRate = t.vel;
+    if (t.box) t.box.querySelector('.ch-au-vel').textContent = velTxt();
+  }
   const protegido = (u) => !!papelDe(u);
   const podeEditar = (m, meu) => meu && (m.tipo === 'msg' || m.tipo === 'foto') && !punicaoAtiva() && Date.now() - Date.parse(m.created_at) < EDITA_ATE;
   function acoesChat(m, nick, meu) {
@@ -6218,6 +6309,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     else if (m.tipo === 'massa') corpo.append(cartaoMassa(m));
     else if (m.tipo === 'bonde') corpo.append(cartaoBonde(m));
     else if (m.tipo === 'foto') corpo.append(...cartaoFoto(m).filter(Boolean));
+    else if (m.tipo === 'audio') corpo.append(cartaoAudio(m));
     else if (m.canal === 'avisos') corpo.append(el('div', { class: 'ch-cv ch-cv-aviso' }, el('div', { class: 'ch-cv-rot' }, svg(ICONE_MEGAFONE, 14), 'AVISO'), textoChat(m.txt, m.editada)));
     else corpo.append(textoChat(m.txt, m.editada));
     const reacs = [...(chat.reac.get(m.id) || new Map())].filter(([, s]) => s.size);
@@ -6347,13 +6439,17 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       : c.id === 'avisos' ? 'Escreva um aviso pro clã'
       : cfg.lento && !admChat() ? `Modo lento · 1 a cada ${tempoTxt(cfg.lento)}` : `Mensagem em #${c.nome}`;
     $('chatBondeBtn').hidden = c.id === 'avisos';
+    const mic = podeGravar() && !chat.editando;
+    $('chatAudioBtn').hidden = !mic;
+    $('chatCaixa').classList.toggle('tem-mic', mic);
   }
   function desenharDigitando() {
     const agora = Date.now();
     const l = [...chat.digitando.values()].filter((d) => d.ate > agora && d.canal === chat.canal);
     if (!l.length) { $('chatDigitando').replaceChildren(); return; }
     const nomes = l.slice(0, 2).map((d) => d.nome).join(' e ');
-    trocar($('chatDigitando'), el('span', { class: 'ch-pontinhos' }, el('i'), el('i'), el('i')), el('b', { text: nomes }), l.length > 1 ? ' estão digitando…' : ' está digitando…');
+    const fazendo = l.every((d) => d.audio) ? 'gravando áudio…' : 'digitando…';
+    trocar($('chatDigitando'), el('span', { class: 'ch-pontinhos' }, el('i'), el('i'), el('i')), el('b', { text: nomes }), l.length > 1 ? ` estão ${fazendo}` : ` está ${fazendo}`);
   }
 
   // quem está jogando, online e offline (online = com o site aberto agora)
@@ -6599,6 +6695,129 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     }
   }
   const apagarFotos = (lista) => { if (!DEMO && lista && lista.length) sb.storage.from('chat').remove(lista).catch(() => {}); };
+
+  // ---------- áudio: grava no próprio aparelho e sobe pra mesma pasta fechada das fotos ----------
+  const AUDIO_MAX = 120; // segundos
+  const podeGravar = () => !!(window.MediaRecorder && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  // mp4 (AAC) toca em todo celular; quem não grava mp4 vai de webm
+  function formatoAudio() {
+    const ok = (t) => { try { return MediaRecorder.isTypeSupported(t); } catch (e) { return false; } };
+    return ['audio/mp4;codecs=mp4a.40.2', 'audio/webm;codecs=opus', 'audio/mp4', 'audio/webm', 'audio/ogg;codecs=opus'].find(ok) || '';
+  }
+  const grav = { rec: null, pedindo: false };
+  async function gravarAudio() {
+    if (grav.rec || grav.pedindo || !podeFalar(chat.canal)) return;
+    grav.pedindo = true;
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    } catch (e) {
+      toast(e && (e.name === 'NotAllowedError' || e.name === 'SecurityError') ? 'O microfone está bloqueado pro site. Libere nas permissões do navegador.' : 'Não achei o microfone deste aparelho.', true);
+      return;
+    } finally { grav.pedindo = false; }
+    const formato = formatoAudio();
+    let rec;
+    try { rec = new MediaRecorder(stream, formato ? { mimeType: formato, audioBitsPerSecond: 48000 } : { audioBitsPerSecond: 48000 }); }
+    catch (e) { stream.getTracks().forEach((t) => t.stop()); toast('Este navegador não grava áudio.', true); return; }
+    pararAudio();
+    const g = Object.assign(grav, { rec, stream, partes: [], ini: Date.now(), fim: 0, enviar: false, canal: chat.canal, niveis: [], ctx: null, an: null });
+    // o volume ao vivo (pra desenhar a onda); se o aparelho não deixar, grava sem desenho
+    try {
+      g.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      g.an = g.ctx.createAnalyser();
+      g.an.fftSize = 512;
+      g.ctx.createMediaStreamSource(stream).connect(g.an);
+      g.ctx.resume().catch(() => {});
+    } catch (e) { g.ctx = null; g.an = null; }
+    rec.ondataavailable = (e) => { if (e.data && e.data.size) g.partes.push(e.data); };
+    rec.onstop = fimGravacao;
+    rec.start(1000);
+    $('chatLinha').hidden = true;
+    $('chatGravando').hidden = false;
+    $('chatAudioOnda').replaceChildren();
+    $('chatAudioTempo').textContent = '0:00';
+    g.timer = setInterval(tiqueGravacao, 100);
+    if (navigator.vibrate) navigator.vibrate(30);
+  }
+  function tiqueGravacao() {
+    const g = grav;
+    if (!g.rec || g.fim) return;
+    // saiu do chat, trocou de canal ou perdeu a voz: joga fora
+    if (!chatVisivel() || chat.canal !== g.canal || !podeFalar(g.canal)) { pararGravacao(false); return; }
+    const s = (Date.now() - g.ini) / 1000;
+    $('chatAudioTempo').textContent = tempoAudio(s);
+    let v = 0;
+    if (g.an) {
+      const buf = new Uint8Array(g.an.fftSize);
+      g.an.getByteTimeDomainData(buf);
+      let q = 0;
+      for (const x of buf) q += ((x - 128) / 128) ** 2;
+      v = Math.min(1, Math.sqrt(q / buf.length) * 4);
+    }
+    g.niveis.push(v);
+    const onda = $('chatAudioOnda');
+    onda.append(el('i', { style: `--h:${v.toFixed(2)}` }));
+    while (onda.childElementCount > 90) onda.firstChild.remove();
+    avisarDigitando(true);
+    if (s >= AUDIO_MAX) pararGravacao(true);
+  }
+  function pararGravacao(enviar) {
+    const g = grav;
+    if (!g.rec || g.fim) return;
+    g.fim = Date.now();
+    g.enviar = enviar;
+    clearInterval(g.timer);
+    $('chatGravando').hidden = true;
+    $('chatLinha').hidden = false;
+    try { if (g.rec.state !== 'inactive') g.rec.stop(); else fimGravacao(); } catch (e) { fimGravacao(); }
+  }
+  function fimGravacao() {
+    const g = grav;
+    if (!g.rec) return;
+    const { rec, stream, partes, ini, fim, enviar, canal, niveis, ctx, an } = g;
+    g.rec = null;
+    stream.getTracks().forEach((t) => t.stop());
+    if (ctx) ctx.close().catch(() => {});
+    if (!enviar) return;
+    const dur = Math.min(AUDIO_MAX, Math.round(((fim || Date.now()) - ini) / 1000));
+    if (dur < 1 || !partes.length) { toast('Áudio curto demais.', true); return; }
+    const blob = new Blob(partes, { type: rec.mimeType || partes[0].type || 'audio/webm' });
+    enviarAudio(blob, dur, canal, an ? resumirOnda(niveis) : '');
+  }
+  // o volume de cada pedaço do áudio, de 0 a 9, relativo ao mais alto
+  function resumirOnda(n) {
+    if (!n.length) return '';
+    const top = Math.max(...n) || 1;
+    return Array.from({ length: BARRAS_AUDIO }, (_, i) => {
+      const a = Math.floor((i * n.length) / BARRAS_AUDIO), b = Math.max(a + 1, Math.floor(((i + 1) * n.length) / BARRAS_AUDIO));
+      return Math.round((Math.max(...n.slice(a, b)) / top) * 9);
+    }).join('');
+  }
+  async function enviarAudio(blob, dur, canal, onda) {
+    if (!podeFalar(canal)) return;
+    if (blob.size > 2 * 1024 * 1024) { toast('Esse áudio ficou grande demais. Manda em partes menores.', true); return; }
+    const tipo = (blob.type || 'audio/webm').split(';')[0];
+    const ext = { 'audio/mp4': 'm4a', 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/aac': 'aac' }[tipo] || 'webm';
+    const path = `${euChat()}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    let subiu = false;
+    toast('Enviando áudio…');
+    try {
+      if (!DEMO) {
+        const up = await sb.storage.from('chat').upload(path, new Blob([blob], { type: tipo }), { contentType: tipo, cacheControl: '31536000' });
+        if (up.error) throw new Error('audio: ' + up.error.message);
+        subiu = true;
+      }
+      urlsFoto.set(path, { url: URL.createObjectURL(blob), ate: Date.now() + 3600000 });
+      const resp = chat.resp && chat.resp.canal === canal ? chat.resp : null;
+      const id = await chatRpc('chat_enviar', { p_canal: canal, p_txt: '', p_resp: resp ? resp.id : null, p_tipo: 'audio', p_dados: { path, dur, onda } });
+      tocarChat('msg', id);
+      if (resp) cancelarRespChat();
+      await buscarMsgChat(id);
+    } catch (e) {
+      if (subiu) sb.storage.from('chat').remove([path]).catch(() => {});
+      erroChat(e);
+    }
+  }
   function apagarChat(m, nick, meu) {
     confirmar('APAGAR MENSAGEM?', meu ? 'Ela some pra todo mundo.' : `Mensagem de ${nick}. Some pra todo mundo e fica no histórico da moderação.`, 'Apagar', async () => {
       try {
@@ -6821,7 +7040,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       el('div', { class: 'mod-cab' }, avatarChat(nick, 'av-p'), el('b', { text: nick }),
         el('span', { class: 'mod-sub', text: `#${nomeCanal(x.canal)} · ${haQuanto(x.created_at)}` }),
         el('span', { class: 'mod-qtd', text: `${x.qtd} ${x.qtd > 1 ? 'denúncias' : 'denúncia'}` })),
-      el('p', { class: 'mod-txt', text: x.tipo === 'bonde' ? `[bonde] ${x.txt || ''}` : x.tipo === 'foto' ? `[foto] ${x.txt || ''}` : x.txt || '—' }),
+      el('p', { class: 'mod-txt', text: x.tipo === 'bonde' ? `[bonde] ${x.txt || ''}` : x.tipo === 'foto' ? `[foto] ${x.txt || ''}` : x.tipo === 'audio' ? '[áudio]' : x.txt || '—' }),
       el('div', { class: 'mod-sub', text: 'denunciou: ' + x.quem.map((q) => q.quem).join(', ') }),
       el('div', { class: 'linha-btns' },
         acao('Ignorar', 'btn-sec', async () => { try { await chatRpc('chat_ignorar_denuncia', { p_msg: x.msg_id }); abrirModeracao(); } catch (e) { erroChat(e); } }),
@@ -6913,19 +7132,19 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     const num = (n, um, varios, rot) => el('div', { class: 'mod-fx-num' }, el('b', { text: fmt(n) }), el('span', { text: `${n === 1 ? um : varios} ${rot}` }));
     const bt = el('button', { type: 'button', class: 'btn btn-perigo', text: 'Limpar agora', disabled: !fx });
     bt.addEventListener('click', () => confirmar('LIMPAR O CHAT AGORA?',
-      `Some ${f.fotos === 1 ? '1 foto' : `${fmt(f.fotos)} fotos`} com mais de 30 dias e ${f.msgs === 1 ? '1 mensagem' : `${fmt(f.msgs)} mensagens`} com mais de 90. #avisos e fixadas ficam. Não dá pra desfazer.`,
+      `Some ${f.fotos === 1 ? '1 foto ou áudio' : `${fmt(f.fotos)} fotos e áudios`} com mais de 30 dias e ${f.msgs === 1 ? '1 mensagem' : `${fmt(f.msgs)} mensagens`} com mais de 90. #avisos e fixadas ficam. Não dá pra desfazer.`,
       'Limpar', async () => {
         bt.disabled = true;
         try {
           const r = await faxinaChat(true);
-          toast(r.fotos || r.msgs ? `Faxina feita: ${r.fotos} ${r.fotos === 1 ? 'foto' : 'fotos'} e ${r.msgs} ${r.msgs === 1 ? 'mensagem' : 'mensagens'}.` : 'Nada pra limpar. Chat em dia!');
+          toast(r.fotos || r.msgs ? `Faxina feita: ${r.fotos} ${r.fotos === 1 ? 'foto ou áudio' : 'fotos e áudios'} e ${r.msgs} ${r.msgs === 1 ? 'mensagem' : 'mensagens'}.` : 'Nada pra limpar. Chat em dia!');
         } catch (e) { erroChat(e); }
         abrirModeracao('canais');
       }));
     return el('div', { class: 'mod-item' },
       el('div', { class: 'mod-cab' }, svg(ICONE_LIXO, 16), el('b', { text: 'Faxina' }),
         el('span', { class: 'mod-sub', text: f.ultima ? `última ${haQuanto(f.ultima)}` : 'sozinha quando um ADM abre o chat' })),
-      el('div', { class: 'mod-fx' }, num(f.fotos, 'foto', 'fotos', '+30 dias'), num(f.msgs, 'mensagem', 'mensagens', '+90 dias')),
+      el('div', { class: 'mod-fx' }, num(f.fotos, 'foto/áudio', 'fotos e áudios', '+30 dias'), num(f.msgs, 'mensagem', 'mensagens', '+90 dias')),
       el('div', { class: 'mod-sub', text: '#avisos e fixadas nunca somem' }),
       el('div', { class: 'linha-btns' }, bt));
   }
@@ -7590,10 +7809,10 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
 
   // ---------- digitando, @menção e emojis ----------
   let ultDigitou = 0;
-  function avisarDigitando() {
+  function avisarDigitando(audio = false) {
     if (DEMO || !chat.presenca || Date.now() - ultDigitou < 2500) return;
     ultDigitou = Date.now();
-    chat.presenca.send({ type: 'broadcast', event: 'digitando', payload: { user_id: euChat(), nome: meuNick(), canal: chat.canal } });
+    chat.presenca.send({ type: 'broadcast', event: 'digitando', payload: { user_id: euChat(), nome: meuNick(), canal: chat.canal, audio } });
   }
   function alguemDigitando(p) {
     if (!p || p.user_id === euChat()) return;
@@ -7633,6 +7852,12 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     $('chatFotoBtn').append(svg(ICONE_FOTO, 20));
     $('chatEmojiBtn').append(svg(ICONE_SORRISO, 20));
     $('chatEnviar').append(svg(ICONE_ENVIAR, 18));
+    $('chatAudioBtn').append(svg(ICONE_MIC, 20));
+    $('chatAudioLixo').append(svg(ICONE_LIXO, 20));
+    $('chatAudioEnviar').append(svg(ICONE_ENVIAR, 18));
+    $('chatAudioBtn').addEventListener('click', gravarAudio);
+    $('chatAudioLixo').addEventListener('click', () => pararGravacao(false));
+    $('chatAudioEnviar').addEventListener('click', () => pararGravacao(true));
     $('chatAvisosBtn').append(svg(ICONE_SINO, 18));
     const campo = $('chatTxt');
     campo.addEventListener('input', () => { $('chatEnviar').disabled = !campo.value.trim() && !(chat.editando && chat.editando.tipo === 'foto'); sugerirMencao(); if (campo.value) avisarDigitando(); });
@@ -7739,6 +7964,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     msg('bonde', 'dj1', '', 35 * 1440, { tipo: 'foto', dados: { w: 4, h: 3, expirada: true } });
     msg('geral', 'dj1', 'boa noite família 🐍', 300);
     msg('geral', 'dj3', 'boa! hoje tem treino pra copa?', 296);
+    msg('geral', 'dj4', '', 293, { tipo: 'audio', dados: { path: 'demo/audio.webm', dur: 14, onda: '1357864579865432125678976543234567898642' } });
     const a = msg('geral', 'dj0', 'tem sim, 21h no servidor BR. quem for da copa cola', 290);
     a.fixada = true;
     mexerReac(a.id, '🔥', u('dj1'), true, false); mexerReac(a.id, '🔥', u('dj3'), true, false); mexerReac(a.id, '👍', u('dj4'), true, false);
@@ -7769,7 +7995,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     const nomeDaConta = (u) => (u === 'eu' ? meuNick() : nickDoPlayer(String(u).replace('u-', ''), '?'));
     // as mesmas regras de chat_foto_vencida e chat_msg_vencida
     const velha = (x, dias) => !x.fixada && x.canal !== 'avisos' && Date.now() - Date.parse(x.created_at) > dias * 86400000;
-    const fotoVencida = (x) => x.tipo === 'foto' && !!(x.dados && x.dados.path) && velha(x, 30);
+    const fotoVencida = (x) => (x.tipo === 'foto' || x.tipo === 'audio') && !!(x.dados && x.dados.path) && velha(x, 30);
     const msgVencida = (x) => !(x.dados && x.dados.path) && velha(x, 90);
     switch (nome) {
       case 'chat_faxina_fotos': return [...chat.porId.values()].filter(fotoVencida).map((x) => x.dados.path);

@@ -860,7 +860,7 @@ create table if not exists public.chat_mensagens (
   player_id   uuid references public.players (id) on delete set null,
   nome        text not null default '' check (char_length(nome) <= 40),
   adm         boolean not null default false,
-  tipo        text not null default 'msg' check (tipo in ('msg', 'bonde', 'massa', 'foto')),
+  tipo        text not null default 'msg' check (tipo in ('msg', 'bonde', 'massa', 'foto', 'audio')),
   txt         text not null default '' check (char_length(txt) <= 500),
   dados       jsonb not null default '{}'::jsonb,
   resp        bigint references public.chat_mensagens (id) on delete set null,
@@ -872,7 +872,7 @@ create table if not exists public.chat_mensagens (
 -- (pra quem criou a tabela antes das fotos e da edição)
 alter table public.chat_mensagens add column if not exists editada boolean not null default false;
 alter table public.chat_mensagens drop constraint if exists chat_mensagens_tipo_check;
-alter table public.chat_mensagens add constraint chat_mensagens_tipo_check check (tipo in ('msg', 'bonde', 'massa', 'foto'));
+alter table public.chat_mensagens add constraint chat_mensagens_tipo_check check (tipo in ('msg', 'bonde', 'massa', 'foto', 'audio'));
 -- (os canais criados pelos ADMs entram aqui também; quem confere o canal é chat_enviar)
 alter table public.chat_mensagens drop constraint if exists chat_mensagens_canal_check;
 alter table public.chat_mensagens add constraint chat_mensagens_canal_check check (char_length(canal) between 1 and 12);
@@ -1139,7 +1139,7 @@ as $$
       select user_id, 'adm' from chat_adms where user_id not in (select user_id from admins)) e), '[]'::jsonb) end;
 $$;
 
--- manda mensagem, foto ou abre um bonde. Devolve o id.
+-- manda mensagem, foto, áudio ou abre um bonde. Devolve o id.
 create or replace function public.chat_enviar(p_canal text, p_txt text, p_resp bigint default null, p_tipo text default 'msg', p_dados jsonb default '{}'::jsonb)
 returns bigint
 language plpgsql security definer set search_path = public
@@ -1160,7 +1160,7 @@ begin
   end if;
   select * into v_cfg from chat_canais_cfg where canal = p_canal;
   if coalesce(v_cfg.travado, false) and not v_mod then raise exception 'travado' using errcode = 'P0001'; end if;
-  if p_tipo not in ('msg', 'bonde', 'foto') then raise exception 'tipo invalido'; end if;
+  if p_tipo not in ('msg', 'bonde', 'foto', 'audio') then raise exception 'tipo invalido'; end if;
   if p_tipo = 'msg' and (char_length(v_txt) < 1 or char_length(v_txt) > 500) then raise exception 'texto invalido'; end if;
   if p_tipo = 'bonde' then
     v_dados := jsonb_build_object('srv', left(btrim(coalesce(p_dados ->> 'srv', 'Servidor BR')), 40),
@@ -1173,6 +1173,14 @@ begin
     v_dados := jsonb_build_object('path', p_dados ->> 'path', 'w', least(4000, greatest(1, coalesce((p_dados ->> 'w')::int, 1))),
                                   'h', least(4000, greatest(1, coalesce((p_dados ->> 'h')::int, 1))));
     v_txt := left(v_txt, 500);
+  end if;
+  if p_tipo = 'audio' then
+    -- o áudio também já subiu pra pasta da própria conta; dur = segundos gravados (o site corta em 2 min),
+    -- onda = o volume ao longo do áudio, um dígito (0 a 9) por barrinha do desenho
+    if coalesce(p_dados ->> 'path', '') !~ ('^' || auth.uid()::text || '/[A-Za-z0-9._-]+$') then raise exception 'audio invalido'; end if;
+    v_dados := jsonb_build_object('path', p_dados ->> 'path', 'dur', least(300, greatest(1, coalesce((p_dados ->> 'dur')::int, 1))),
+                                  'onda', case when coalesce(p_dados ->> 'onda', '') ~ '^[0-9]{1,48}$' then p_dados ->> 'onda' else '' end);
+    v_txt := '';
   end if;
   if not v_mod then
     -- anti-flood: no máximo 5 mensagens em 10 segundos; e o modo lento do canal
@@ -1287,7 +1295,7 @@ end;
 $$;
 
 -- apagar: o membro apaga a dele; ADM apaga a de membro; mensagem de ADM ou do Dono, só o Dono.
--- Devolve o caminho da foto (pro site apagar o arquivo também) ou null.
+-- Devolve o caminho da foto ou do áudio (pro site apagar o arquivo também) ou null.
 drop function if exists public.chat_apagar(bigint);
 create function public.chat_apagar(p_msg bigint)
 returns text
@@ -1305,11 +1313,11 @@ begin
   update chat_mensagens set apagada = true, fixada = false, txt = '' where id = p_msg;
   delete from chat_reacoes where msg_id = p_msg;
   delete from chat_denuncias where msg_id = p_msg;
-  return case when m.tipo = 'foto' then m.dados ->> 'path' end;
+  return case when m.tipo in ('foto', 'audio') then m.dados ->> 'path' end;
 end;
 $$;
 
--- apaga as mensagens de alguém (p_horas null = todas). Devolve { qtd, fotos }
+-- apaga as mensagens de alguém (p_horas null = todas). Devolve { qtd, fotos } (fotos = os arquivos, áudios juntos)
 create or replace function public.chat_limpar(p_user uuid, p_horas integer default 24)
 returns jsonb
 language plpgsql security definer set search_path = public
@@ -1318,7 +1326,7 @@ declare v_fotos jsonb; v_qtd integer;
 begin
   if chat_protegido(p_user) and not is_admin() then raise exception 'acesso negado' using errcode = '42501'; end if;
   perform exigir_mod('chat_limpar', jsonb_build_object('quem', chat_nome(p_user), 'horas', p_horas));
-  select coalesce(jsonb_agg(dados ->> 'path') filter (where tipo = 'foto'), '[]'::jsonb), count(*) into v_fotos, v_qtd
+  select coalesce(jsonb_agg(dados ->> 'path') filter (where tipo in ('foto', 'audio') and dados ? 'path'), '[]'::jsonb), count(*) into v_fotos, v_qtd
   from chat_mensagens where user_id = p_user and not apagada and (p_horas is null or created_at > now() - make_interval(hours => p_horas));
   delete from chat_reacoes where msg_id in (select id from chat_mensagens where user_id = p_user and not apagada and (p_horas is null or created_at > now() - make_interval(hours => p_horas)));
   update chat_mensagens set apagada = true, fixada = false, txt = ''
@@ -1443,7 +1451,7 @@ begin
 end;
 $$;
 
--- apaga um canal criado e tudo o que tinha nele. Devolve as fotos (pro site apagar os arquivos)
+-- apaga um canal criado e tudo o que tinha nele. Devolve as fotos e áudios (pro site apagar os arquivos)
 create or replace function public.chat_apagar_canal(p_id text)
 returns jsonb
 language plpgsql security definer set search_path = public
@@ -1454,7 +1462,7 @@ begin
   if c.id is null then return '[]'::jsonb; end if;
   if not is_chat_adm() or (c.criado_por is distinct from auth.uid() and not is_admin()) then raise exception 'acesso negado' using errcode = '42501'; end if;
   perform exigir_mod('chat_canal_apagar', jsonb_build_object('canal', c.id, 'nome', c.nome));
-  select coalesce(jsonb_agg(dados ->> 'path') filter (where tipo = 'foto' and dados ? 'path'), '[]'::jsonb) into v_fotos
+  select coalesce(jsonb_agg(dados ->> 'path') filter (where tipo in ('foto', 'audio') and dados ? 'path'), '[]'::jsonb) into v_fotos
   from chat_mensagens where canal = c.id;
   delete from chat_mensagens where canal = c.id;
   delete from chat_canais_cfg where canal = c.id;
@@ -1523,7 +1531,7 @@ begin
 end;
 $$;
 
--- ---------- faxina: foto vence com 30 dias, mensagem com 90. #avisos e fixadas nunca vencem ----------
+-- ---------- faxina: foto e áudio vencem com 30 dias, mensagem com 90. #avisos e fixadas nunca vencem ----------
 -- O banco não apaga arquivo do Storage, então são 3 passos, feitos pelo site quando um ADM abre o chat
 -- (ou o Dono aperta "Limpar agora"): 1) chat_faxina_fotos() diz quais arquivos venceram,
 -- 2) o ADM apaga esses arquivos (a regra "dono ou adm apaga foto do chat" deixa),
@@ -1532,7 +1540,7 @@ create or replace function public.chat_foto_vencida(m public.chat_mensagens)
 returns boolean
 language sql stable set search_path = public
 as $$
-  select m.tipo = 'foto' and m.dados ? 'path' and not m.fixada and m.canal <> 'avisos' and m.created_at < now() - interval '30 days';
+  select m.tipo in ('foto', 'audio') and m.dados ? 'path' and not m.fixada and m.canal <> 'avisos' and m.created_at < now() - interval '30 days';
 $$;
 -- (foto que ainda tem arquivo fica até o arquivo sair, pra nunca sobrar arquivo perdido no Storage)
 create or replace function public.chat_msg_vencida(m public.chat_mensagens)
@@ -1658,9 +1666,9 @@ drop trigger if exists chat_massa_nova on public.scores;
 create trigger chat_massa_nova after insert or delete on public.scores
   for each row execute function public.chat_massa_nova();
 
--- fotos do chat: pasta fechada (só membro vê), cada um envia na própria pasta, até 2 MB
+-- fotos e áudios do chat: pasta fechada (só membro vê), cada um envia na própria pasta, até 2 MB
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('chat', 'chat', false, 2097152, array['image/jpeg', 'image/png', 'image/webp'])
+values ('chat', 'chat', false, 2097152, array['image/jpeg', 'image/png', 'image/webp', 'audio/webm', 'audio/mp4', 'audio/ogg', 'audio/mpeg', 'audio/aac'])
 on conflict (id) do update
   set public = false, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
 drop policy if exists "membros veem fotos do chat" on storage.objects;
@@ -1792,13 +1800,15 @@ declare
   v_envios jsonb;
 begin
   select * into cfg from push_config where id = 1;
-  if cfg.url is null or cfg.vapid_privada is null or new.tipo not in ('msg', 'bonde', 'foto') then return new; end if;
+  if cfg.url is null or cfg.vapid_privada is null or new.tipo not in ('msg', 'bonde', 'foto', 'audio') then return new; end if;
   if new.canal <> 'avisos' and new.tipo <> 'bonde' and new.resp is null and position('@' in new.txt) = 0
      and not exists (select 1 from push_prefs where tudo) then return new; end if;
   v_autor := coalesce((select nick from players where id = new.player_id), nullif(new.nome, ''), 'Alguém');
   v_canal := '#' || coalesce((select nome from chat_canais where id = new.canal), new.canal);
   v_corpo := case when new.tipo = 'bonde' then coalesce(new.dados ->> 'srv', 'Servidor BR') || case when new.txt <> '' then ' · ' || new.txt else '' end
                   when new.tipo = 'foto' and new.txt = '' then '📷 Foto'
+                  when new.tipo = 'audio' then '🎤 Áudio (' || (coalesce((new.dados ->> 'dur')::int, 0) / 60) || ':'
+                                               || lpad((coalesce((new.dados ->> 'dur')::int, 0) % 60)::text, 2, '0') || ')'
                   else left(new.txt, 160) end;
   with membros as (
     select user_id from player_contas union select user_id from admins
