@@ -17,6 +17,11 @@ window.RANKING_CONFIG = {
   SUPABASE_URL: "https://gntibfbrdplmbdgdreeq.supabase.co",
   SUPABASE_KEY: "sb_publishable_AsSQLui_xg_NZT_6bx16Mg_Atv4IEGt",
 
+  // Verificação "não sou robô" no login (Cloudflare Turnstile): a "Site Key" do widget.
+  // A "Secret Key" vai no Supabase (Authentication > Attack Protection), nunca aqui.
+  // Vazio = sem verificação.
+  TURNSTILE_SITE_KEY: "",
+
   // Tag do clã que aparece antes do nome de cada jogador
   CLAN_TAG: "COBR",
 

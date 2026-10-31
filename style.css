@@ -217,6 +217,7 @@ input:focus { border-color: var(--laranja); outline: none; box-shadow: 0 0 0 3px
 .soltar-txt b { color: var(--texto); }
 #previaPrint { max-height: 200px; border-radius: 8px; }
 .erro { margin: 0; padding: 10px 12px; border-radius: 10px; background: rgba(255, 90, 78, .12); color: #FFB0A8; font-size: 14px; }
+.captcha { min-height: 65px; }
 .form-nota { margin: 0; font-size: 12px; color: var(--texto-3); }
 .passos { margin: 0; padding: 0; list-style: none; counter-reset: passo; display: flex; flex-direction: column; gap: 14px; }
 .passos li { counter-increment: passo; display: flex; gap: 14px; align-items: flex-start; font-size: 15px; color: var(--texto-2); }

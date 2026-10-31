@@ -5196,7 +5196,8 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     const nova = m === 'criar' || m === 'nova';
     $('rotEntSenha').textContent = m === 'nova' ? 'SENHA NOVA' : nova ? 'CRIE UMA SENHA' : 'SENHA';
     $('fEntSenha').autocomplete = nova ? 'new-password' : 'current-password';
-    $('fEntSenha').placeholder = nova ? 'mínimo 6 caracteres' : '';
+    $('fEntSenha').placeholder = nova ? 'mínimo 8, com letras e números' : '';
+    $('captchaEntrar').hidden = !precisaCaptcha(m);
     $('txtEntrar').hidden = !t.txt;
     if (t.txt) $('txtEntrar').textContent = t.txt;
     $('btnEntrarJog').hidden = !t.botao;
@@ -5216,15 +5217,64 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     $('fEntSenha').value = '';
     trocarModoEntrar(m);
     $('dlgEntrar').showModal();
+    mostrarCaptcha();
     focoEntrar();
   }
   function lerEuAntigo() { try { return localStorage.getItem('ranking_eu'); } catch (e) { return null; } }
+
+  // Verificação de robô (Cloudflare Turnstile) no entrar, criar conta e esqueci a senha.
+  // Só liga com TURNSTILE_SITE_KEY no config.js; quem confere o token é o Supabase.
+  const CAPTCHA_KEY = DEMO ? '' : String(CFG.TURNSTILE_SITE_KEY || '').trim();
+  let captchaId = null, captchaToken = null, captchaCarregando = null;
+  const precisaCaptcha = (m) => !!CAPTCHA_KEY && ['entrar', 'criar', 'esqueci'].includes(m);
+  function carregarCaptcha() {
+    if (window.turnstile) return Promise.resolve();
+    if (!captchaCarregando) captchaCarregando = new Promise((ok, falha) => {
+      const s = document.createElement('script');
+      s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+      s.async = true;
+      s.onload = ok;
+      s.onerror = () => { captchaCarregando = null; falha(new Error('captcha')); };
+      document.head.appendChild(s);
+    });
+    return captchaCarregando;
+  }
+  async function mostrarCaptcha() {
+    if (!CAPTCHA_KEY) return;
+    try { await carregarCaptcha(); } catch (e) { return; }
+    if (captchaId !== null) return novoCaptcha();
+    captchaId = window.turnstile.render('#captchaEntrar', {
+      sitekey: CAPTCHA_KEY, theme: 'dark', language: 'pt-br', size: 'flexible',
+      callback: (t) => { captchaToken = t; },
+      'expired-callback': () => { captchaToken = null; },
+      'error-callback': () => { captchaToken = null; },
+    });
+  }
+  // cada token só vale uma vez: depois de cada tentativa pede outro
+  function novoCaptcha() {
+    captchaToken = null;
+    if (captchaId !== null && window.turnstile) window.turnstile.reset(captchaId);
+  }
+
+  // senha nova: 8+ caracteres, com letra e número (o Supabase também confere) e nada fácil de adivinhar
+  const SENHAS_FRACAS = ['123456789', '1234567890', 'a1234567', 'abcd1234', 'qwer1234', 'q1w2e3r4', 'password1'];
+  function problemaSenha(senha, nick, email) {
+    if (senha.length < 8) return 'A senha precisa ter pelo menos 8 caracteres.';
+    if (!/\p{L}/u.test(senha) || !/\d/.test(senha)) return 'A senha precisa ter letras e números.';
+    const s = senha.toLocaleLowerCase('pt-BR');
+    const nomes = [chave(nick), (email || '').split('@')[0]].filter((n) => n.length >= 3);
+    if (SENHAS_FRACAS.includes(s) || /^(cobr|senha|abc|qwerty|password|ffire|freefire|slither)\d+$/.test(s)
+      || nomes.some((n) => s.includes(n))) return 'Essa senha é fácil de adivinhar. Escolha outra.';
+    return null;
+  }
 
   function msgLogin(error) {
     if (error.status === 429 || /rate limit|too many/i.test(error.message)) return 'Muitas tentativas agora. Espera um pouco e tenta de novo.';
     if (/invalid login credentials/i.test(error.message)) return 'E-mail ou senha errados.';
     if (/email not confirmed/i.test(error.message)) return 'Falta confirmar o e-mail: abra o link que mandamos (olhe no spam também).';
-    if (/password/i.test(error.message) && /(least|short|weak)/i.test(error.message)) return 'A senha precisa ter pelo menos 6 caracteres.';
+    if (/password/i.test(error.message) && /(least|short|weak|character)/i.test(error.message)) return 'A senha precisa ter pelo menos 8 caracteres, com letras e números.';
+    if (/captcha/i.test(error.message)) return 'A verificação "não sou robô" falhou. Espera ela ficar verde e tenta de novo.';
+    if (/database error saving new user/i.test(error.message)) return 'Muitas contas novas criadas agora. Tenta de novo mais tarde.';
     if (/invalid.*email|email.*invalid/i.test(error.message)) return 'Esse e-mail não parece certo. Confere.';
     return 'Não deu certo agora. Tenta de novo.';
   }
@@ -5243,8 +5293,11 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     if (campos.includes('email') && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return falhar('Escreve o seu e-mail.');
     if (campos.includes('senha')) {
       if (!senha) return falhar('Escreve a senha.');
-      if ((m === 'criar' || m === 'nova') && senha.length < 6) return falhar('A senha precisa ter pelo menos 6 caracteres.');
+      const fraca = (m === 'criar' || m === 'nova') && problemaSenha(senha, nick, email);
+      if (fraca) return falhar(fraca);
     }
+    const captcha = precisaCaptcha(m);
+    if (captcha && !captchaToken) return falhar('Espera a verificação "não sou robô" terminar (ou toque nela).');
     const btn = $('btnEntrarJog');
     btn.disabled = true;
     try {
@@ -5258,6 +5311,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       falhar('Não consegui agora. Confere a internet e tenta de novo.');
     } finally {
       btn.disabled = false;
+      if (captcha) novoCaptcha();
     }
   }
 
@@ -5276,7 +5330,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       admin = c ? null : { nome: email.split('@')[0] };
       demoLer(c);
     } else {
-      const { error } = await sb.auth.signInWithPassword({ email, password: senha });
+      const { error } = await sb.auth.signInWithPassword({ email, password: senha, options: { captchaToken: captchaToken || undefined } });
       if (error) return falhar(msgLogin(error));
       await lerConta();
     }
@@ -5315,7 +5369,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       if (st.data === 'tem_login') return falhar('Esse nick já tem conta. Se é você, fala com um admin do clã.');
       const { data, error } = await sb.auth.signUp({
         email, password: senha,
-        options: { emailRedirectTo: location.origin + location.pathname, data: { nick } },
+        options: { emailRedirectTo: location.origin + location.pathname, data: { nick }, captchaToken: captchaToken || undefined },
       });
       if (error) {
         // o e-mail grátis do Supabase manda poucos por hora
@@ -5341,7 +5395,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
 
   async function esqueciSenha(email, falhar) {
     if (!DEMO) {
-      const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+      const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname, captchaToken: captchaToken || undefined });
       if (error) return falhar(error.status === 429 || /rate limit/i.test(error.message) ? 'O e-mail não saiu agora (limite por hora). Tenta de novo mais tarde.' : msgLogin(error));
     }
     trocarModoEntrar('enviado');
