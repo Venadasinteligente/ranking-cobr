@@ -266,6 +266,7 @@ input:focus { border-color: var(--laranja); outline: none; box-shadow: 0 0 0 3px
   background: var(--laranja); color: var(--tinta-btn); font-weight: 700; box-shadow: 0 10px 40px rgba(0, 0, 0, .5);
 }
 .toast.ruim { background: var(--perigo); }
+.toast[popover] { top: auto; right: auto; margin: 0; border: 0; overflow: visible; }
 
 /* ---------- celular ---------- */
 @media (max-width: 760px) {
@@ -2252,6 +2253,9 @@ body[data-pag="chat"] .rodape { display: none; }
 .canal-pessoa { min-height: 44px; padding: 0 2px; border-bottom: 1px solid var(--linha); }
 .canal-pessoa:last-child { border-bottom: 0; }
 @media (max-width: 520px) { .canal-emojis { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+.av-ajuda { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border-radius: 12px; border: 1px solid rgba(255, 90, 78, .45); background: rgba(255, 90, 78, .08); font-size: 14px; color: var(--texto-2); }
+.av-ajuda b { color: var(--texto); }
+.av-ajuda ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 3px; color: var(--texto); font-weight: 600; }
 .av-app-ok { margin: 0; font-size: 14px; color: var(--verde); font-weight: 600; }
 @media (max-width: 520px) {
   .mod-linha { flex-wrap: wrap; }

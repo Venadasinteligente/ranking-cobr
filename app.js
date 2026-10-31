@@ -97,8 +97,13 @@
     t.textContent = msg;
     t.classList.toggle('ruim', ruim);
     t.hidden = false;
+    // por cima de qualquer janela aberta (senão o aviso fica escondido atrás dela)
+    if (t.showPopover) { try { if (t.matches(':popover-open')) t.hidePopover(); t.showPopover(); } catch (e) {} }
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { t.hidden = true; }, 3800);
+    toastTimer = setTimeout(() => {
+      t.hidden = true;
+      if (t.hidePopover) { try { t.hidePopover(); } catch (e) {} }
+    }, 3800);
   }
   function urlPrint(p) {
     if (p.print_url) return p.print_url;
@@ -7474,8 +7479,8 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     const ligado = !!sub && eu.inscrito && typeof Notification !== 'undefined' && Notification.permission === 'granted';
     let estado, botao = null;
     if (!pushPossivel()) estado = ehIOS && !appInstalado() ? 'No iPhone, as notificações só funcionam com o app instalado (veja abaixo).' : 'Este navegador não mostra notificações.';
-    else if (Notification.permission === 'denied') estado = 'Notificações bloqueadas neste aparelho. Libere nas configurações do navegador.';
-    else if (ligado) { estado = 'Ligadas neste aparelho.'; botao = el('button', { type: 'button', class: 'btn btn-sec', text: 'Desligar', onclick: desligarPush }); }
+    else if (Notification.permission === 'denied') { estado = 'Notificações bloqueadas neste aparelho.'; problemaPush = 'sem_pedido'; }
+    else if (ligado) { estado = 'Ligadas neste aparelho.'; problemaPush = null; botao = el('button', { type: 'button', class: 'btn btn-sec', text: 'Desligar', onclick: desligarPush }); }
     else { estado = 'Desligadas neste aparelho.'; botao = el('button', { type: 'button', class: 'btn btn-pri', text: 'Ligar notificações', onclick: ligarPush }); }
     const prefs = { tudo: false, ...eu.prefs, mudos: new Set(eu.prefs.mudos || []) };
     const salvar = async () => {
@@ -7512,6 +7517,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     trocar($('avisosCorpo'),
       el('div', { class: 'mod-rot', text: 'NESTE APARELHO' }),
       el('div', { class: 'av-estado' }, el('span', { class: `ch-bola ${ligado ? 'on' : ''}` }), el('span', { text: estado }), botao),
+      problemaPush ? ajudaPush(problemaPush) : null,
       el('div', { class: 'mod-rot', text: 'ME AVISAR QUANDO' }),
       el('div', { class: 'av-prefs' }, chave('tudo', 'Todas as mensagens', tudoMudou), chave('mencao', 'Me marcarem com @'), chave('resposta', 'Responderem minha mensagem'), chave('aviso', 'Sair aviso no #avisos'), chave('bonde', 'Alguém chamar o bonde')),
       canaisRot, canais,
@@ -7530,15 +7536,38 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     await chatRpc('push_inscrever', { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth });
     return true;
   }
-  async function ligarPush() {
+  let problemaPush = null;          // o que deu errado na última vez que tentou ligar: sem_pedido | servidor | erro
+  const comPrazo = (p, ms) => Promise.race([p, new Promise((_, nao) => setTimeout(() => nao(new Error('prazo')), ms))]);
+  async function ligarPush(ev) {
+    const bt = ev && ev.currentTarget;
+    if (bt) { bt.disabled = true; bt.textContent = 'Ligando…'; }
+    problemaPush = null;
     try {
-      const perm = await Notification.requestPermission();
-      if (perm !== 'granted') { toast('Sem a permissão, o celular não mostra as notificações.', true); desenharAvisos(); return; }
-      if (!(await inscreverAparelho())) { toast('As notificações ainda não foram ligadas no servidor.', true); return; }
-      try { localStorage.removeItem(chaveSemPush()); } catch (e) {}
-      toast('Notificações ligadas neste aparelho.');
-    } catch (e) { erroChat(e); }
+      const perm = Notification.permission === 'granted' ? 'granted' : await comPrazo(Notification.requestPermission(), 60000);
+      if (perm !== 'granted') problemaPush = 'sem_pedido';
+      else if (!(await comPrazo(inscreverAparelho(), 20000))) problemaPush = 'servidor';
+      else {
+        try { localStorage.removeItem(chaveSemPush()); } catch (e) {}
+        toast('Notificações ligadas neste aparelho.');
+      }
+    } catch (e) {
+      console.warn('push:', e.message);
+      problemaPush = e.message === 'prazo' && Notification.permission !== 'granted' ? 'sem_pedido' : 'erro';
+    }
     desenharAvisos();
+  }
+  // o celular não deixou: como liberar em cada aparelho
+  function ajudaPush(tipo) {
+    if (tipo === 'servidor') return el('div', { class: 'av-ajuda' }, el('b', { text: 'As notificações ainda não foram ligadas no servidor.' }));
+    if (tipo === 'erro') return el('div', { class: 'av-ajuda' }, el('b', { text: 'Não deu pra ligar agora.' }), el('span', { text: 'Feche o app (tire da lista de abertos), abra de novo e tente outra vez.' }));
+    const passos = ehIOS ? ['Ajustes do iPhone', 'Notificações', 'COBR', 'Permitir Notificações']
+      : ehAndroid && appInstalado() ? ['Segure o ícone do COBR na tela', 'Informações do app', 'Notificações', 'Ligar']
+      : ehAndroid ? ['No Chrome, toque em ⋮', 'Configurações', 'Configurações do site', 'Notificações', location.hostname, 'Permitir']
+      : ['Clique no cadeado ao lado do endereço', 'Notificações', 'Permitir'];
+    return el('div', { class: 'av-ajuda' },
+      el('b', { text: 'O celular não deixou ligar. Libere assim:' }),
+      el('ol', null, ...passos.map((x) => el('li', { text: x }))),
+      el('span', { text: 'Depois volte aqui e toque em Ligar notificações.' }));
   }
   async function desligarPush() {
     try {
