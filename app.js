@@ -1739,7 +1739,7 @@ ${frente}
     gelo: { nome: 'Zero Absoluto', titulos: 1, anel: ['#FFFFFF', '#8BE3FF', '#2C7FD6', '#B9F3FF', '#5B6CFF', '#FFFFFF'] },
     ciborgue: { nome: 'Ciborgue', titulos: 2, anel: ['#E8FFE0', '#7CFF4F', '#1FAF5A', '#C9D1DA', '#0B3D24', '#E8FFE0'] },
     cosmica: { nome: 'Cósmica', titulos: 2, anel: ['#7DF9FF', '#C77DFF', '#FF5FB7', '#3A1C9A', '#7DF9FF', '#FFFFFF'] },
-    dragao: { nome: 'Dragão Imperial', titulos: 3, anel: ['#FFF7C2', '#FFD84D', '#E0122E', '#FFD84D', '#7A0010', '#FFF7C2'] },
+    diamante: { nome: 'Rei Diamante', titulos: 3, anel: ['#FFFFFF', '#7DE3FF', '#B79BFF', '#FF8FB1', '#FFD36E', '#8BFFB0'] },
   };
   const RARIDADE = { 1: 'LENDÁRIA', 2: 'MÍTICA', 3: 'SUPREMA' };
   // [x, y, raio] de cada gomo do corpo, do rabo até o pescoço (o mesmo desenho do avatar comum)
@@ -1933,63 +1933,53 @@ ${frente}
         + anel(true);
     }
 
-    if (s === 'dragao') {
-      // dragão imperial: escamas carmim e ouro, chifres de galho, bigodes ao vento,
-      // a pérola de fogo flutuando e uma tempestade de raios dourados atrás
-      const OURO = [[0, '#FFF8D6'], [.3, '#FFD95A'], [.7, '#D9930E'], [1, '#5E3300']];
-      defs += rg('f', [[0, '#5A0418'], [.55, '#1E0008'], [1, '#040002']], .5, .38, .8)
-        + rg('h', [[0, '#FF6B6B'], [.4, '#E0122E'], [.8, '#8A0018'], [1, '#3A0008']], .38, .26) + rg('p', [[0, '#FF6B6B'], [.5, '#C8102E'], [1, '#4A000C']])
-        + rg('ou', OURO) + lg('c', [[0, '#FFF8D6'], [.35, '#FFD95A'], [.75, '#C88200'], [1, '#5E3300']])
-        + rg('o', [[0, '#FFFFFF'], [.3, '#FFF3A0'], [.7, '#FFB000'], [1, '#B05A00']], .5, .5, .6)
-        + rg('pe', [[0, '#FFFFFF'], [.35, '#FFF1C9'], [.7, '#FFB347'], [1, '#FF5A00']], .38, .32, .7)
-        + rg('aura', [[0, '#FFD95A', .9], [.5, '#FF7A00', .35], [1, '#FF7A00', 0]], .5, .5, .5)
-        + `<pattern id="${id}es" width="8" height="6" patternUnits="userSpaceOnUse"><path d="M0 6A4 4 0 0 1 8 6M-4 3A4 4 0 0 1 4 3M4 3A4 4 0 0 1 12 3" fill="none" stroke="#FFD95A" stroke-opacity=".5" stroke-width=".7"/></pattern>`;
+    if (s === 'diamante') {
+      // rei diamante: cobra de diamante lapidado com brilho de arco-íris, coroa de ouro com joias e luz colorida girando atrás
+      const PEDRA = [[0, '#FFFFFF'], [.35, '#E4F6FF'], [.7, '#A9C8FF'], [1, '#6A6FD8']];
+      const ARCO = ['#FF8FB1', '#FFD36E', '#8BFFB0', '#7DE3FF', '#B79BFF'];
+      defs += rg('f', [[0, '#2B2470'], [.55, '#120E3A'], [1, '#05031A']], .5, .4, .8)
+        + rg('h', PEDRA, .36, .24) + rg('p', PEDRA) + lg('ou', [[0, '#FFF8D6'], [.35, '#FFD95A'], [.75, '#D9930E'], [1, '#7A4A00']])
+        + `<linearGradient id="${id}ar" x1="0" y1="0" x2="1" y2="0">${ARCO.map((c, i) => `<stop offset="${i / 4}" stop-color="${c}"/>`).join('')}</linearGradient>`
+        + rg('ir', [[0, '#E9FDFF'], [.45, '#7DC8FF'], [1, '#6A4FE0']], .4, .35, .7)
+        + rg('aura', [[0, '#FFFFFF', .7], [.45, '#C9B8FF', .3], [1, '#C9B8FF', 0]], .5, .5, .5);
       const raios = Array.from({ length: 20 }, (_, i) => {
-        const g = Math.PI * 2 * i / 20, l = i % 2 ? 60 : 90, p = (d) => `${f1(50 + l * Math.cos(g + d))},${f1(44 + l * Math.sin(g + d))}`;
-        return `<polygon points="50,44 ${p(-.05)} ${p(.05)}"/>`;
+        const g = Math.PI * 2 * i / 20, p = (d) => `${f1(50 + 85 * Math.cos(g + d))},${f1(44 + 85 * Math.sin(g + d))}`;
+        return `<polygon points="50,44 ${p(-.07)} ${p(.07)}" fill="${ARCO[i % 5]}"/>`;
       }).join('');
-      const raio = (d, atraso) => `<path class="sk-raio" style="animation-delay:-${atraso}s" d="${d}" fill="none" stroke="#FFF6C9" stroke-width="1.6" stroke-linejoin="round" filter="${u('n')}"/>`;
+      const pedrinha = (x, y, r, atraso) => `<g class="sk-flutua" style="animation-delay:-${atraso}s"><path d="M${x} ${y - r}L${f1(x + r * .8)} ${y}L${x} ${y + r}L${f1(x - r * .8)} ${y}Z" fill="${u('p')}" stroke="#fff" stroke-width=".6"/><path d="M${f1(x - r * .8)} ${y}H${f1(x + r * .8)}" stroke="#fff" stroke-opacity=".7" stroke-width=".5"/></g>`;
       fundo = `<rect width="100" height="100" fill="${u('f')}"/>`
-        + `<g class="sk-gira" style="animation-duration:24s"><g fill="#FFD95A" fill-opacity=".13">${raios}</g></g>`
-        + `<circle cx="50" cy="44" r="40" fill="${u('aura')}" opacity=".55"/>`
-        + raio('M10 0L16 14L11 16L19 32', 0) + raio('M92 4L84 18L90 20L80 38', 1.7)
-        + `<g fill="#1A0006" opacity=".9"><circle cx="10" cy="98" r="16"/><circle cx="30" cy="104" r="16"/><circle cx="88" cy="98" r="14"/></g>`;
-      // espinhos dourados nas costas + barriga de placas de ouro
-      const corpo = gomos((x, y, r, i) => (i > 0 && i < 8 ? `<path d="M${f1(x - r * .5)} ${f1(y - r * .8)}L${f1(x - r * .1)} ${f1(y - r * 1.55)}L${f1(x + r * .35)} ${f1(y - r * .85)}Z" fill="${u('c')}" ${tr('#3A0008', 1)}/>` : '')
-        + `<circle cx="${x}" cy="${y}" r="${r}" fill="${u('p')}" ${tr('#2A0006', 1.3)}/><circle cx="${x}" cy="${y}" r="${r}" fill="${u('es')}"/>`
-        + `<path d="M${f1(x - r * .62)} ${f1(y + r * .25)}Q${x} ${f1(y + r * .05)} ${f1(x + r * .62)} ${f1(y + r * .25)}L${f1(x + r * .5)} ${f1(y + r * .62)}Q${x} ${f1(y + r * .45)} ${f1(x - r * .5)} ${f1(y + r * .62)}Z" fill="${u('ou')}" ${tr('#5E3300', .8)}/>`
-        + luzGomo(x, y, r, .28));
-      const chifre = (l) => {
-        const X = (v) => f1(50 + (v - 50) * l);
-        return `<path d="M${X(40)} 26C${X(36)} 21 ${X(32)} 17 ${X(29)} 11C${X(32.5)} 13.5 ${X(34.5)} 15.5 ${X(35.5)} 16.5C${X(35)} 13 ${X(35.5)} 10 ${X(37)} 7C${X(38.5)} 11 ${X(39.5)} 15 ${X(41)} 18.5C${X(43)} 21 ${X(44.5)} 23 ${X(46)} 25Z" fill="${u('c')}" ${tr('#3A1A00', 1.3)}/>`
-          + `<path d="M${X(38.5)} 23C${X(35)} 19 ${X(32.5)} 16 ${X(31)} 13" fill="none" stroke="#FFF8D6" stroke-opacity=".7" stroke-width=".8"/>`;
-      };
-      const bigode = (l, atraso) => {
-        const d = `M${50 + 7 * l} 57.5C${50 + 16 * l} 55 ${50 + 24 * l} 59 ${50 + 30 * l} 55C${50 + 36 * l} 51 ${50 + 38 * l} 45 ${50 + 34 * l} 43`;
-        return `<g class="sk-bigode" style="animation-delay:-${atraso}s;transform-origin:${l > 0 ? '0% 100%' : '100% 100%'}"><path d="${d}" fill="none" stroke="#3A1A00" stroke-width="3.4" stroke-linecap="round"/><path d="${d}" fill="none" stroke="${u('c')}" stroke-width="1.9" stroke-linecap="round"/></g>`;
-      };
-      arte = corpo + sombraPescoco + chifre(1) + chifre(-1)
-        + `<g class="sk-flutua"><circle cx="50" cy="12" r="8.5" fill="${u('aura')}"/><circle cx="50" cy="12" r="4.4" fill="${u('pe')}" filter="${u('n')}"/>`
-        + `<path d="M45.5 12.5C45.5 6.5 49 6 50 2C51 6 54.5 6.5 54.5 12.5" fill="#FF8A00" fill-opacity=".55" filter="${u('n')}"/><circle cx="48.6" cy="10.6" r="1.2" fill="#fff"/></g>`
-        + `<path d="${AV_CAB}" fill="${u('h')}" ${tr('#2A0006', 1.8)}/>`
-        + `<g clip-path="${u('k')}"><rect width="100" height="100" fill="${u('es')}" opacity=".8"/>`
-        + `<path d="M50 21L54 24.5L52.5 31L50 33L47.5 31L46 24.5Z" fill="${u('ou')}" ${tr('#5E3300', .9)}/>`
-        + `<path d="M18 60C30 74 70 74 82 60V80H18Z" fill="#2A0006" fill-opacity=".3"/></g>`
-        + `<circle cx="50" cy="26.6" r="1.8" fill="#22E07A" ${tr('#0B4B2A', .7)} filter="${u('n')}"/>`
-        + `<ellipse cx="38" cy="29" rx="10" ry="4.5" transform="rotate(-18 38 29)" fill="#fff" fill-opacity=".3"/>`
-        + reflexo + `<path d="${AV_CAB}" fill="none" ${tr('#2A0006', 1.8)}/>`
-        // olho de fogo com fenda e a sobrancelha de ouro (bravo: o canto de dentro desce)
-        + AV_OL.map(([x, y], i) => {
-          const l = i ? 1 : -1, sob = `M${x + 11 * l} ${y - 12}Q${x + 2 * l} ${y - 12} ${x - 9 * l} ${y - 7}`;
-          return `<path d="M${x - 9} ${y + 1}Q${x} ${y - 10} ${x + 9} ${y + 1}Q${x} ${y + 8} ${x - 9} ${y + 1}Z" fill="#1A0004"/>`
-            + `<ellipse class="sk-pulsa" cx="${x}" cy="${y}" rx="6.6" ry="5" fill="${u('o')}" filter="${u('n')}"/><ellipse cx="${x}" cy="${y}" rx="1.4" ry="4.6" fill="#7A0010"/><circle cx="${x - 2.4 * l}" cy="${y - 2.2}" r="1.2" fill="#fff"/>`
-            + `<path d="${sob}" fill="none" stroke="#3A1A00" stroke-width="4.4" stroke-linecap="round"/><path d="${sob}" fill="none" stroke="${u('c')}" stroke-width="2.6" stroke-linecap="round"/>`;
-        }).join('')
-        + `<path d="M37.5 58.5Q50 73 62.5 58.5Q50 63 37.5 58.5Z" fill="#2A0006" ${tr('#2A0006', 1.6)}/>`
-        + `<path d="M41.6 60.4L43.8 67L46 61.6ZM58.4 60.4L56.2 67L54 61.6Z" fill="#FFF8E8" ${tr('#2A0006', .8)}/>`
-        + `<ellipse cx="45.5" cy="55" rx="1.6" ry="1.1" fill="#2A0006"/><ellipse cx="54.5" cy="55" rx="1.6" ry="1.1" fill="#2A0006"/>`
-        + bigode(-1, 0) + bigode(1, 1.2)
-        + estrelas([[16, 2, 2.4, .2], [84, 4, 2.2, 1.3], [8, 52, 1.6, .8], [94, 56, 1.8, 2]], '#FFF6C9');
+        + `<g class="sk-gira" style="animation-duration:20s"><g fill-opacity=".2">${raios}</g></g>`
+        + `<circle cx="50" cy="44" r="38" fill="${u('aura')}"/>`
+        + pedrinha(12, 30, 4, 0) + pedrinha(88, 26, 3.4, 1) + pedrinha(90, 64, 2.6, .5) + pedrinha(9, 62, 3, 1.5)
+        + estrelas([[20, 10, 2.2, 0], [80, 8, 2, 1.1], [94, 44, 1.6, .6], [6, 46, 1.6, 1.8], [70, 92, 1.4, .9]]);
+      // facetas do diamante: triângulos claros e linhas de lapidação
+      const facetas = `<g fill="#fff"><path d="M50 21L36 40H64Z" fill-opacity=".22"/><path d="M21 46L36 40L30 60Z" fill-opacity=".14"/><path d="M79 46L64 40L70 60Z" fill-opacity=".1"/></g>`
+        + `<g fill="none" stroke="#fff" stroke-opacity=".55" stroke-width=".8"><path d="M50 21L36 40L21 46M50 21L64 40L79 46M36 40H64M36 40L30 60L40 71M64 40L70 60L60 71"/></g>`;
+      const corpo = gomos((x, y, r, i) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${u('p')}" ${tr('#4A4FB0', 1.2)}/>`
+        + `<path d="M${f1(x - r * .7)} ${f1(y - r * .1)}L${x} ${f1(y - r * .75)}L${f1(x + r * .7)} ${f1(y - r * .1)}L${x} ${f1(y + r * .55)}Z" fill="#fff" fill-opacity=".16" stroke="#fff" stroke-opacity=".5" stroke-width=".7"/>`
+        + `<circle cx="${x}" cy="${y}" r="${f1(r * .92)}" fill="none" stroke="${u('ar')}" stroke-width="1.2" stroke-opacity="${i % 2 ? .5 : .8}"/>` + luzGomo(x, y, r, .55));
+      // coroa de ouro com joias e pérolas nas pontas
+      const coroa = `<path d="M33 26L30.5 12L39 18.5L44 8.5L50 16L56 8.5L61 18.5L69.5 12L67 26Z" fill="${u('ou')}" ${tr('#5E3300', 1.3)}/>`
+        + `<path d="M33.5 24L32 15M44 11L46 22M56 11L54 22M68 15L66.5 24" stroke="#FFF8D6" stroke-opacity=".6" stroke-width=".8"/>`
+        + `<rect x="32" y="22.5" width="36" height="6" rx="2.5" fill="${u('ou')}" ${tr('#5E3300', 1.2)}/>`
+        + [[30.5, 12], [44, 8.5], [56, 8.5], [69.5, 12]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.9" fill="#FFFDF5" ${tr('#5E3300', .7)}/>`).join('')
+        + `<path d="${gema(50, 25.5, 2.8)}" fill="#E9FDFF" ${tr('#3A4FB0', .7)}/>`
+        + `<circle cx="41" cy="25.5" r="1.7" fill="#3B82F6" ${tr('#1A2E70', .6)}/><circle cx="59" cy="25.5" r="1.7" fill="#22E07A" ${tr('#0B4B2A', .6)}/>`
+        + `<path class="sk-pisca" d="${estrelinha(50, 16, 3)}" fill="#fff"/>`;
+      arte = corpo + sombraPescoco
+        + `<path d="${AV_CAB}" fill="${u('h')}" ${tr('#3A3F9A', 1.8)}/>`
+        + `<g clip-path="${u('k')}">${facetas}<rect class="sk-reflexo" x="10" y="0" width="14" height="100" transform="skewX(-22)" fill="${u('ar')}" fill-opacity=".45"/>`
+        + `<path d="M18 62C30 76 70 76 82 62V80H18Z" fill="#3A2F9A" fill-opacity=".18"/></g>`
+        + `<ellipse cx="38" cy="30" rx="10" ry="4.5" transform="rotate(-18 38 30)" fill="#fff" fill-opacity=".6"/>`
+        + `<path d="${AV_CAB}" fill="none" ${tr('#3A3F9A', 1.8)}/>`
+        // olhos grandes e simpáticos
+        + AV_OL.map(([x, y]) => `<circle cx="${x}" cy="${y + .5}" r="9" fill="#FDFDFF" ${tr('#3A3F9A', 1.6)}/>`
+          + `<circle cx="${x + .5}" cy="${y + 1.2}" r="6.4" fill="${u('ir')}"/><circle cx="${x + .6}" cy="${y + 1.4}" r="3.4" fill="#1A1440"/>`
+          + `<path d="${gema(x - 2, y - 1.6, 2.2)}" fill="#fff"/><circle cx="${x + 2.8}" cy="${y + 4}" r="1" fill="#fff"/>`).join('')
+        + `<ellipse cx="46" cy="56" rx="1.2" ry=".9" fill="#3A3F9A" fill-opacity=".7"/><ellipse cx="54" cy="56" rx="1.2" ry=".9" fill="#3A3F9A" fill-opacity=".7"/>`
+        + `<path d="M40.5 60.5Q50 69 59.5 60.5" fill="none" ${tr('#3A3F9A', 2.4)}/>`
+        + `<ellipse cx="31" cy="58" rx="4" ry="2.2" fill="#FF8FB1" fill-opacity=".45"/><ellipse cx="69" cy="58" rx="4" ry="2.2" fill="#FF8FB1" fill-opacity=".45"/>`
+        + coroa;
     }
     return { fundo, arte, defs };
   }

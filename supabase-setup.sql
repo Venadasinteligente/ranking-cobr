@@ -805,9 +805,9 @@ begin
                 where length(e.key) > 12 or jsonb_typeof(e.value) <> 'string' or length(e.value #>> '{}') > 16)) then
     return 'invalido';
   end if;
-  -- skin lendária: 1 título libera naja e gelo; 2, ciborgue e cósmica; 3, o dragão
+  -- skin lendária: 1 título libera naja e gelo; 2, ciborgue e cósmica; 3, o rei diamante
   if p_avatar ? 'skin' then
-    v_req := case p_avatar ->> 'skin' when 'naja' then 1 when 'gelo' then 1 when 'ciborgue' then 2 when 'cosmica' then 2 when 'dragao' then 3 end;
+    v_req := case p_avatar ->> 'skin' when 'naja' then 1 when 'gelo' then 1 when 'ciborgue' then 2 when 'cosmica' then 2 when 'diamante' then 3 end;
     if v_req is null then return 'invalido'; end if;
     if titulos_temporada(v_player) < v_req then return 'bloqueada'; end if;
   end if;

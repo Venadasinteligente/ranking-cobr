@@ -2693,7 +2693,7 @@ button.pd-membro:hover { border-color: var(--linha-forte); }
 
 /* ---------- skins lendárias ----------
    a arte se mexe sozinha (só transform e opacidade, leve no celular) e a moldura vira a da skin */
-.av-arte .sk-gira, .av-arte .sk-pisca, .av-arte .sk-aurora, .av-arte .sk-pulsa, .av-arte .sk-bigode { transform-box: fill-box; transform-origin: center; }
+.av-arte .sk-gira, .av-arte .sk-pisca, .av-arte .sk-aurora, .av-arte .sk-pulsa { transform-box: fill-box; transform-origin: center; }
 .av-arte .sk-gira { animation: girar 30s linear infinite; }
 .av-arte .sk-pisca { animation: skPisca 2.4s ease-in-out infinite; }
 @keyframes skPisca { 0%, 100% { opacity: .2; transform: scale(.45); } 50% { opacity: 1; transform: scale(1.15); } }
@@ -2715,12 +2715,8 @@ button.pd-membro:hover { border-color: var(--linha-forte); }
 @keyframes skPulsa { from { opacity: .8; transform: scale(.94); } to { opacity: 1; transform: scale(1.06); } }
 .av-arte .sk-orbita { animation: skOrbita 3.2s linear infinite; }
 @keyframes skOrbita { from { stroke-dashoffset: 124; } to { stroke-dashoffset: 0; } }
-.av-arte .sk-raio { opacity: 0; animation: skRaio 3.6s linear infinite; }
-@keyframes skRaio { 0%, 86%, 100% { opacity: 0; } 88% { opacity: 1; } 90% { opacity: .15; } 93% { opacity: 1; } 96% { opacity: 0; } }
 .av-arte .sk-flutua { animation: skFlutua 2.2s ease-in-out infinite alternate; }
 @keyframes skFlutua { from { transform: translateY(1.5px); } to { transform: translateY(-2px); } }
-.av-arte .sk-bigode { animation: skBigode 2.8s ease-in-out infinite alternate; }
-@keyframes skBigode { from { transform: rotate(-7deg); } to { transform: rotate(6deg); } }
 
 /* moldura da skin: as cores dela girando + brilho forte em volta */
 .av-img.anel-skin { border-color: transparent; }
@@ -2788,13 +2784,13 @@ button.pd-membro:hover { border-color: var(--linha-forte); }
 /* aba das skins lendárias: dourada, e quem não é campeão vê tudo com cadeado */
 .aba.aba-lenda { display: inline-flex; align-items: center; justify-content: center; gap: 6px; color: #FFD84D; }
 .aba.aba-lenda[aria-selected="true"] { background: linear-gradient(135deg, #FFF3B0, #FFD84D 40%, #E08A00); color: #2A1600; box-shadow: 0 0 14px rgba(255, 196, 0, .45); }
-.raro-1 { --rc: #FFD84D; } .raro-2 { --rc: #D9A8FF; } .raro-3 { --rc: #FF7A7A; }
+.raro-1 { --rc: #FFD84D; } .raro-2 { --rc: #D9A8FF; } .raro-3 { --rc: #8FE9FF; }
 .avd-rot-lenda { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #FFD84D; }
 .avd-titulos { padding: 3px 9px; border-radius: 999px; border: 1px solid rgba(255, 216, 77, .45); background: rgba(255, 216, 77, .08); font-size: 11px; letter-spacing: 1px; color: #FFD84D; }
 .avd-grade-skin { grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 10px; }
 .avd-skin { position: relative; gap: 4px; padding: 10px 6px; border-color: color-mix(in srgb, var(--rc, var(--linha)) 45%, var(--linha)); }
 .avd-skin.raro-1, .avd-skin.raro-2, .avd-skin.raro-3 { background: radial-gradient(90% 70% at 50% 30%, color-mix(in srgb, var(--rc) 16%, transparent), var(--painel-2) 75%); }
-.avd-skin.raro-3 { box-shadow: 0 0 16px rgba(255, 90, 60, .25); }
+.avd-skin.raro-3 { box-shadow: 0 0 16px rgba(143, 233, 255, .25); }
 .avd-skin .av-arte { max-width: 88px; border-radius: 50%; box-shadow: 0 0 0 2px color-mix(in srgb, var(--rc, #888) 60%, transparent), 0 0 18px color-mix(in srgb, var(--rc, #000) 40%, transparent); }
 .avd-skin .avd-nome { color: var(--texto); font-weight: 700; }
 .avd-op .avd-req { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 800; letter-spacing: 1px; color: var(--rc); }
