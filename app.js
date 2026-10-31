@@ -5908,7 +5908,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     if (chat.ligado) return;
     chat.ligado = true;
     carregarChat()
-      .then(() => { if (!DEMO) ligarChatAoVivo(); })
+      .then(() => { if (!DEMO) { ligarChatAoVivo(); religarPush(); } })
       .catch((e) => { console.warn('chat:', e.message); chat.ligado = false; });
   }
   function ligarChatAoVivo() {
@@ -7486,9 +7486,14 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     const chave = (k, txt, depois) => el('button', { type: 'button', class: 'ch-switch', role: 'switch', 'aria-checked': String(!!prefs[k]), onclick: (ev) => {
       prefs[k] = !prefs[k];
       ev.currentTarget.setAttribute('aria-checked', String(prefs[k]));
-      if (depois) depois();
-      salvar();
+      const salvou = salvar();
+      if (depois) depois(salvou);
     } }, el('i'), txt);
+    // ligar "Todas as mensagens" com este aparelho desligado: pede a permissão e liga junto
+    const tudoMudou = (salvou) => {
+      mostrarCanais();
+      if (prefs.tudo && !ligado && pushPossivel() && Notification.permission !== 'denied') salvou.then(ligarPush);
+    };
     // com "todas as mensagens" ligado, cada canal pode ir pro mudo (marcação e resposta continuam chegando)
     const canais = el('div', { class: 'av-prefs av-canais' }, ...canaisChat().filter((c) => !c.soSite).map((c) => el('button', {
       type: 'button', class: 'ch-switch', role: 'switch', 'aria-checked': String(!prefs.mudos.has(c.id)), onclick: (ev) => {
@@ -7508,22 +7513,29 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       el('div', { class: 'mod-rot', text: 'NESTE APARELHO' }),
       el('div', { class: 'av-estado' }, el('span', { class: `ch-bola ${ligado ? 'on' : ''}` }), el('span', { text: estado }), botao),
       el('div', { class: 'mod-rot', text: 'ME AVISAR QUANDO' }),
-      el('div', { class: 'av-prefs' }, chave('tudo', 'Todas as mensagens', mostrarCanais), chave('mencao', 'Me marcarem com @'), chave('resposta', 'Responderem minha mensagem'), chave('aviso', 'Sair aviso no #avisos'), chave('bonde', 'Alguém chamar o bonde')),
+      el('div', { class: 'av-prefs' }, chave('tudo', 'Todas as mensagens', tudoMudou), chave('mencao', 'Me marcarem com @'), chave('resposta', 'Responderem minha mensagem'), chave('aviso', 'Sair aviso no #avisos'), chave('bonde', 'Alguém chamar o bonde')),
       canaisRot, canais,
       el('div', { class: 'mod-rot', text: 'APP DO CLÃ' }),
       app);
+  }
+  // quem apertou "Desligar" neste aparelho não volta a receber sozinho
+  const chaveSemPush = () => 'push_desligado_' + euChat();
+  async function inscreverAparelho() {
+    const chavePub = await chatRpc('push_chave', {});
+    if (!chavePub) return false;
+    const reg = await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uBytes(chavePub) });
+    const j = sub.toJSON();
+    await chatRpc('push_inscrever', { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth });
+    return true;
   }
   async function ligarPush() {
     try {
       const perm = await Notification.requestPermission();
       if (perm !== 'granted') { toast('Sem a permissão, o celular não mostra as notificações.', true); desenharAvisos(); return; }
-      const chavePub = await chatRpc('push_chave', {});
-      if (!chavePub) { toast('As notificações ainda não foram ligadas no servidor.', true); return; }
-      const reg = await navigator.serviceWorker.ready;
-      let sub = await reg.pushManager.getSubscription();
-      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uBytes(chavePub) });
-      const j = sub.toJSON();
-      await chatRpc('push_inscrever', { p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth });
+      if (!(await inscreverAparelho())) { toast('As notificações ainda não foram ligadas no servidor.', true); return; }
+      try { localStorage.removeItem(chaveSemPush()); } catch (e) {}
       toast('Notificações ligadas neste aparelho.');
     } catch (e) { erroChat(e); }
     desenharAvisos();
@@ -7532,9 +7544,19 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     try {
       const sub = await minhaInscricao();
       if (sub) { await chatRpc('push_sair', { p_endpoint: sub.endpoint }).catch(() => {}); await sub.unsubscribe(); }
+      try { localStorage.setItem(chaveSemPush(), '1'); } catch (e) {}
       toast('Notificações desligadas neste aparelho.');
     } catch (e) { erroChat(e); }
     desenharAvisos();
+  }
+  // o aparelho já deu a permissão (saiu e entrou na conta, reinstalou o app, o celular trocou a inscrição):
+  // ao abrir o chat ele volta a receber sozinho
+  async function religarPush() {
+    try {
+      if (!pushPossivel() || Notification.permission !== 'granted') return;
+      try { if (localStorage.getItem(chaveSemPush())) return; } catch (e) {}
+      await inscreverAparelho();
+    } catch (e) { console.warn('push:', e.message); }
   }
 
   // ---------- digitando, @menção e emojis ----------
