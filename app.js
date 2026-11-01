@@ -373,7 +373,8 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     const recordista = geralMassa[0];
     $('stRecorde').textContent = recordista ? fmt(recordista.melhor.mass) : '—';
     $('stRecordeDono').textContent = recordista ? 'por ' + comTag(recordista.nome) : 'ninguém ainda';
-    const lider = geralPontos[0];
+    // líder da temporada atual (zera na virada do mês)
+    const lider = montarRanking('mes', 'pontos').find((j) => j.pontos > 0);
     $('stLider').textContent = lider ? ptsTxt(lider.pontos) : '—';
     $('stLiderDono').textContent = lider ? comTag(lider.nome) : 'ninguém ainda';
     $('stCem').textContent = fmt(partidas.filter((p) => p.mass >= MARCO).length);
@@ -2624,8 +2625,9 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       el('div', { class: 'dq-pe' }, r2 ? [`Mais perto: `, btnPerfil(r2, 'link-nome', r2.nome), `, falta ${fmt(r1.melhor.mass - r2.melhor.mass + 1)} de massa`] : 'Quem passar desse número vira o recordista.')
     );
 
-    // disputa pelo topo
-    const p1 = ctx.pontos[0], p2 = ctx.pontos[1];
+    // disputa pelo topo: só a temporada atual (zera na virada do mês)
+    const temp = montarRanking('mes', 'pontos').filter((j) => j.pontos > 0);
+    const p1 = temp[0], p2 = temp[1];
     const disputa = $('dqDisputa');
     if (!p1) { disputa.replaceChildren(el('span', { class: 'dq-rot', text: 'DISPUTA PELO TOPO' }), el('div', { class: 'dq-sub', text: 'O primeiro a pontuar assume o trono.' })); return; }
     const tot = Math.max(1, p1.pontos + (p2 ? p2.pontos : 0));
