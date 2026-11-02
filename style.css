@@ -321,6 +321,8 @@ td .cem-chip { margin-left: 0; }
 .lugar-nome { display: block; width: 100%; text-align: center; min-height: 32px; }
 .lugar-pat { display: flex; justify-content: center; margin-top: 6px; }
 .nome-linha { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.nome-chips { display: contents; }
+.mob-est { display: none; }
 
 /* avatar e patente */
 .av {
@@ -776,13 +778,7 @@ button, a, summary { touch-action: manipulation; }
   }
 }
 
-/* tabela do ranking no celular: só o que importa, sem arrastar */
 @media (max-width: 560px) {
-  #tabela table { min-width: 0; font-size: 14px; }
-  #tabela th:nth-child(4), #tabela td:nth-child(4), #tabela th:nth-child(6), #tabela td:nth-child(6) { display: none; }
-  #tabela th:nth-child(5), #tabela td:nth-child(5) { padding-right: 14px; }
-  #tabela .pos { font-size: 22px; }
-  #tabela .num { font-size: 24px; }
   .busca-pat { display: none; }
 }
 
@@ -1458,6 +1454,9 @@ button.mm-jogo.aberto { box-shadow: 0 0 0 1px rgba(255, 122, 26, .3), 0 0 20px r
   .podio .lugar-pat .patente svg { display: none; }
   .podio .lugar-massa { font-size: clamp(24px, 8vw, 34px); white-space: nowrap; }
   .podio .l1 .lugar-massa { font-size: clamp(30px, 10vw, 44px); }
+  /* massa de 7+ dígitos (1.000.000) não cabe no tamanho dos pontos */
+  .podio .lugar-massa.num-longo { font-size: clamp(18px, 5.6vw, 28px); }
+  .podio .l1 .lugar-massa.num-longo { font-size: clamp(22px, 7vw, 34px); }
   .podio .barra { height: 5px; }
   .tn-podio { margin-bottom: 12px; }
 
@@ -1482,16 +1481,6 @@ button.mm-jogo.aberto { box-shadow: 0 0 0 1px rgba(255, 122, 26, .3), 0 0 20px r
   .dlg-mais { width: 100%; max-width: 100%; margin: auto 0 0; border-radius: 20px 20px 0 0; border-bottom: 0; padding-bottom: env(safe-area-inset-bottom, 0px); }
   .dlg-mais[open] { animation: sobeFolha .22s ease-out; }
   @keyframes sobeFolha { from { transform: translateY(40px); opacity: 0; } }
-}
-
-@media (max-width: 560px) {
-  #tabela .nome-melhor, #tabela .patente, #tabela .tag-nick, #tabela .chip-longo { display: none; }
-  #tabela .nome-linha { gap: 6px; flex-wrap: nowrap; min-width: 0; }
-  #tabela .nome-linha > * { flex-shrink: 0; }
-  #tabela .nome-linha .link-nome { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #tabela .chip { margin-left: 0; padding: 2px 6px; }
-  #tabela td.nome-cel { max-width: 0; width: 100%; }
-  #tabela td { padding-block: 11px; }
 }
 
 @media (min-width: 761px) { .destaques { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); } }
@@ -2531,7 +2520,6 @@ button.pd-membro:hover { border-color: var(--linha-forte); }
 }
 @media (max-width: 360px) {
   .rg-virada li { flex-wrap: wrap; }
-  #tabela th:not(:first-child):not(:last-child), #tabela td:not(:first-child):not(:last-child) { padding-inline: 5px; }
 }
 
 /* ============ partidas: o feed do COBR BOT (sem horário, só o dia) ============ */
@@ -3032,3 +3020,62 @@ button.pd-membro:hover { border-color: var(--linha-forte); }
 .inst-final b { color: var(--texto); }
 .inst-dica { margin: 0; font-size: 13px; color: var(--texto-3); text-align: center; line-height: 1.9; }
 .inst-dica a { color: var(--laranja-claro); font-weight: 600; }
+
+/* =============================================================
+   TABELA DO RANKING NO CELULAR: cada linha vira um cartão
+   #pos | avatar, nome e selos            | número grande
+        | partidas · recorde (ou pontos) · 100K+
+   ============================================================= */
+@media (max-width: 560px) {
+  #tabela table, #tabela tbody { display: block; min-width: 0; font-size: 14px; }
+  #tabela thead { display: none; }
+  #tabela tr {
+    display: grid; grid-template-columns: 28px 34px minmax(0, 1fr) auto; grid-template-areas: "pos av nome val" "pos av chips chips" "pos est est est";
+    align-items: start; column-gap: 10px; padding: 12px 14px; border-top: 1px solid #22170F;
+  }
+  #tabela tbody tr:first-child { border-top: 0; }
+  #tabela td, #tabela tr.linha-rei td { padding: 0; border: 0; }
+  #tabela tr.linha-rei { padding-top: 22px; }
+
+  #tabela .pos { grid-area: pos; font-size: 22px; line-height: 34px; }
+  /* nome-cel e nome-linha somem como caixa: avatar, nome e selos se encaixam direto na grade da linha */
+  #tabela td.nome-cel, #tabela .nome-linha { display: contents; }
+  #tabela .nome-linha > :first-child { grid-area: av; width: 34px; height: 34px; }
+  #tabela .nome-linha .link-nome { grid-area: nome; align-self: center; justify-self: start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; line-height: 1.25; text-align: left; }
+  #tabela .nome-chips { grid-area: chips; display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  #tabela .nome-chips:empty { display: none; }
+  #tabela .nome-chips > * { margin: 0; font-size: 10px; padding: 1px 6px; letter-spacing: .5px; }
+  #tabela .nome-chips .rei-tag { letter-spacing: 1px; }
+  #tabela .nome-melhor, #tabela .tag-nick, #tabela .chip-longo { display: none; }
+
+  /* o número do modo escolhido fica grande na direita; o resto desce pra faixa */
+  #tabela .c-cem, #tabela .c-qtd, #tabela .c-rec, #tabela .modo-massa .c-pts { display: none; }
+  #tabela .c-pts, #tabela .modo-massa .c-rec {
+    display: block; grid-area: val; padding-top: 3px; text-align: right; color: var(--texto);
+    font-family: var(--f-titulo); font-size: 28px; font-weight: 600; line-height: .9;
+  }
+  #tabela tr.topo1 .c-pts, #tabela tr.topo1 .c-rec { color: var(--laranja); }
+  #tabela .modo-massa .c-rec { font-size: clamp(20px, 6.6vw, 26px); }
+  #tabela .c-pts::after, #tabela .c-rec::after {
+    content: attr(data-un); display: block; margin-top: 3px;
+    font-family: var(--f-texto); font-size: 10px; font-weight: 600; letter-spacing: 1.5px; line-height: 1; color: var(--texto-3);
+  }
+
+  #tabela .mob-est {
+    grid-area: est; margin-top: 8px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+    border: 1px solid var(--linha); border-radius: 10px; background: rgba(0, 0, 0, .22); overflow: hidden;
+  }
+  #tabela .mob-est > span { display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 0; padding: 4px 4px 3px; border-left: 1px solid var(--linha); }
+  #tabela .mob-est > span:first-child { border-left: 0; }
+  #tabela .mob-est small { font-size: 9px; font-weight: 600; letter-spacing: 1.2px; color: var(--texto-3); white-space: nowrap; }
+  #tabela .mob-est b { font-family: var(--f-titulo); font-size: 18px; font-weight: 600; line-height: 1; color: var(--texto); font-variant-numeric: tabular-nums; }
+  #tabela .mob-est .tem-cem b { color: var(--laranja); }
+
+  #tabela tr.pulo { display: block; padding: 0; }
+  #tabela tr.pulo td { display: block; height: 22px; line-height: 22px; text-align: center; border-top: 1px dashed var(--linha-forte); }
+  #tabela td.vazio-cel { grid-column: 1 / -1; padding: 28px 16px; }
+
+  .painel-topo h2 { font-size: clamp(22px, 7vw, 26px); white-space: nowrap; }
+  .hero .stat-num { font-size: clamp(20px, 6.4vw, 28px); }
+  .hero .stat { padding: 9px 8px; }
+}

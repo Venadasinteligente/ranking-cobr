@@ -1111,7 +1111,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
           el('div', { class: 'lugar-pos' }, `${i + 1}º LUGAR`, i === 0 ? el('span', { class: 'lugar-rei', text: ' · REI DO CLÃ' }) : null),
           btnPerfil(j, 'lugar-nome', [el('span', { class: 'lugar-tag', text: `[${TAG}] ` }), j.nome]),
           el('div', { class: 'lugar-pat' }, chipPatente(geralPts(j)))),
-        el('div', { class: 'lugar-massa', text: fmt(valor(j)) }),
+        el('div', { class: `lugar-massa ${fmt(valor(j)).length > 7 ? 'num-longo' : ''}`, text: fmt(valor(j)) }),
         el('div', { class: 'lugar-data', text: linha }),
         j.cem ? el('div', { class: 'cem-selo', text: `${j.cem}× ${marcoTxt}` }) : null,
         el('div', { class: 'barra', 'aria-hidden': 'true' }, el('span', { style: `width:${Math.max(4, Math.round(valor(j) / topo * 100))}%` })),
@@ -1132,6 +1132,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     const corpo = $('corpoTabela');
     $('thPontos').classList.toggle('ativo', modo === 'pontos');
     $('thRecorde').classList.toggle('ativo', modo === 'massa');
+    corpo.closest('table').classList.toggle('modo-massa', modo === 'massa');
     $('tabelaMaisBox').hidden = true;
     if (!rank.length) {
       corpo.replaceChildren(el('tr', null, el('td', { colspan: '6', class: 'vazio-cel', text: 'A tabela aparece aqui assim que a primeira massa for registrada.' })));
@@ -1150,14 +1151,21 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
       const novo = new Date(j.melhor.created_at).getTime() > doisDias;
       const pulo = cortar && i === iEu && i > TABELA_TOPO
         ? el('tr', { class: 'pulo', 'aria-hidden': 'true' }, el('td', { colspan: '6', text: '⋯' })) : null;
+      // no celular a linha vira cartão: os números que não cabem na coluna descem pra faixa .mob-est
+      const est = (rot, val, cls) => el('span', { class: cls || null }, el('small', { text: rot }), el('b', { text: val }));
       return [pulo, el('tr', { class: [i === 0 ? 'topo1' : '', j.chave === eu ? 'eu-linha' : '', patenteDe(geralPts(j)).atual.diamante ? 'linha-dia' : '', ehRei(j.chave) ? 'linha-rei' : ''].join(' ').trim() || null },
         el('td', { class: `pos p${i + 1}`, text: `#${i + 1}` }),
-        el('td', { class: 'nome-cel' }, el('div', { class: 'nome-linha' }, avatarDe(j.nome, geralPts(j), 'av-p'), btnPerfil(j, 'link-nome forte', [el('span', { class: 'tag-nick', text: `[${TAG}] ` }), j.nome]), chipPatente(geralPts(j)), chipRei(j.chave), chipTitulos(ctx.titulos.get(j.chave)), ...chipTorneios(j.chave, true), novo ? el('span', { class: 'chip', title: 'Recorde novo nas últimas 24 horas' }, '▲', el('span', { class: 'chip-longo', text: ' RECORDE NOVO' })) : null),
+        el('td', { class: 'nome-cel' }, el('div', { class: 'nome-linha' }, avatarDe(j.nome, geralPts(j), 'av-p'), btnPerfil(j, 'link-nome forte', [el('span', { class: 'tag-nick', text: `[${TAG}] ` }), j.nome]),
+          el('span', { class: 'nome-chips' }, chipPatente(geralPts(j)), chipRei(j.chave), chipTitulos(ctx.titulos.get(j.chave)), ...chipTorneios(j.chave, true), novo ? el('span', { class: 'chip', title: 'Recorde novo nas últimas 24 horas' }, '▲', el('span', { class: 'chip-longo', text: ' RECORDE NOVO' })) : null)),
           el('div', { class: 'nome-melhor' }, 'melhor: ', b(ptsTxt(pontosDe(j.melhor.mass))), ` · ${fmt(j.melhor.mass)} massa`)),
-        el('td', { class: `dir ${modo === 'pontos' ? 'num' : 'sec'}`, text: fmt(j.pontos) }),
-        el('td', { class: 'dir' }, j.cem ? el('span', { class: 'cem-chip', text: `${j.cem}×` }) : el('span', { class: 'sec', text: '—' })),
-        el('td', { class: `dir ${modo === 'massa' ? 'num' : 'sec'}`, text: fmt(j.melhor.mass) }),
-        el('td', { class: 'dir sec', text: fmt(j.qtd) }))];
+        el('td', { class: `dir c-pts ${modo === 'pontos' ? 'num' : 'sec'}`, 'data-un': 'PTS', text: fmt(j.pontos) }),
+        el('td', { class: 'dir c-cem' }, j.cem ? el('span', { class: 'cem-chip', text: `${j.cem}×` }) : el('span', { class: 'sec', text: '—' })),
+        el('td', { class: `dir c-rec ${modo === 'massa' ? 'num' : 'sec'}`, 'data-un': 'MASSA', text: fmt(j.melhor.mass) }),
+        el('td', { class: 'dir sec c-qtd', text: fmt(j.qtd) }),
+        el('td', { class: 'mob-est', 'aria-hidden': 'true' },
+          est('PARTIDAS', fmt(j.qtd)),
+          modo === 'pontos' ? est('RECORDE', fmt(j.melhor.mass)) : est('PONTOS', fmt(j.pontos)),
+          est(marcoTxt, j.cem ? `${j.cem}×` : '—', j.cem ? 'tem-cem' : null)))];
     }));
   }
 
