@@ -6449,7 +6449,8 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     if (chatVisivel() && chat.canal === m.canal) desenharFixadaChat();
     atualizarBadgesChat();
   }
-  function sumiuMsg(id) {
+  // redesenhar false: quem chamou redesenha uma vez só no fim (limpeza de muitas)
+  function sumiuMsg(id, redesenhar = true) {
     const m = chat.porId.get(id);
     if (!m) return;
     chat.porId.delete(id); chat.reac.delete(id); chat.bonde.delete(id);
@@ -6457,6 +6458,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     // quem respondeu fica só sem a citação (o banco faz o mesmo)
     for (const x of chat.msgs[m.canal]) if (x.resp === id) x.resp = null;
     if ((chat.resp && chat.resp.id === id) || (chat.editando && chat.editando.id === id)) cancelarRespChat();
+    if (!redesenhar) return;
     if (chatVisivel() && chat.canal === m.canal) { desenharMsgsChat(false); desenharFixadaChat(); }
     atualizarBadgesChat();
   }
@@ -7467,17 +7469,18 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   }
   let abaMod = 'denuncias';
   async function abrirModeracao(aba = abaMod) {
-    abaMod = aba === 'equipe' && !donoChat() ? 'denuncias' : aba;
+    const soDono = (x) => x === 'equipe' || x === 'limpar';
+    abaMod = soDono(aba) && !donoChat() ? 'denuncias' : aba;
     document.querySelectorAll('[data-mod]').forEach((b) => {
       b.setAttribute('aria-selected', String(b.dataset.mod === abaMod));
-      if (b.dataset.mod === 'equipe') b.hidden = !donoChat();
+      if (soDono(b.dataset.mod)) b.hidden = !donoChat();
     });
     const dlg = $('dlgModeracao');
     if (!dlg.open) { trocar($('modCorpo'), el('p', { class: 'mod-sub', text: 'Carregando…' })); dlg.showModal(); }
     let d, equipe = null;
     try {
       d = await chatRpc('chat_moderacao', {});
-      if (abaMod === 'equipe') equipe = await chatRpc('dono_equipe', {});
+      if (soDono(abaMod)) equipe = await chatRpc('dono_equipe', {});
     } catch (e) { erroChat(e); return; }
     chat.denuncias = new Set(d.denuncias.map((x) => x.msg_id)).size;
     desenharTopoChat();
@@ -7488,6 +7491,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     if (abaMod === 'denuncias') corpo = d.denuncias.length ? d.denuncias.map(itemDenuncia) : [vazio('Nenhuma denúncia aberta.')];
     else if (abaMod === 'punidos') corpo = d.punidos.length ? d.punidos.map(itemPunido) : [vazio('Ninguém punido agora.')];
     else if (abaMod === 'canais') corpo = painelCanais(d);
+    else if (abaMod === 'limpar') corpo = [painelLimpeza(equipe || []), painelFaxina(d.faxina)];
     else if (abaMod === 'equipe') corpo = painelEquipe(equipe || []);
     else corpo = d.historico.length ? [el('ul', { class: 'mod-hist' }, ...d.historico.map(itemHistorico))] : [vazio('Nada feito ainda.')];
     trocar($('modCorpo'), corpo);
@@ -7566,7 +7570,6 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
             toast(`Lista salva: ${n} ${n === 1 ? 'palavra' : 'palavras'}.`);
           } catch (e) { erroChat(e); }
         } }))),
-      donoChat() ? painelFaxina(d.faxina) : null,
     ];
   }
   // só o Dono: desliga #bonde, #recordes ou #avisos pra todo mundo, ou liga de volta (o #geral fica sempre)
@@ -7587,26 +7590,134 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
           } }, el('i'), ligado ? 'Ligado' : 'Desligado')));
     });
   }
-  // só o Dono: quanto a faxina vai levar, e o botão pra fazer na hora
+  const qtdTxt = (n, um, varios) => `${fmt(n)} ${n === 1 ? um : varios}`;
+  const vidaTxt = (n) => (n ? `${n} ${n === 1 ? 'dia' : 'dias'}` : 'nunca');
+  // só o Dono: apaga o que ele escolher (canais, tipos, de quem e de quando), vendo antes quanto vai sumir
+  const TIPOS_LIMPEZA = [['msg', 'Textos'], ['foto', 'Fotos'], ['audio', 'Áudios'], ['bonde', 'Bondes'], ['massa', 'Massas']];
+  const IDADES_LIMPEZA = [[null, 'Qualquer data'], [-24, 'Só das últimas 24 h'], [24, '+1 dia'], [72, '+3 dias'], [168, '+7 dias'], [720, '+30 dias']];
+  const limpeza = { canais: null, tipos: new Set(TIPOS_LIMPEZA.map(([v]) => v)), user: '', idade: null, fixadas: false, vez: 0 };
+  function painelLimpeza(contas) {
+    const canais = todosCanais();
+    // começa com todos menos o #avisos
+    if (!limpeza.canais) limpeza.canais = new Set(canais.filter((c) => c.id !== 'avisos').map((c) => c.id));
+    for (const id of [...limpeza.canais]) if (!canais.some((c) => c.id === id)) limpeza.canais.delete(id);
+    if (limpeza.user && !contas.some((x) => x.user_id === limpeza.user)) limpeza.user = '';
+    const nomeConta = (x) => nickDoPlayer(x.player_id, x.nome);
+    const filtro = () => ({ p_canais: [...limpeza.canais], p_tipos: [...limpeza.tipos], p_user: limpeza.user || null, p_idade: limpeza.idade, p_fixadas: limpeza.fixadas });
+    const fx = el('div', { class: 'mod-fx mod-fx-3' });
+    const bt = el('button', { type: 'button', class: 'btn btn-perigo', text: 'Apagar', disabled: true });
+    let prev = null;
+    const num = (n, rot) => el('div', { class: 'mod-fx-num' }, el('b', { text: fmt(n) }), el('span', { text: rot }));
+    const mostrar = (r) => {
+      prev = r;
+      trocar(fx, num(r.msgs, r.msgs === 1 ? 'mensagem' : 'mensagens'), num(r.fotos, r.fotos === 1 ? 'foto' : 'fotos'), num(r.audios, r.audios === 1 ? 'áudio' : 'áudios'));
+      bt.textContent = r.msgs ? `Apagar ${qtdTxt(r.msgs, 'mensagem', 'mensagens')}` : 'Nada pra apagar';
+      bt.disabled = !r.msgs;
+    };
+    // a prévia: o banco conta o que esse filtro pega (só vale a resposta do último pedido)
+    async function contar() {
+      const vez = ++limpeza.vez;
+      prev = null; bt.disabled = true;
+      if (!limpeza.canais.size || !limpeza.tipos.size) { mostrar({ msgs: 0, fotos: 0, audios: 0 }); return; }
+      try {
+        const r = await chatRpc('dono_limpeza', { ...filtro(), p_apagar: false });
+        if (vez === limpeza.vez) mostrar(r);
+      } catch (e) { if (vez === limpeza.vez) { trocar(fx, el('span', { class: 'mod-sub', text: 'Não deu pra contar agora.' })); erroChat(e); } }
+    }
+    const marcas = [];
+    const mudou = () => { marcas.forEach((f) => f()); contar(); };
+    const opc = (role, ligado, txt, fn) => {
+      const b = el('button', { type: 'button', class: 'aba', role, text: txt, onclick: () => { fn(); mudou(); } });
+      const f = () => b.setAttribute('aria-checked', String(ligado()));
+      marcas.push(f); f();
+      return b;
+    };
+    const alternar = (set, v) => (set.has(v) ? set.delete(v) : set.add(v));
+    const grupo = (rot, role, ...filhos) => el('div', { class: 'abas mod-lento', role: role === 'radio' ? 'radiogroup' : 'group', 'aria-label': rot }, ...filhos);
+    const todos = () => canais.every((c) => limpeza.canais.has(c.id));
+    const quem = el('select', { 'aria-label': 'De quem', onchange: (e) => { limpeza.user = e.target.value; contar(); } },
+      el('option', { value: '', text: 'Todo mundo' }),
+      ...[...contas].sort((a, b) => nomeConta(a).localeCompare(nomeConta(b), 'pt-BR')).map((x) => el('option', { value: x.user_id, text: nomeConta(x) })));
+    quem.value = limpeza.user;
+    const fixadas = el('input', { type: 'checkbox', onchange: (e) => { limpeza.fixadas = e.target.checked; contar(); } });
+    fixadas.checked = limpeza.fixadas;
+
+    bt.addEventListener('click', () => {
+      const r = prev;
+      if (!r || !r.msgs) return;
+      const onde = todos() ? 'todos os canais' : canais.filter((c) => limpeza.canais.has(c.id)).map((c) => `#${c.nome}`).join(', ');
+      const conta = limpeza.user && contas.find((x) => x.user_id === limpeza.user);
+      const arq = [r.fotos ? qtdTxt(r.fotos, 'foto', 'fotos') : '', r.audios ? qtdTxt(r.audios, 'áudio', 'áudios') : ''].filter(Boolean).join(' e ');
+      confirmar('APAGAR DO CHAT?',
+        `Somem ${qtdTxt(r.msgs, 'mensagem', 'mensagens')}${arq ? ` (com ${arq})` : ''}${conta ? ` de ${nomeConta(conta)}` : ''} em ${onde}. Não dá pra desfazer.`,
+        'Apagar', async () => {
+          bt.disabled = true;
+          try {
+            const x = await chatRpc('dono_limpeza', { ...filtro(), p_apagar: true });
+            const arqs = x.arquivos || [];
+            for (let i = 0; i < arqs.length; i += 100) apagarFotos(arqs.slice(i, i + 100));
+            for (const id of x.ids || []) sumiuMsg(id, false);
+            if (chatVisivel()) { desenharMsgsChat(false); desenharFixadaChat(); }
+            atualizarBadgesChat();
+            toast(x.msgs ? `Pronto: ${qtdTxt(x.msgs, 'mensagem apagada', 'mensagens apagadas')}.` : 'Nada pra apagar.');
+          } catch (e) { erroChat(e); }
+          abrirModeracao('limpar');
+        });
+    });
+
+    const caixa = el('div', { class: 'mod-item' },
+      el('div', { class: 'mod-cab' }, svg(ICONE_LIXO, 16), el('b', { text: 'Limpar o chat' }), el('span', { class: 'mod-sub', text: 'escolha o que some' })),
+      el('div', { class: 'mod-rot', text: 'CANAIS' }),
+      grupo('Canais', 'checkbox',
+        opc('checkbox', todos, 'Todos', () => { limpeza.canais = new Set(todos() ? [] : canais.map((c) => c.id)); }),
+        ...canais.map((c) => opc('checkbox', () => limpeza.canais.has(c.id), `#${c.nome}`, () => alternar(limpeza.canais, c.id)))),
+      el('div', { class: 'mod-rot', text: 'O QUE' }),
+      grupo('O que', 'checkbox', ...TIPOS_LIMPEZA.map(([v, t]) => opc('checkbox', () => limpeza.tipos.has(v), t, () => alternar(limpeza.tipos, v)))),
+      el('div', { class: 'mod-rot', text: 'DE QUEM' }),
+      quem,
+      el('div', { class: 'mod-rot', text: 'DE QUANDO' }),
+      grupo('De quando', 'radio', ...IDADES_LIMPEZA.map(([v, t]) => opc('radio', () => limpeza.idade === v, t, () => { limpeza.idade = v; }))),
+      el('label', { class: 'ch-check' }, fixadas, 'Apagar as fixadas também'),
+      fx,
+      el('div', { class: 'linha-btns' }, bt));
+    contar();
+    return caixa;
+  }
+  // só o Dono: quantos dias cada coisa dura na faxina automática, e o botão pra fazer na hora
+  const DIAS_FOTO = [[7, '7 dias'], [15, '15 dias'], [30, '30 dias'], [null, 'Nunca']];
+  const DIAS_MSG = [[7, '7 dias'], [30, '30 dias'], [90, '90 dias'], [null, 'Nunca']];
   function painelFaxina(fx) {
     const f = fx || { fotos: 0, msgs: 0 };
+    // (antes do SQL novo o banco não manda os dias: era 30 e 90)
+    const dFoto = 'dias_foto' in f ? f.dias_foto : 30, dMsg = 'dias_msg' in f ? f.dias_msg : 90;
+    const vidaFoto = dFoto && dMsg ? Math.min(dFoto, dMsg) : dFoto || dMsg;
+    const salvar = async (foto, msg) => {
+      try { await chatRpc('dono_faxina_cfg', { p_dias_foto: foto, p_dias_msg: msg }); toast('Faxina automática salva.'); } catch (e) { erroChat(e); }
+      abrirModeracao('limpar');
+    };
+    const opcoes = (rot, lista, atual, fn) => el('div', { class: 'abas mod-lento', role: 'radiogroup', 'aria-label': rot },
+      ...lista.map(([v, t]) => el('button', { type: 'button', class: 'aba', role: 'radio', 'aria-checked': String(atual === v), onclick: () => { if (atual !== v) fn(v); }, text: t })));
     const num = (n, um, varios, rot) => el('div', { class: 'mod-fx-num' }, el('b', { text: fmt(n) }), el('span', { text: `${n === 1 ? um : varios} ${rot}` }));
-    const bt = el('button', { type: 'button', class: 'btn btn-perigo', text: 'Limpar agora', disabled: !fx });
-    bt.addEventListener('click', () => confirmar('LIMPAR O CHAT AGORA?',
-      `Some ${f.fotos === 1 ? '1 foto ou áudio' : `${fmt(f.fotos)} fotos e áudios`} com mais de 30 dias e ${f.msgs === 1 ? '1 mensagem' : `${fmt(f.msgs)} mensagens`} com mais de 90. #${nomeCanal('avisos')} e fixadas ficam. Não dá pra desfazer.`,
+    const bt = el('button', { type: 'button', class: 'btn btn-sec', text: 'Faxina agora', disabled: !fx });
+    bt.addEventListener('click', () => confirmar('FAXINA AGORA?',
+      `Somem ${qtdTxt(f.fotos, 'foto ou áudio', 'fotos e áudios')} e ${qtdTxt(f.msgs, 'mensagem', 'mensagens')} que já venceram. #${nomeCanal('avisos')} e fixadas ficam. Não dá pra desfazer.`,
       'Limpar', async () => {
         bt.disabled = true;
         try {
           const r = await faxinaChat(true);
-          toast(r.fotos || r.msgs ? `Faxina feita: ${r.fotos} ${r.fotos === 1 ? 'foto ou áudio' : 'fotos e áudios'} e ${r.msgs} ${r.msgs === 1 ? 'mensagem' : 'mensagens'}.` : 'Nada pra limpar. Chat em dia!');
+          toast(r.fotos || r.msgs ? `Faxina feita: ${qtdTxt(r.fotos, 'foto ou áudio', 'fotos e áudios')} e ${qtdTxt(r.msgs, 'mensagem', 'mensagens')}.` : 'Nada vencido. Chat em dia!');
         } catch (e) { erroChat(e); }
-        abrirModeracao('canais');
+        abrirModeracao('limpar');
       }));
     return el('div', { class: 'mod-item' },
-      el('div', { class: 'mod-cab' }, svg(ICONE_LIXO, 16), el('b', { text: 'Faxina' }),
-        el('span', { class: 'mod-sub', text: f.ultima ? `última ${haQuanto(f.ultima)}` : 'sozinha quando um ADM abre o chat' })),
-      el('div', { class: 'mod-fx' }, num(f.fotos, 'foto/áudio', 'fotos e áudios', '+30 dias'), num(f.msgs, 'mensagem', 'mensagens', '+90 dias')),
-      el('div', { class: 'mod-sub', text: `#${nomeCanal('avisos')} e fixadas nunca somem` }),
+      el('div', { class: 'mod-cab' }, svg(ICONE_RELOGIO, 16), el('b', { text: 'Faxina automática' }),
+        el('span', { class: 'mod-sub', text: f.ultima ? `última ${haQuanto(f.ultima)}` : 'roda quando um ADM abre o chat' })),
+      el('div', { class: 'mod-rot', text: 'FOTOS E ÁUDIOS SOMEM COM' }),
+      opcoes('Fotos e áudios somem com', DIAS_FOTO, dFoto, (v) => salvar(v, dMsg)),
+      el('div', { class: 'mod-rot', text: 'MENSAGENS SOMEM COM' }),
+      opcoes('Mensagens somem com', DIAS_MSG, dMsg, (v) => salvar(dFoto, v)),
+      el('div', { class: 'mod-fx' }, num(f.fotos, 'foto/áudio', 'fotos e áudios', vidaFoto ? `+${vidaTxt(vidaFoto)}` : ''), num(f.msgs, 'mensagem', 'mensagens', dMsg ? `+${vidaTxt(dMsg)}` : '')),
+      el('div', { class: 'mod-sub', text: `#${nomeCanal('avisos')} e fixadas nunca somem sozinhas` }),
       el('div', { class: 'linha-btns' }, bt));
   }
   // só o Dono: quem é ADM do chat, e expulsar do clã
@@ -7676,6 +7787,8 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       dono_promover: `tornou ${d.quem || '?'} ADM do chat`, dono_rebaixar: `tirou o ADM de ${d.quem || '?'}`,
       dono_expulsar: `expulsou ${d.quem || '?'} do clã`,
       dono_canal: `${d.ligado ? 'ligou' : 'desligou'} o #${nomeCanal(d.canal || 'recordes')}`,
+      dono_limpeza: `limpou o chat: ${qtdTxt(d.msgs || 0, 'mensagem', 'mensagens')}${d.quem ? ` de ${d.quem}` : ''}`,
+      dono_faxina_cfg: `mudou a faxina: fotos e áudios ${vidaTxt(d.dias_foto)}, mensagens ${vidaTxt(d.dias_msg)}`,
     }[h.acao] || 'fez uma alteração';
   }
 
@@ -8399,6 +8512,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   const demoChat = {
     id: 0, denuncias: [], punidos: [], historico: [], adms: new Set(['u-dj1']), palavroes: [], prefs: { mencao: true, resposta: true, aviso: true, bonde: true, tudo: false, mudos: [] },
     canais: [{ id: 'adm', nome: 'adm', emoji: '🛡️', ve: 'adm', fala: 'todos', ordem: 0, criado_por: null }], membros: new Map(), canalN: 0,
+    dias: { dias_foto: 30, dias_msg: 90 },
   };
   function demoChatSemear() {
     limparChat();
@@ -8456,9 +8570,23 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     const nomeDaConta = (u) => (u === 'eu' ? meuNick() : nickDoPlayer(String(u).replace('u-', ''), '?'));
     // as mesmas regras de chat_foto_vencida e chat_msg_vencida
     const velha = (x, dias) => !x.fixada && x.canal !== 'avisos' && Date.now() - Date.parse(x.created_at) > dias * 86400000;
-    const fotoVencida = (x) => (x.tipo === 'foto' || x.tipo === 'audio') && !!(x.dados && x.dados.path) && velha(x, 30);
-    const msgVencida = (x) => !(x.dados && x.dados.path) && velha(x, 90);
+    const { dias_foto: dFoto, dias_msg: dMsg } = demoChat.dias;
+    const vidaFoto = dFoto && dMsg ? Math.min(dFoto, dMsg) : dFoto || dMsg;
+    const fotoVencida = (x) => (x.tipo === 'foto' || x.tipo === 'audio') && !!(x.dados && x.dados.path) && !!vidaFoto && velha(x, vidaFoto);
+    const msgVencida = (x) => !(x.dados && x.dados.path) && !!dMsg && velha(x, dMsg);
+    // as mesmas regras de chat_limpeza_pega
+    const pega = (x) => a.p_canais.includes(x.canal) && a.p_tipos.includes(x.tipo) && (!a.p_user || x.user_id === a.p_user) && (a.p_fixadas || !x.fixada)
+      && (a.p_idade == null || (a.p_idade > 0 ? Date.now() - Date.parse(x.created_at) > a.p_idade * 3600000 : Date.now() - Date.parse(x.created_at) < -a.p_idade * 3600000));
     switch (nome) {
+      case 'dono_faxina_cfg': demoChat.dias = { dias_foto: a.p_dias_foto, dias_msg: a.p_dias_msg }; log('dono_faxina_cfg', demoChat.dias); return null;
+      case 'dono_limpeza': {
+        const l = [...chat.porId.values()].filter(pega);
+        const r = { msgs: l.length, fotos: l.filter((x) => x.tipo === 'foto').length, audios: l.filter((x) => x.tipo === 'audio').length };
+        if (!a.p_apagar) return r;
+        for (const x of l) sumiuMsg(x.id, false);
+        if (r.msgs) log('dono_limpeza', { ...r, quem: a.p_user ? nomeDaConta(a.p_user) : null });
+        return { ...r, arquivos: [], ids: l.map((x) => x.id) };
+      }
       case 'chat_faxina_fotos': return [...chat.porId.values()].filter(fotoVencida).map((x) => x.dados.path);
       case 'chat_faxina': {
         const fotos = [...chat.porId.values()].filter((x) => fotoVencida(x) && a.p_fotos.includes(x.dados.path));
@@ -8507,7 +8635,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
         }
         return { denuncias: [...grupos.values()], punidos: demoChat.punidos.filter((p) => punicao(p.user_id)), historico: demoChat.historico,
           canais: Object.fromEntries([...chat.cfg].map(([k, v]) => [k, v])), palavroes: demoChat.palavroes,
-          faxina: { fotos: [...chat.porId.values()].filter((x) => fotoVencida(x) && !x.apagada).length, msgs: [...chat.porId.values()].filter(msgVencida).length, ultima: demoChat.faxina || null } };
+          faxina: { fotos: [...chat.porId.values()].filter((x) => fotoVencida(x) && !x.apagada).length, msgs: [...chat.porId.values()].filter(msgVencida).length, ultima: demoChat.faxina || null, ...demoChat.dias } };
       }
       case 'dono_equipe': return jogadores.filter((r) => r.ativo && r.id !== 'dj7').map((r) => ({ user_id: u(r.id), player_id: r.id, nome: r.nick, papel: chat.equipe.get(u(r.id)) || 'membro' }));
       case 'dono_promover': if (a.p_adm) { demoChat.adms.add(a.p_user); chat.equipe.set(a.p_user, 'adm'); } else { demoChat.adms.delete(a.p_user); chat.equipe.delete(a.p_user); } log(a.p_adm ? 'dono_promover' : 'dono_rebaixar', { quem: nomeDaConta(a.p_user) }); return 'ok';

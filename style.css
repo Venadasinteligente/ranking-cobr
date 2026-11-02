@@ -2239,6 +2239,8 @@ body[data-pag="chat"] .rodape { display: none; }
 .mod-fx-num { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 10px; background: var(--fundo); border: 1px solid var(--linha); }
 .mod-fx-num b { font-family: var(--f-titulo); font-size: 22px; line-height: 1.1; color: var(--texto); }
 .mod-fx-num span { font-size: 12px; color: var(--texto-3); }
+.mod-fx-3 { grid-template-columns: repeat(3, 1fr); }
+.mod-item select { width: 100%; }
 .av-estado { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 12px 14px; border-radius: 12px; background: var(--painel-2); border: 1px solid var(--linha); font-size: 14px; }
 .av-estado > span:nth-child(2) { flex: 1 1 180px; color: var(--texto-2); }
 .av-estado .ch-bola { width: 10px; height: 10px; border-radius: 50%; background: var(--texto-3); flex: 0 0 auto; }

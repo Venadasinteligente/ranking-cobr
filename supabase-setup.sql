@@ -1590,27 +1590,99 @@ begin
     'faxina', jsonb_build_object(
       'fotos', (select count(*) from chat_mensagens m where chat_foto_vencida(m) and not m.apagada),
       'msgs', (select count(*) from chat_mensagens m where chat_msg_vencida(m)),
-      'ultima', (select max(created_at) from admin_log where acao = 'chat_faxina')));
+      'ultima', (select max(created_at) from admin_log where acao = 'chat_faxina'),
+      'dias_foto', (select dias_foto from chat_faxina_cfg), 'dias_msg', (select dias_msg from chat_faxina_cfg)));
 end;
 $$;
 
--- ---------- faxina: foto e áudio vencem com 30 dias, mensagem com 90. #avisos e fixadas nunca vencem ----------
+-- ---------- faxina: foto e áudio vencem com 30 dias, mensagem com 90 (o Dono muda). #avisos e fixadas nunca vencem ----------
 -- O banco não apaga arquivo do Storage, então são 3 passos, feitos pelo site quando um ADM abre o chat
--- (ou o Dono aperta "Limpar agora"): 1) chat_faxina_fotos() diz quais arquivos venceram,
+-- (ou o Dono aperta "Faxina agora"): 1) chat_faxina_fotos() diz quais arquivos venceram,
 -- 2) o ADM apaga esses arquivos (a regra "dono ou adm apaga foto do chat" deixa),
 -- 3) chat_faxina() marca essas fotos como expiradas e apaga as mensagens vencidas.
+-- dias null = nunca vence
+create table if not exists public.chat_faxina_cfg (
+  id          boolean primary key default true check (id),
+  dias_foto   integer check (dias_foto between 1 and 3650),
+  dias_msg    integer check (dias_msg between 1 and 3650)
+);
+insert into public.chat_faxina_cfg (id, dias_foto, dias_msg) values (true, 30, 90) on conflict (id) do nothing;
+alter table public.chat_faxina_cfg enable row level security;
+revoke all on public.chat_faxina_cfg from anon, authenticated;
+-- (a foto vence junto com a mensagem, se a mensagem vencer antes)
 create or replace function public.chat_foto_vencida(m public.chat_mensagens)
 returns boolean
 language sql stable set search_path = public
 as $$
-  select m.tipo in ('foto', 'audio') and m.dados ? 'path' and not m.fixada and m.canal <> 'avisos' and m.created_at < now() - interval '30 days';
+  select m.tipo in ('foto', 'audio') and m.dados ? 'path' and not m.fixada and m.canal <> 'avisos'
+     and m.created_at < now() - make_interval(days => (select least(dias_foto, dias_msg) from chat_faxina_cfg));
 $$;
 -- (foto que ainda tem arquivo fica até o arquivo sair, pra nunca sobrar arquivo perdido no Storage)
 create or replace function public.chat_msg_vencida(m public.chat_mensagens)
 returns boolean
 language sql stable set search_path = public
 as $$
-  select not m.fixada and m.canal <> 'avisos' and not m.dados ? 'path' and m.created_at < now() - interval '90 days';
+  select not m.fixada and m.canal <> 'avisos' and not m.dados ? 'path'
+     and m.created_at < now() - make_interval(days => (select dias_msg from chat_faxina_cfg));
+$$;
+
+-- só o Dono: quantos dias a foto/áudio e a mensagem duram (null = nunca somem)
+create or replace function public.dono_faxina_cfg(p_dias_foto integer, p_dias_msg integer)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  perform exigir_admin('dono_faxina_cfg', jsonb_build_object('dias_foto', p_dias_foto, 'dias_msg', p_dias_msg));
+  insert into chat_faxina_cfg (id, dias_foto, dias_msg) values (true, p_dias_foto, p_dias_msg)
+  on conflict (id) do update set dias_foto = excluded.dias_foto, dias_msg = excluded.dias_msg;
+end;
+$$;
+
+-- ---------- limpeza do Dono: ele escolhe os canais, os tipos, de quem e de quando ----------
+-- p_tipos: msg | foto | audio | bonde | massa. p_user null = de todo mundo.
+-- p_idade em horas: null = qualquer data; > 0 = mais velhas que isso; < 0 = só as das últimas -p_idade horas
+create or replace function public.chat_limpeza_pega(m public.chat_mensagens, p_canais text[], p_tipos text[], p_user uuid, p_idade integer, p_fixadas boolean)
+returns boolean
+language sql stable set search_path = public
+as $$
+  select m.canal = any(p_canais) and m.tipo = any(p_tipos)
+     and (p_user is null or m.user_id = p_user)
+     and (p_fixadas or not m.fixada)
+     and (p_idade is null
+          or (p_idade > 0 and m.created_at < now() - make_interval(hours => p_idade))
+          or (p_idade < 0 and m.created_at > now() - make_interval(hours => -p_idade)));
+$$;
+
+-- p_apagar false = só conta (a prévia do painel). true = apaga de vez e devolve
+-- { msgs, fotos, audios, arquivos, ids }: arquivos pro site tirar do Storage, ids pro site tirar da tela
+create or replace function public.dono_limpeza(p_canais text[], p_tipos text[], p_user uuid default null, p_idade integer default null,
+                                               p_fixadas boolean default false, p_apagar boolean default false)
+returns jsonb
+language plpgsql security definer set search_path = public
+as $$
+declare v jsonb;
+begin
+  if not is_admin() then raise exception 'acesso negado' using errcode = '42501'; end if;
+  if not p_apagar then
+    select jsonb_build_object('msgs', count(*), 'fotos', count(*) filter (where tipo = 'foto'), 'audios', count(*) filter (where tipo = 'audio'))
+    into v from chat_mensagens m where chat_limpeza_pega(m, p_canais, p_tipos, p_user, p_idade, p_fixadas);
+    return v;
+  end if;
+  with d as (
+    delete from chat_mensagens m where chat_limpeza_pega(m, p_canais, p_tipos, p_user, p_idade, p_fixadas)
+    returning m.id, m.tipo, m.dados)
+  select jsonb_build_object('msgs', count(*), 'fotos', count(*) filter (where tipo = 'foto'), 'audios', count(*) filter (where tipo = 'audio'),
+           'arquivos', coalesce(jsonb_agg(dados ->> 'path') filter (where tipo in ('foto', 'audio') and dados ? 'path'), '[]'::jsonb),
+           'ids', coalesce(jsonb_agg(id), '[]'::jsonb))
+  into v from d;
+  if (v ->> 'msgs')::integer > 0 then
+    insert into admin_log (user_id, email, acao, detalhe)
+    values (auth.uid(), auth.jwt() ->> 'email', 'dono_limpeza', jsonb_build_object(
+      'msgs', v -> 'msgs', 'fotos', v -> 'fotos', 'audios', v -> 'audios', 'canais', to_jsonb(p_canais), 'tipos', to_jsonb(p_tipos),
+      'quem', case when p_user is not null then chat_nome(p_user) end, 'idade', p_idade));
+  end if;
+  return v;
+end;
 $$;
 
 -- arquivos de foto vencidos (inclui foto apagada cujo arquivo pode ter ficado), de 200 em 200
@@ -1941,6 +2013,7 @@ revoke all on function public.chat_filtrar(text) from public, anon, authenticate
 revoke all on function public.chat_protegido(uuid) from public, anon, authenticated;
 revoke all on function public.chat_foto_vencida(public.chat_mensagens) from public, anon, authenticated;
 revoke all on function public.chat_msg_vencida(public.chat_mensagens) from public, anon, authenticated;
+revoke all on function public.chat_limpeza_pega(public.chat_mensagens, text[], text[], uuid, integer, boolean) from public, anon, authenticated;
 revoke all on function public.chat_ve_canal_de(uuid, text) from public, anon, authenticated;
 do $$
 declare f text;
@@ -1954,6 +2027,7 @@ begin
     'chat_faxina_fotos()', 'chat_faxina(text[], boolean)',
     'chat_salvar_canal(text, text, text, text, text, uuid[])', 'chat_apagar_canal(text)', 'chat_contas()',
     'dono_equipe()', 'dono_promover(uuid, boolean)', 'dono_expulsar(uuid)', 'dono_canal(text, boolean)',
+    'dono_faxina_cfg(integer, integer)', 'dono_limpeza(text[], text[], uuid, integer, boolean, boolean)',
     'push_chave()', 'push_inscrever(text, text, text)', 'push_sair(text)', 'push_eu(text)', 'push_salvar_prefs(boolean, boolean, boolean, boolean, boolean, text[])'] loop
     execute format('revoke all on function public.%s from public, anon', f);
     execute format('grant execute on function public.%s to authenticated', f);
