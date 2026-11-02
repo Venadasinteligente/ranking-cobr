@@ -584,6 +584,7 @@ textarea::placeholder { color: #7D6F63; }
 .jog-barra select { flex: 0 1 220px; width: auto; }
 .jog-baixar { display: flex; align-items: center; gap: 12px; margin-left: auto; }
 .jog-baixar .link-btn { font-size: 13px; white-space: nowrap; }
+#fOrdJog { display: none; } /* só no celular, onde o cabeçalho da tabela some */
 .jog-nota { margin: 0; padding: 12px 22px 16px; font-size: 12px; color: var(--texto-3); border-top: 1px solid var(--linha); }
 
 /* tabela */
@@ -749,14 +750,6 @@ button, a, summary { touch-action: manipulation; }
   .stat-num { font-size: 30px; }
   .stat-sub { font-size: 11px; }
   .jog-numeros { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-
-  /* destaques viram carrossel de arrastar */
-  .destaques {
-    grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 86%;
-    overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 16px; scrollbar-width: none; padding-bottom: 4px;
-  }
-  .destaques::-webkit-scrollbar { display: none; }
-  .dq { scroll-snap-align: start; }
 
   /* tabela de jogadores: o nome fica parado enquanto arrasta pro lado */
   .dica-arrastar { display: block; }
@@ -3078,4 +3071,88 @@ button.pd-membro:hover { border-color: var(--linha-forte); }
   .painel-topo h2 { font-size: clamp(22px, 7vw, 26px); white-space: nowrap; }
   .hero .stat-num { font-size: clamp(20px, 6.4vw, 28px); }
   .hero .stat { padding: 9px 8px; }
+}
+
+/* =============================================================
+   TABELA DE JOGADORES NO CELULAR: cada linha vira um cartão, nada de arrastar pro lado
+   Resumo:          #pos | avatar, nome            | pontos
+                         |   cargo · patente       | última
+                         | partidas · recorde · média · 100K+
+   Por semana/mês:  #pos | avatar, nome            | total
+                         | uma caixinha por semana (ou mês)
+   ============================================================= */
+@media (max-width: 560px) {
+  #jogadores .dica-arrastar { display: none; }
+  #jogadores .tabela-box { overflow: visible; }
+  .jog-barra select { flex: 1 1 120px; min-width: 0; }
+  #fOrdJog { display: block; }
+
+  .tab-jog, .tab-jog tbody { display: block; min-width: 0; font-size: 14px; }
+  .tab-jog thead { display: none; }
+  .tab-jog tr { display: grid; align-items: center; padding: 12px 14px; border-top: 1px solid #22170F; }
+  .tab-jog tbody tr:first-child { border-top: 0; }
+  #jogadores .tab-jog td { padding: 0; border: 0; }
+  #jogadores .tab-jog td.nome-cel { position: static; background: none; box-shadow: none; min-width: 0; }
+  .tab-jog .pos { align-self: start; font-size: 22px; line-height: 34px; }
+  .tab-jog .nome-linha { flex-wrap: nowrap; gap: 10px; min-width: 0; }
+  .tab-jog .nome-linha > :first-child { width: 34px; height: 34px; flex: none; }
+  .tab-jog .nome-linha .link-nome { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 16px; }
+  .tab-jog .nome-linha .ex-chip { flex: none; font-size: 9px; padding: 1px 5px; }
+  .tab-jog td.vazio-cel { grid-column: 1 / -1; padding: 28px 16px; }
+
+  /* o número grande na direita, com a unidade embaixo */
+  .tab-jog .c-pts { align-self: start; padding-top: 3px; text-align: right; font-size: 28px; line-height: .9; }
+  .tab-jog .pos.p1 ~ .c-pts { color: var(--laranja); }
+  .tab-jog .c-pts::after {
+    content: attr(data-un); display: block; margin-top: 3px;
+    font-family: var(--f-texto); font-size: 10px; font-weight: 600; letter-spacing: 1.5px; line-height: 1; color: var(--texto-3);
+  }
+
+  /* --- resumo --- */
+  .tab-jog.v-resumo tr {
+    grid-template-columns: 38px 44px auto minmax(0, 1fr) auto;
+    grid-template-areas: "pos nome nome nome val" "pos . cargo pat ult" "pos est est est est";
+  }
+  .tab-jog.v-resumo.com-ed tr {
+    grid-template-columns: 38px 44px auto minmax(0, 1fr) auto auto;
+    grid-template-areas: "pos nome nome nome val ed" "pos . cargo pat ult ed" "pos est est est est est";
+  }
+  .tab-jog.v-resumo .pos { grid-area: pos; }
+  .tab-jog.v-resumo .nome-cel { grid-area: nome; }
+  .tab-jog.v-resumo .c-pts { grid-area: val; margin-left: 10px; }
+  .tab-jog.v-resumo .c-cargo { grid-area: cargo; margin: 6px 6px 0 0; }
+  .tab-jog.v-resumo .c-cargo.sem { display: none; }
+  .tab-jog.v-resumo .c-pat { grid-area: pat; justify-self: start; min-width: 0; margin-top: 6px; }
+  .tab-jog.v-resumo .c-cargo .cargo, .tab-jog.v-resumo .c-pat > * { font-size: 10px; padding: 1px 6px; letter-spacing: .5px; }
+  .tab-jog.v-resumo .c-ult { grid-area: ult; margin: 6px 0 0 10px; text-align: right; font-size: 11px; }
+  .tab-jog.v-resumo .c-ed { grid-area: ed; margin-left: 4px; }
+  .tab-jog.v-resumo .c-qtd, .tab-jog.v-resumo .c-rec, .tab-jog.v-resumo .c-med, .tab-jog.v-resumo .c-cem { display: none; }
+
+  .tab-jog .mob-est {
+    grid-area: est; margin-top: 8px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+    border: 1px solid var(--linha); border-radius: 10px; background: rgba(0, 0, 0, .22); overflow: hidden;
+  }
+  .tab-jog .mob-est > span { display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 0; padding: 4px 2px 3px; border-left: 1px solid var(--linha); }
+  .tab-jog .mob-est > span:first-child { border-left: 0; }
+  .tab-jog .mob-est small { font-size: 9px; font-weight: 600; letter-spacing: 1px; color: var(--texto-3); white-space: nowrap; }
+  .tab-jog .mob-est b { font-family: var(--f-titulo); font-size: 18px; font-weight: 600; line-height: 1; color: var(--texto); font-variant-numeric: tabular-nums; }
+  .tab-jog .mob-est .tem-cem b { color: var(--laranja); }
+
+  /* --- por semana / por mês: as colunas viram uma grade de caixinhas embaixo do nome --- */
+  .tab-jog.v-semanas tr, .tab-jog.v-meses tr { column-gap: 6px; row-gap: 6px; grid-template-columns: 32px repeat(4, minmax(0, 1fr)); }
+  .tab-jog.v-meses tr { grid-template-columns: 32px repeat(3, minmax(0, 1fr)); }
+  .tab-jog.v-semanas .pos, .tab-jog.v-meses .pos { grid-column: 1; grid-row: span 3; }
+  .tab-jog.v-semanas .nome-cel { grid-column: 2 / span 3; }
+  .tab-jog.v-meses .nome-cel { grid-column: 2 / span 2; }
+  .tab-jog.v-semanas .c-pts, .tab-jog.v-meses .c-pts { margin-bottom: 2px; }
+  .tab-jog.v-semanas .c-ed, .tab-jog.v-meses .c-ed { display: none; }
+  #jogadores .tab-jog .cel-per {
+    display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; min-width: 0; padding: 4px 2px 5px;
+    border: 1px solid var(--linha); border-radius: 8px; background: rgba(0, 0, 0, .22); text-align: center; line-height: 1;
+  }
+  .tab-jog .cel-per::before { content: attr(data-rot); flex-basis: 100%; margin-bottom: 4px; font-size: 9px; font-weight: 600; letter-spacing: 1px; color: var(--texto-3); }
+  .tab-jog .cel-per b { font-size: 18px; }
+  .tab-jog .cel-per small { margin-left: 3px; font-size: 10px; }
+  .tab-jog .cel-per.melhor-col { border-color: color-mix(in srgb, var(--laranja) 45%, transparent); }
+  .jog-nota { text-align: center; }
 }

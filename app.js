@@ -678,6 +678,11 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   }
 
   function cabecalho(colunas) {
+    // no celular o cabeçalho some (cada linha vira cartão): a ordem vem deste seletor
+    const ords = colunas.filter((c) => c.ord), sel = $('fOrdJog');
+    sel.replaceChildren(...ords.map((c) => el('option', { value: c.id, text: `⇅ ${/^c\d+$/.test(c.id) ? c.titulo : /\d/.test(c.rot) ? c.rot : c.rot[0] + c.rot.slice(1).toLowerCase()}` })));
+    sel.value = ordJog.campo;
+    sel.onchange = () => { const c = ords.find((x) => x.id === sel.value); ordJog = { campo: c.id, desc: !c.texto }; renderJogadores(); };
     $('cabJog').replaceChildren(el('tr', null, ...colunas.map((c) => {
       if (!c.ord) return el('th', { class: c.dir ? 'dir' : null, text: c.rot });
       const ativo = ordJog.campo === c.id;
@@ -708,7 +713,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   }
   function celEditar(r) {
     if (!admin) return null;
-    return el('td', { class: 'dir' }, r.id
+    return el('td', { class: 'dir c-ed' }, r.id
       ? el('button', { type: 'button', class: 'editar', 'aria-label': `Editar ${r.nick}`, onclick: () => abrirEditar(r) }, svg(ICONE_LAPIS, 18))
       : null);
   }
@@ -719,6 +724,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     document.querySelectorAll('.aba[data-vista]').forEach((x) => x.setAttribute('aria-selected', String(x.dataset.vista === vistaJog)));
     document.querySelectorAll('.aba[data-perjog]').forEach((x) => x.setAttribute('aria-selected', String(x.dataset.perjog === perJog)));
     $('abasPerJog').hidden = vistaJog !== 'resumo';
+    $('cabJog').closest('table').className = `tab-jog v-${vistaJog} ${admin ? 'com-ed' : ''}`;
 
     // números do período
     const doPer = new Map(montarRanking(perJog, 'pontos', true).map((j) => [j.chave, j]));
@@ -770,17 +776,24 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     if (!linhas.length) {
       corpo.replaceChildren(el('tr', null, el('td', { colspan: String(colunas.length), class: 'vazio-cel', text: msgVazio() })));
     } else {
+      // no celular a linha vira cartão: partidas, recorde, média e 100K+ descem pra faixa .mob-est
+      const est = (rot, val, cls) => el('span', { class: cls || null }, el('small', { text: rot }), el('b', { text: val }));
       corpo.replaceChildren(...linhas.map((l, i) => el('tr', { class: l.r.ativo ? null : 'ex' },
         el('td', { class: `pos p${l.qtd ? i + 1 : 0}`, text: `#${i + 1}` }),
         celNome(l.r, l.ptsGeral),
-        el('td', null, chipCargo(l.r) || el('span', { class: 'sec', text: '—' })),
-        el('td', null, chipPatente(l.ptsGeral)),
-        el('td', { class: 'dir num', text: fmt(l.pontos) }),
-        el('td', { class: 'dir', text: l.qtd ? fmt(l.qtd) : '—' }),
-        el('td', { class: 'dir', text: l.qtd ? fmt(l.recorde) : '—' }),
-        el('td', { class: 'dir sec', text: l.qtd ? fmt(l.media) : '—' }),
-        el('td', { class: 'dir' }, l.cem ? el('span', { class: 'cem-chip', text: `${l.cem}×` }) : el('span', { class: 'sec', text: '—' })),
-        el('td', { class: 'dir sec nowrap', text: l.ultima ? diaTxt(l.ultima) : 'nunca' }),
+        el('td', { class: `c-cargo ${l.r.cargo ? '' : 'sem'}` }, chipCargo(l.r) || el('span', { class: 'sec', text: '—' })),
+        el('td', { class: 'c-pat' }, chipPatente(l.ptsGeral)),
+        el('td', { class: 'dir num c-pts', 'data-un': 'PTS', text: fmt(l.pontos) }),
+        el('td', { class: 'dir c-qtd', text: l.qtd ? fmt(l.qtd) : '—' }),
+        el('td', { class: 'dir c-rec', text: l.qtd ? fmt(l.recorde) : '—' }),
+        el('td', { class: 'dir sec c-med', text: l.qtd ? fmt(l.media) : '—' }),
+        el('td', { class: 'dir c-cem' }, l.cem ? el('span', { class: 'cem-chip', text: `${l.cem}×` }) : el('span', { class: 'sec', text: '—' })),
+        el('td', { class: 'dir sec nowrap c-ult', text: l.ultima ? diaTxt(l.ultima) : 'nunca' }),
+        el('td', { class: 'mob-est', 'aria-hidden': 'true' },
+          est('PARTIDAS', l.qtd ? fmt(l.qtd) : '—'),
+          est('RECORDE', l.qtd ? fmt(l.recorde) : '—'),
+          est('MÉDIA', l.qtd ? fmt(l.media) : '—'),
+          est(marcoTxt, l.cem ? `${l.cem}×` : '—', l.cem ? 'tem-cem' : null)),
         celEditar(l.r)
       )));
     }
@@ -869,8 +882,9 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
       corpo.replaceChildren(...linhas.map((l, i) => el('tr', { class: l.r.ativo ? null : 'ex' },
         el('td', { class: `pos p${l.total ? i + 1 : 0}`, text: `#${i + 1}` }),
         celNome(l.r, l.ptsGeral),
-        el('td', { class: 'dir num', text: fmt(l.total) }),
+        el('td', { class: 'dir num c-pts', 'data-un': 'TOTAL', text: fmt(l.total) }),
         ...l.g.map((x, c) => el('td', {
+          'data-rot': cols[c].rot,
           class: `dir cel-per ${x.qtd ? '' : 'sem'} ${maior[c] && x.pontos === maior[c] ? 'melhor-col' : ''}`,
           title: x.qtd ? `${cols[c].titulo}: ${ptsTxt(x.pontos)} em ${x.qtd} ${x.qtd === 1 ? 'partida' : 'partidas'} · maior massa ${fmt(x.melhor)}` : `${cols[c].titulo}: sem partida`,
         }, x.qtd ? [el('b', { text: fmt(x.pontos) }), el('small', { text: `${x.qtd}p` })] : '·')),
@@ -5414,11 +5428,12 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   }
   // carrega tudo e mostra o site (depois de entrar ou ao abrir já logado)
   async function abrirSite() {
-    await carregar();
+    const site = carregar();
+    ligarChat(site);
+    await site;
     destrancar();
     aplicarAdmin(admin);
     mostrarRota();
-    ligarChat();
     ligarUso();
     if (!siteAberto) {
       siteAberto = true;
@@ -6122,11 +6137,11 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   const meuNick = () => (chat.eu ? nickDoPlayer(chat.eu.player_id, chat.eu.nome) : '');
   const jogandoAte = (s) => (s && s.jogando_ate && Date.parse(s.jogando_ate) > Date.now() ? s.jogando_ate : null);
   const tempoTxt = (s) => (LENTOS.find(([v]) => v === s) || [s, `${s} s`])[1];
-  function punicaoAtiva() {
-    const p = chat.eu && chat.eu.punicao;
+  function punicaoAtiva(eu = chat.eu) {
+    const p = eu && eu.punicao;
     return p && (!p.ate || Date.parse(p.ate) > Date.now()) ? p : null;
   }
-  const foraDoChat = () => { const p = punicaoAtiva(); return !!p && p.tipo === 'ban'; };
+  const foraDoChat = (eu = chat.eu) => { const p = punicaoAtiva(eu); return !!p && p.tipo === 'ban'; };
   function ateTxt(iso) {
     if (!iso) return 'até um ADM liberar';
     const d = new Date(iso);
@@ -6179,46 +6194,93 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     l.splice(i, 0, m);
     return i;
   }
-  // reações e gente no bonde dessas mensagens
-  async function completarMsgs(lista) {
-    const ids = lista.map((m) => m.id), bondes = lista.filter((m) => m.tipo === 'bonde').map((m) => m.id);
-    const [rr, rb] = await Promise.all([
-      ids.length ? sb.from('chat_reacoes').select('msg_id, user_id, emoji').in('msg_id', ids) : { data: [] },
-      bondes.length ? sb.from('chat_bonde').select('msg_id, user_id, player_id, nome').in('msg_id', bondes).order('created_at') : { data: [] },
-    ]);
-    for (const r of rr.data || []) mexerReac(r.msg_id, r.emoji, r.user_id, true, false);
-    for (const b of rb.data || []) mexerBonde(b, true, false);
+  // mensagens de um canal já com as reações e o bonde de cada uma (uma ida só ao banco)
+  const COM_EXTRAS = '*, chat_reacoes(user_id, emoji), chat_bonde(user_id, player_id, nome, created_at)';
+  let semExtras = false; // o banco não juntou: as reações vêm numa busca à parte
+  async function buscarMsgs(canal, qtd, antesDe = 0) {
+    const q = (sel) => {
+      let b = sb.from('chat_mensagens').select(sel).eq('canal', canal);
+      if (antesDe) b = b.lt('id', antesDe);
+      return b.order('id', { ascending: false }).limit(qtd);
+    };
+    let r = await q(semExtras ? '*' : COM_EXTRAS);
+    if (r.error && !semExtras) { semExtras = true; r = await q('*'); }
+    if (r.error) throw new Error(r.error.message);
+    return r.data;
   }
+  // tira as reações e o bonde de dentro das mensagens (ou busca à parte, se não vieram juntos)
+  async function extrasDe(lista) {
+    const reac = [], bonde = [];
+    const juntos = lista.filter((m) => 'chat_reacoes' in m);
+    for (const m of juntos) {
+      for (const r of m.chat_reacoes || []) reac.push({ msg_id: m.id, ...r });
+      for (const b of m.chat_bonde || []) bonde.push({ msg_id: m.id, ...b });
+      delete m.chat_reacoes; delete m.chat_bonde;
+    }
+    const ids = lista.filter((m) => !juntos.includes(m)).map((m) => m.id);
+    const bondes = lista.filter((m) => m.tipo === 'bonde' && ids.includes(m.id)).map((m) => m.id);
+    if (ids.length) {
+      const [rr, rb] = await Promise.all([
+        sb.from('chat_reacoes').select('msg_id, user_id, emoji').in('msg_id', ids),
+        bondes.length ? sb.from('chat_bonde').select('msg_id, user_id, player_id, nome, created_at').in('msg_id', bondes) : { data: [] },
+      ]);
+      reac.push(...(rr.data || [])); bonde.push(...(rb.data || []));
+    }
+    bonde.sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+    return { reac, bonde };
+  }
+  function aplicarExtras({ reac, bonde }) {
+    for (const r of reac) mexerReac(r.msg_id, r.emoji, r.user_id, true, false);
+    for (const b of bonde) mexerBonde(b, true, false);
+  }
+  let cargaChat = 0;
   async function carregarChat() {
     if (DEMO) { demoChatSemear(); return depoisDeCarregarChat(); }
-    const re = await sb.rpc('chat_eu');
+    const vez = ++cargaChat;
+    // tudo de uma vez: quem sou eu, canais, quem está jogando, equipe e as mensagens dos canais fixos
+    const [re, rc, rm, rcf, rst, req, ...rb] = await Promise.all([
+      sb.rpc('chat_eu'),
+      sb.from('chat_canais').select('id, nome, emoji, ve, fala, ordem, criado_por').order('ordem').order('created_at'),
+      sb.rpc('chat_meus_canais'),
+      sb.from('chat_canais_cfg').select('canal, travado, lento, desligado, nome, emoji, ve, fala'),
+      sb.from('chat_status').select('user_id, player_id, nome, jogando_ate').gt('jogando_ate', new Date().toISOString()),
+      sb.rpc('chat_equipe'),
+      ...CANAIS_CHAT.map((c) => buscarMsgs(c.id, POR_CANAL).catch((e) => e)),
+    ]);
     if (re.error) throw new Error(re.error.message);
+    const fora = foraDoChat(re.data), criados = fora || rc.error ? [] : rc.data;
+    let lotes = [], extras = { reac: [], bonde: [] };
+    if (!fora) {
+      // os canais criados só dá pra pedir depois de saber quais são
+      const rcr = await Promise.all(criados.map((c) => buscarMsgs(c.id, POR_CANAL)));
+      lotes = [...CANAIS_CHAT.map((c, i) => [c.id, rb[i]]), ...criados.map((c, i) => [c.id, rcr[i]])];
+      for (const [, l] of lotes) if (l instanceof Error) throw l;
+      extras = await extrasDe(lotes.flatMap(([, l]) => l));
+    }
+    if (vez !== cargaChat) return; // outra carga começou depois desta: vale a dela
+
+    // troca tudo de uma vez: o chat na tela não fica vazio enquanto carrega
+    const velhas = [...chat.porId.values()], ultimaVelha = velhas.reduce((x, m) => Math.max(x, m.id), 0);
+    const { resp, editando, denuncias } = chat;
     chat.eu = re.data;
     limparChat();
-    if (!foraDoChat()) {
-      const [rc, rm, rcf] = await Promise.all([
-        sb.from('chat_canais').select('id, nome, emoji, ve, fala, ordem, criado_por').order('ordem').order('created_at'),
-        sb.rpc('chat_meus_canais'),
-        sb.from('chat_canais_cfg').select('canal, travado, lento, desligado, nome, emoji, ve, fala'),
-      ]);
+    if (!fora) {
       for (const c of rcf.data || []) chat.cfg.set(c.canal, c);
       chat.meus = rm.error ? null : new Set(rm.data || []);
-      aplicarCriados(rc.error ? [] : rc.data);
-      const canais = todosCanais();
-      const rs = await Promise.all(canais.map((c) => sb.from('chat_mensagens').select('*').eq('canal', c.id).order('id', { ascending: false }).limit(POR_CANAL)));
-      rs.forEach((r, i) => {
-        if (r.error) throw new Error(r.error.message);
-        chat.temMais[canais[i].id] = r.data.length === POR_CANAL;
-        for (const m of r.data) guardarMsg(m);
-      });
-      const [, rst, req] = await Promise.all([
-        completarMsgs([...chat.porId.values()]),
-        sb.from('chat_status').select('user_id, player_id, nome, jogando_ate').gt('jogando_ate', new Date().toISOString()),
-        sb.rpc('chat_equipe'),
-      ]);
+      aplicarCriados(criados);
+      for (const [id, l] of lotes) {
+        if (!chat.msgs[id]) continue;
+        chat.temMais[id] = l.length === POR_CANAL;
+        for (const m of l) guardarMsg(m);
+      }
+      // chegou ao vivo enquanto carregava: não se perde
+      for (const m of velhas) if (m.id > ultimaVelha && chat.msgs[m.canal] && !chat.porId.has(m.id)) guardarMsg(m);
+      aplicarExtras(extras);
       for (const s of rst.data || []) chat.status.set(s.user_id, s);
       for (const e of req.data || []) chat.equipe.set(e.user_id, e.papel);
-      if (admChat()) { await contarDenuncias(false); faxinaSozinha(); }
+      chat.resp = resp && chat.porId.get(resp.id) || null;
+      chat.editando = editando && chat.porId.get(editando.id) || null;
+      if (admChat()) { chat.denuncias = denuncias; contarDenuncias().catch(() => {}); faxinaSozinha(); }
     }
     depoisDeCarregarChat();
   }
@@ -6227,19 +6289,23 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     canalPedido = null;
     lerLidosChat();
     atualizarBadgesChat();
-    if (chatVisivel()) desenharChat();
+    if (!chatVisivel()) return;
+    // recarregou com a pessoa lendo mais acima: a tela fica onde estava
+    const box = $('chatMsgs'), topo = box.scrollTop, fim = pertoDoFimChat();
+    desenharChat();
+    if (!fim) box.scrollTop = topo;
   }
   async function carregarAntigas() {
     const c = chat.canal, l = chat.msgs[c];
     if (DEMO || chat.antigas || !chat.temMais[c] || !l.length) return;
     chat.antigas = true;
     try {
-      const { data, error } = await sb.from('chat_mensagens').select('*').eq('canal', c).lt('id', l[0].id).order('id', { ascending: false }).limit(MAIS_ANTIGAS);
-      if (error) throw error;
+      const data = await buscarMsgs(c, MAIS_ANTIGAS, l[0].id);
       chat.temMais[c] = data.length === MAIS_ANTIGAS;
+      const extras = await extrasDe(data);
       const novas = data.filter((m) => !chat.porId.has(m.id));
       for (const m of novas) guardarMsg(m);
-      await completarMsgs(novas);
+      aplicarExtras(extras);
       if (chat.canal === c && chatVisivel()) {
         // segura a tela no mesmo lugar enquanto as mais velhas entram em cima
         const box = $('chatMsgs'), doFim = box.scrollHeight - box.scrollTop;
@@ -6276,10 +6342,11 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   }
 
   // ---------- ao vivo ----------
-  function ligarChat() {
+  // começa junto com o resto do site (site = a carga dele); o ao vivo só liga quando os dois terminam
+  function ligarChat(site = Promise.resolve()) {
     if (chat.ligado) return;
     chat.ligado = true;
-    carregarChat()
+    (DEMO ? site.then(carregarChat) : Promise.all([carregarChat(), site]))
       .then(() => { if (!DEMO) { ligarChatAoVivo(); religarPush(); } })
       .catch((e) => { console.warn('chat:', e.message); chat.ligado = false; });
   }
