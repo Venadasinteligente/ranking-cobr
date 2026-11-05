@@ -6520,7 +6520,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   function tagsChat(m, nick) {
     if (nick === 'COBR') return [el('span', { class: 'ch-tag ch-tag-bot', text: 'AUTOMÁTICO' })];
     const k = chave(nick);
-    return [chipLider(k), chipPatente(ptsPat(k)), chipRei(k), tagPapel(papelDe(m.user_id))];
+    return [chipLider(k), chipPatente(ptsPat(k)), chipRei(k), papelDe(m.user_id) === 'adm' ? tagPapel('adm') : null]; // no chat só o ADM leva etiqueta; a de Dono fica nas telas de equipe
   }
   function textoChat(txt, editada = false) {
     const s = el('div', { class: 'ch-txt' });
