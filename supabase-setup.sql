@@ -849,6 +849,41 @@ revoke all on function public.jogador_vitrine(text[], uuid) from public, anon;
 grant execute on function public.jogador_vitrine(text[], uuid) to authenticated;
 
 
+-- 5h) Papel de parede: a cena que fica atrás do perfil. Guarda só o id (a arte é desenhada no site).
+alter table public.players add column if not exists parede text
+  check (parede is null or parede ~ '^[a-z0-9]{1,16}$');
+
+-- p_parede null = tira o papel. Devolve: ok | sem_jogador | sem_permissao | invalido | bloqueada | nao_existe
+-- (bloqueada = papel raro de quem não ganhou temporadas suficientes; nem admin passa por cima)
+create or replace function public.jogador_parede(p_parede text, p_player uuid default null)
+returns text
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_meu uuid := (select player_id from player_contas where user_id = auth.uid());
+  v_player uuid := coalesce(p_player, v_meu);
+  v_req int;
+begin
+  if v_player is null then return 'sem_jogador'; end if;
+  if v_player is distinct from v_meu and not is_admin() then return 'sem_permissao'; end if;
+  if p_parede is not null then
+    v_req := case when p_parede in ('arena', 'duelo', 'colosso', 'synth', 'cidade', 'codigo', 'circuito', 'galaxia', 'saturno', 'buraco',
+                                    'aurora', 'oceano', 'selva', 'sakura', 'tempestade', 'dunas') then 0
+                  when p_parede in ('trono', 'salao') then 1
+                  when p_parede = 'supernova' then 2
+                  when p_parede = 'reino' then 3 end;
+    if v_req is null then return 'invalido'; end if;
+    if v_req > 0 and titulos_temporada(v_player) < v_req then return 'bloqueada'; end if;
+  end if;
+  update players set parede = p_parede where id = v_player;
+  if not found then return 'nao_existe'; end if;
+  return 'ok';
+end;
+$$;
+revoke all on function public.jogador_parede(text, uuid) from public, anon;
+grant execute on function public.jogador_parede(text, uuid) to authenticated;
+
+
 -- 6) Atualização ao vivo (o ranking muda sozinho na tela de todo mundo)
 do $$
 begin

@@ -3158,3 +3158,99 @@ button.pd-membro:hover { border-color: var(--linha-forte); }
   .tab-jog .cel-per.melhor-col { border-color: color-mix(in srgb, var(--laranja) 45%, transparent); }
   .jog-nota { text-align: center; }
 }
+
+/* =============================================================
+   PAPEL DE PAREDE
+   No perfil a cena fica atrás da página inteira (parada + o que mexe por cima).
+   No resto do site vira a plaquinha do jogador: imagem parada e véu escuro pro texto.
+   ============================================================= */
+.tem-parede {
+  background-image: linear-gradient(90deg, rgba(11, 8, 6, .55), rgba(11, 8, 6, .8)), var(--parede);
+  background-size: cover; background-position: center; text-shadow: 0 1px 3px rgba(0, 0, 0, .9);
+}
+.linha-parede td.nome-cel, #jogadores .tab-jog td.nome-cel.tem-parede {
+  background-image: linear-gradient(90deg, rgba(11, 8, 6, .5), rgba(11, 8, 6, .72) 62%, var(--painel) 100%), var(--parede);
+  background-size: cover; background-position: center; text-shadow: 0 1px 3px rgba(0, 0, 0, .9);
+}
+.lugar.tem-parede { background-image: linear-gradient(180deg, rgba(11, 8, 6, .3), rgba(11, 8, 6, .82) 58%, rgba(11, 8, 6, .92)), var(--parede); }
+.bot-card.tem-parede, .rei-box.tem-parede, .tn-campeao.tem-parede { background-image: linear-gradient(90deg, rgba(11, 8, 6, .72), rgba(11, 8, 6, .5)), var(--parede); }
+.tn-campeao.tem-parede { padding-block: 14px; border-radius: 14px; }
+.busca-item.tem-parede:hover, .busca-item.tem-parede:focus-visible { background-image: linear-gradient(90deg, rgba(11, 8, 6, .3), rgba(11, 8, 6, .62)), var(--parede); }
+.ch-membro.tem-parede { background-image: linear-gradient(90deg, rgba(11, 8, 6, .62), rgba(11, 8, 6, .84)), var(--parede); }
+
+.pp-miolo { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.pp-parede { display: none; position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; background: center / cover no-repeat; }
+.pp-parede::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(11, 8, 6, .1), rgba(11, 8, 6, .34) 45%, rgba(11, 8, 6, .74)); }
+.com-parede .pp-parede { display: block; }
+.par-vivo { position: absolute; inset: 0; width: 100%; height: 100%; contain: strict; }
+.com-parede .pp-topo.pp-topo {
+  background: linear-gradient(100deg, rgba(8, 6, 5, .74), rgba(8, 6, 5, .34) 62%, rgba(8, 6, 5, .56));
+  text-shadow: 0 2px 6px rgba(0, 0, 0, .85);
+}
+.com-parede .pp-topo::after { display: none; }
+.com-parede .pp-pos-rot { color: var(--texto-2); }
+.com-parede .pp-miolo { padding: 20px; border-radius: 20px; border: 1px solid rgba(255, 255, 255, .07); background: rgba(11, 8, 6, .86); }
+
+.par-palco { position: relative; flex: 0 0 auto; display: flex; align-items: flex-end; min-height: 200px; padding: 16px 18px; overflow: hidden; border-block: 1px solid var(--linha); background: var(--painel-2); }
+.par-palco::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, transparent 35%, rgba(8, 6, 5, .72)); }
+.par-fundo { position: absolute; inset: 0; background: center / cover no-repeat; }
+.par-id { position: relative; z-index: 1; display: flex; align-items: center; gap: 12px; min-width: 0; text-shadow: 0 2px 6px rgba(0, 0, 0, .9); }
+.par-id-txt { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+.par-id-txt b { font-family: var(--f-titulo); font-size: 34px; line-height: .9; letter-spacing: 1px; overflow-wrap: anywhere; }
+.par-selo { position: absolute; z-index: 1; top: 10px; right: 10px; }
+.par-selo .avd-raro { position: static; transform: none; }
+.par-selo-nome { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing: .5px; color: var(--texto); background: rgba(8, 6, 4, .72); }
+.par-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.par-op { display: flex; flex-direction: column; gap: 5px; min-width: 0; padding: 0 0 7px; border: 2px solid var(--linha); border-radius: 12px; overflow: hidden; background: var(--painel-2); color: var(--texto-2); font: inherit; text-align: left; cursor: pointer; transition: border-color .15s, transform .15s; }
+.par-op:hover { border-color: var(--linha-forte); transform: translateY(-2px); }
+.par-op[aria-checked="true"] { border-color: var(--laranja); color: var(--texto); box-shadow: 0 0 0 2px color-mix(in srgb, var(--laranja) 35%, transparent); }
+.par-img { position: relative; display: grid; place-items: center; aspect-ratio: 16 / 9; background: center / cover no-repeat; }
+.par-op.trancada .par-img::before { content: ""; position: absolute; inset: 0; background: rgba(8, 6, 4, .42); }
+.par-cadeado { position: relative; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; color: #FFD84D; background: rgba(8, 6, 4, .78); border: 1px solid rgba(255, 216, 77, .6); }
+.par-nome { padding-inline: 8px; font-size: 13px; font-weight: 600; line-height: 1.2; }
+.par-req { display: inline-flex; align-items: center; gap: 4px; padding-inline: 8px; font-size: 10px; font-weight: 700; letter-spacing: 1px; color: #FFD84D; }
+.par-op.raro-3 .par-req { color: #9FE8FF; }
+@media (max-width: 560px) {
+  .dlg-parede .avd-corpo { padding: 12px; }
+  .par-palco { min-height: 150px; padding: 12px; }
+  .par-grade { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  #tabela tr.linha-parede { background-image: linear-gradient(90deg, rgba(11, 8, 6, .62), rgba(11, 8, 6, .84)), var(--parede); background-size: cover; background-position: center; text-shadow: 0 1px 3px rgba(0, 0, 0, .9); }
+  .com-parede .pp-miolo { padding: 12px; border-radius: 16px; }
+}
+
+/* o que mexe nos papéis de parede: só transform e opacidade, em peças pequenas */
+.pw-pisca { animation: pwPisca 3s ease-in-out infinite; }
+.pw-flutua { animation: pwFlutua 6s ease-in-out infinite alternate; }
+.pw-pulsa { animation: pwPisca 2s ease-in-out infinite; }
+.pw-onda { animation: pwOnda 3.4s linear infinite; }
+.pw-cadente { animation: pwCadente 9s ease-in infinite; }
+.pw-cai { animation: pwCai 12s linear infinite; }
+.pw-roda { transform-box: fill-box; transform-origin: center; animation-name: pwCaiGira; }
+.pw-sobe { animation: pwSobe 14s linear infinite; }
+.pw-deriva { animation: pwDeriva 12s linear infinite; }
+.pw-deriva.volta { animation-direction: reverse; }
+.pw-chuva { animation: pwChuva .9s linear infinite; }
+.pw-corre { animation: pwCorre 5s linear infinite; }
+.pw-flash { animation: pwFlash 7s linear infinite; }
+.pw-avanca { animation: pwAvanca 4s cubic-bezier(.7, 0, 1, .6) infinite; }
+.pw-expande { transform-box: fill-box; transform-origin: center; animation: pwExpande 6s ease-out infinite; }
+.pw-balanca { transform-box: fill-box; transform-origin: top center; animation: pwBalanca 3s ease-in-out infinite alternate; }
+.pw-vaga { animation: pwVaga 8s ease-in-out infinite alternate; }
+@keyframes pwPisca { 0%, 100% { opacity: .2; } 50% { opacity: 1; } }
+@keyframes pwFlutua { from { transform: translateY(-12px); } to { transform: translateY(14px); } }
+@keyframes pwOnda { 0%, 72%, 100% { opacity: 0; } 86% { opacity: .75; } }
+@keyframes pwCadente { 0%, 86% { transform: translate(180px, -74px); opacity: 0; } 90% { opacity: .9; } 100% { transform: translate(-260px, 108px); opacity: 0; } }
+@keyframes pwCai { from { transform: translateY(-1000px); } to { transform: translateY(1000px); } }
+@keyframes pwCaiGira { from { transform: translate(90px, -1000px) rotate(0); } to { transform: translate(-90px, 1000px) rotate(540deg); } }
+@keyframes pwSobe { from { transform: translateY(1000px); } to { transform: translateY(-1000px); } }
+@keyframes pwDeriva { from { transform: translateX(0); } to { transform: translateX(1900px); } }
+@keyframes pwChuva { from { transform: translate(0, -100px); } to { transform: translate(-20px, 100px); } }
+@keyframes pwCorre { from { stroke-dashoffset: 1426; } to { stroke-dashoffset: 0; } }
+@keyframes pwFlash { 0%, 62%, 66%, 69%, 100% { opacity: 0; } 63%, 67% { opacity: .9; } 64.5% { opacity: .15; } }
+@keyframes pwAvanca { from { transform: translateY(0); opacity: .9; } to { transform: translateY(320px); opacity: .9; } }
+@keyframes pwExpande { from { transform: scale(.45); opacity: .9; } to { transform: scale(1.5); opacity: 0; } }
+@keyframes pwBalanca { from { transform: rotate(-3deg); } to { transform: rotate(3deg); } }
+@keyframes pwVaga { 0% { transform: translate(-22px, 14px); opacity: .2; } 50% { opacity: 1; } 100% { transform: translate(26px, -18px); opacity: .35; } }
+/* texto em degradê é transparente: a sombra da plaquinha apareceria por dentro das letras */
+.tem-parede .bot-num, .tem-parede .lider-nick, .tem-parede .ch-brabo-nick, .tem-parede .txt-dia, .tem-parede .rei-nome, .tem-parede .rei-cta,
+.linha-parede .txt-dia, .linha-parede .link-nome.forte, .com-parede .pp-nome, .com-parede .pp-topo .txt-dia { text-shadow: none; }

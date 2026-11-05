@@ -30,6 +30,7 @@
   let torneiosOk = true;      // false se as tabelas de torneio ainda não existem no banco
   let torneioAtual = null;    // id do torneio aberto na página própria
   let vitrineOk = true;       // false se a coluna players.vitrine ainda não existe no banco
+  let paredeOk = true;        // false se a coluna players.parede ainda não existe no banco
   const CARGOS = (Array.isArray(CFG.CARGOS) && CFG.CARGOS.length ? CFG.CARGOS : ['Líder', 'Vice-líder', 'Membro'])
     .map((c) => String(c).trim().slice(0, 24)).filter(Boolean);
   const CARGO_PADRAO = CARGOS.includes('Membro') ? 'Membro' : CARGOS[CARGOS.length - 1];
@@ -507,13 +508,13 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
       return;
     }
     ul.replaceChildren(...achados.slice(0, 80).map(({ r, s, pos: p }) => el('li', null,
-      el('button', { type: 'button', class: 'busca-item', onclick: () => irPerfil(r.chave) },
+      comParede(el('button', { type: 'button', class: 'busca-item', onclick: () => irPerfil(r.chave) },
         el('span', { class: `busca-pos pos p${p}`, text: p ? `#${p}` : '–' }),
         avatarDe(r.nick, ptsPat(r.chave)),
         el('span', { class: 'busca-info' },
           el('span', { class: 'busca-nome' }, el('span', { class: 'busca-nick', text: r.nick }), !r.ativo ? el('span', { class: 'ex-chip', text: 'EX' }) : null),
           el('span', { class: 'busca-sub', text: s ? `${ptsTxt(s.pontos)} · recorde ${fmt(s.melhor.mass)} · ${s.qtd} ${s.qtd === 1 ? 'partida' : 'partidas'}` : 'ainda sem partida' })),
-        chipPatente(ptsPat(r.chave), 'busca-pat')))));
+        chipPatente(ptsPat(r.chave), 'busca-pat')), r.chave))));
   }
   function irPerfil(k) {
     $('dlgBusca').close();
@@ -705,11 +706,11 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   }
 
   function celNome(r, ptsGeral) {
-    return el('td', { class: 'nome-cel' }, el('div', { class: 'nome-linha' },
+    return comParede(el('td', { class: 'nome-cel' }, el('div', { class: 'nome-linha' },
       avatarDe(r.nick, ptsGeral, 'av-p'),
       el('button', { type: 'button', class: 'link-nome forte', onclick: () => abrirPerfil(r.chave), 'aria-label': `Ver perfil de ${comTag(r.nick)}` }, r.nick),
       !r.ativo ? el('span', { class: 'ex-chip', text: 'EX-MEMBRO' }) : null,
-      r.semCadastro && admin && elencoOk ? el('span', { class: 'ex-chip', text: 'SEM CADASTRO' }) : null));
+      r.semCadastro && admin && elencoOk ? el('span', { class: 'ex-chip', text: 'SEM CADASTRO' }) : null)), r.chave);
   }
   function celEditar(r) {
     if (!admin) return null;
@@ -1118,7 +1119,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         ? `recorde · ${dataCurta(j.melhor.created_at)} · ${ptsTxt(j.pontos)}`
         : `pontos · recorde ${fmt(j.melhor.mass)}`;
       // no celular os três ficam lado a lado: a tag e as partes "longas" somem pelo CSS
-      return el('article', { class: `lugar l${i + 1}` },
+      return comParede(el('article', { class: `lugar l${i + 1}` },
         i === 0 ? svg(ICONE_COROA, 40, 'class="coroa"') : null,
         avatarPodio(j),
         el('div', { class: 'lugar-id' },
@@ -1130,7 +1131,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         j.cem ? el('div', { class: 'cem-selo', text: `${j.cem}× ${marcoTxt}` }) : null,
         el('div', { class: 'barra', 'aria-hidden': 'true' }, el('span', { style: `width:${Math.max(4, Math.round(valor(j) / topo * 100))}%` })),
         url ? el('button', { type: 'button', class: 'ver-print', text: 'Ver print do recorde', onclick: () => abrirPrint(j.melhor) }) : null
-      );
+      ), j.chave);
     }));
   }
 
@@ -1167,7 +1168,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         ? el('tr', { class: 'pulo', 'aria-hidden': 'true' }, el('td', { colspan: '6', text: '⋯' })) : null;
       // no celular a linha vira cartão: os números que não cabem na coluna descem pra faixa .mob-est
       const est = (rot, val, cls) => el('span', { class: cls || null }, el('small', { text: rot }), el('b', { text: val }));
-      return [pulo, el('tr', { class: [i === 0 ? 'topo1' : '', j.chave === eu ? 'eu-linha' : '', patenteDe(geralPts(j)).atual.diamante ? 'linha-dia' : '', ehRei(j.chave) ? 'linha-rei' : ''].join(' ').trim() || null },
+      return [pulo, comParede(el('tr', { class: [i === 0 ? 'topo1' : '', j.chave === eu ? 'eu-linha' : '', patenteDe(geralPts(j)).atual.diamante ? 'linha-dia' : '', ehRei(j.chave) ? 'linha-rei' : ''].join(' ').trim() || null },
         el('td', { class: `pos p${i + 1}`, text: `#${i + 1}` }),
         el('td', { class: 'nome-cel' }, el('div', { class: 'nome-linha' }, avatarDe(j.nome, geralPts(j), 'av-p'), btnPerfil(j, 'link-nome forte', [el('span', { class: 'tag-nick', text: `[${TAG}] ` }), j.nome]),
           el('span', { class: 'nome-chips' }, chipPatente(geralPts(j)), chipRei(j.chave), chipTitulos(ctx.titulos.get(j.chave)), ...chipTorneios(j.chave, true), novo ? el('span', { class: 'chip', title: 'Recorde novo nas últimas 24 horas' }, '▲', el('span', { class: 'chip-longo', text: ' RECORDE NOVO' })) : null)),
@@ -1179,7 +1180,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         el('td', { class: 'mob-est', 'aria-hidden': 'true' },
           est('PARTIDAS', fmt(j.qtd)),
           modo === 'pontos' ? est('RECORDE', fmt(j.melhor.mass)) : est('PONTOS', fmt(j.pontos)),
-          est(marcoTxt, j.cem ? `${j.cem}×` : '—', j.cem ? 'tem-cem' : null)))];
+          est(marcoTxt, j.cem ? `${j.cem}×` : '—', j.cem ? 'tem-cem' : null))), j.chave, 'linha-parede')];
     }));
   }
 
@@ -1243,7 +1244,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
     const num = el('span', { text: fmt(p.mass) });
     if (novo) contarAte(num, p.mass);
     const letra = nick.charAt(0).toUpperCase();
-    return el('article', { class: `bot-post ${novo ? 'novo' : ''}`, 'data-id': p.id },
+    const post = el('article', { class: `bot-post ${novo ? 'novo' : ''}`, 'data-id': p.id },
       botAvatar(),
       el('div', { class: 'bot-corpo' },
         botCab(el('span', { class: 'bot-n', text: `#${String(info.n).padStart(4, '0')}` })),
@@ -1267,6 +1268,8 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
             el('span', { class: 'ch-sobe-txt' }, 'SUBIU PRA', chipPatente(sobe.para.pontos))) : null,
           el('div', { class: 'bot-check' }, ...['massa conferida', 'pontos somados', 'ranking atualizado'].map((t) => el('span', {}, svg(ICONE_CHECK, 12), t))))),
       admin ? el('button', { type: 'button', class: 'apagar', 'aria-label': `Apagar pontuação de ${limparNick(p.player)}`, onclick: () => pedirApagar(p) }, svg(ICONE_LIXO)) : null);
+    comParede(post.querySelector('.bot-card'), k);
+    return post;
   }
   // o bot fecha cada dia que já passou com um resumo
   function resumoBot(dia) {
@@ -1531,7 +1534,7 @@ ${[[4, 16, 4.6], [27, 7, 4.6], [50, 1, 5.8], [73, 7, 4.6], [96, 16, 4.6]].map(([
       ? [el('span', { class: `rei-chip ${defende ? 'rei-ok' : 'rei-risco'}`, text: defende ? 'DEFENDENDO · #1' : pos ? `AMEAÇADO · #${pos}` : 'AMEAÇADO · SEM PONTOS' }),
         lider && !defende ? el('span', { class: 'rei-lider' }, el('span', { class: 'rei-lider-rot', text: '1º AGORA' }), btnPerfil(lider, 'rei-lider-nome', [avatarDe(lider.nome, ptsPat(lider.chave), 'av-p'), comTag(lider.nome)])) : null]
       : [el('span', { class: 'rei-lider' }, el('span', { class: 'rei-lider-rot', text: '1º AGORA' }), btnPerfil(lider, 'rei-lider-nome', [avatarDe(lider.nome, ptsPat(lider.chave), 'av-p'), comTag(lider.nome)]))];
-    trocar(box, el('div', { class: `rei-box ${rei ? '' : 'rei-vago'} ${eu && rei && eu === rei.chave ? 'rei-eu' : ''}` },
+    trocar(box, comParede(el('div', { class: `rei-box ${rei ? '' : 'rei-vago'} ${eu && rei && eu === rei.chave ? 'rei-eu' : ''}` },
       el('span', { class: 'rei-raios', 'aria-hidden': 'true' }),
       el('span', { class: 'dia-faiscas rei-faiscas', 'aria-hidden': 'true' }, ...Array.from({ length: 10 }, () => el('i'))),
       rei
@@ -1542,7 +1545,7 @@ ${[[4, 16, 4.6], [27, 7, 4.6], [50, 1, 5.8], [73, 7, 4.6], [96, 16, 4.6]].map(([
           el('button', { type: 'button', class: 'info-btn', 'data-info': 'temporada', 'aria-label': 'Como funciona a coroa', text: 'i' })),
         rei ? btnPerfil(rei, 'rei-nome', comTag(rei.nome)) : el('b', { class: 'rei-nome', text: 'SEM DONO' }),
         el('div', { class: 'rei-status' }, ...status)),
-      el('b', { class: 'rei-cta', text: cta })));
+      el('b', { class: 'rei-cta', text: cta })), rei && rei.chave));
   }
   function chipRei(k) {
     if (!ehRei(k)) return null;
@@ -2340,6 +2343,467 @@ ${frente}
       btns.forEach((b) => { b.disabled = false; });
     }
   }
+  // ---------- papéis de parede ----------
+  // Cada papel é uma cena inteira desenhada aqui (1600x900, com o foco no meio, porque o ranking corta
+  // uma tira e o celular corta as laterais). "base" é a parte parada, "vivo" é o que mexe: no perfil a
+  // base vira imagem e só o vivo anima por cima; no resto do site vai tudo junto como imagem parada.
+  const sorteio = (s) => () => { s = (s + 0x6D2B79F5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const pontos = (l, cor, w, op = 1) => `<path d="${l.map(([x, y]) => `M${f1(x)} ${f1(y)}h.01`).join('')}" stroke="${cor}" stroke-width="${w}" stroke-linecap="round" fill="none"${op < 1 ? ` opacity="${op}"` : ''}/>`;
+  const estrelas2 = (rnd, n, h = 900) => [[1.5, .5], [2.3, .75], [3.3, .95]].map(([w, op], i) => pontos(Array.from({ length: n >> (i * 2) }, () => [rnd() * 1600, rnd() * h]), '#fff', w, op)).join('');
+  const brilho4 = (x, y, r) => `M${f1(x)} ${f1(y - r)}Q${f1(x)} ${f1(y)} ${f1(x + r)} ${f1(y)}Q${f1(x)} ${f1(y)} ${f1(x)} ${f1(y + r)}Q${f1(x)} ${f1(y)} ${f1(x - r)} ${f1(y)}Q${f1(x)} ${f1(y)} ${f1(x)} ${f1(y - r)}Z`;
+  const anima = (rnd, dur) => `style="animation-delay:-${f1(rnd() * dur)}s;animation-duration:${f1(dur * (.8 + rnd() * .5))}s"`;
+  const brilhos = (rnd, n, h, cor = '#fff', de = 6, ate = 15) => Array.from({ length: n }, () => `<path class="pw-pisca" ${anima(rnd, 4)} d="${brilho4(rnd() * 1600, rnd() * h, de + rnd() * (ate - de))}" fill="${cor}"/>`).join('');
+  const cadente = (x, y, atraso) => `<path class="pw-cadente" style="animation-delay:-${atraso}s" d="M${x} ${y}l-150 62" stroke="#fff" stroke-width="2.6" stroke-linecap="round" opacity=".85"/>`;
+  // serra: contorno de montanha fechado embaixo
+  function serra(rnd, y, amp, passo, h = 900) {
+    let d = `M-20 ${h}L-20 ${f1(y + rnd() * amp - amp / 2)}`;
+    for (let x = 0; x < 1640; x += passo * (.6 + rnd() * .8)) d += `L${f1(x)} ${f1(y + (rnd() - .5) * amp)}`;
+    return `${d}L1620 ${h}Z`;
+  }
+  // duna, onda: contorno suave fechado embaixo
+  function curva(y, amp, comp, fase, h = 900) {
+    let d = `M-20 ${h}L-20 ${f1(y + Math.sin(fase) * amp)}`;
+    for (let x = 0; x <= 1640; x += 40) d += `L${x} ${f1(y + Math.sin(x / comp + fase) * amp + Math.sin(x / comp * 2.3 + fase * 1.7) * amp * .3)}`;
+    return `${d}L1620 ${h}Z`;
+  }
+  // cobra de gomos no estilo do jogo: f(t) dá o ponto do corpo, de 0 (rabo) a 1 (cabeça)
+  function cobra(c, nome, f, { n, r, cores, vivo = true }) {
+    const g1 = c.rg(`${nome}a`, [[0, tom(cores[0], .55)], [.55, cores[0]], [1, tom(cores[0], -.5)]], .38, .32, .7);
+    const g2 = c.rg(`${nome}b`, [[0, tom(cores[1], .55)], [.55, cores[1]], [1, tom(cores[1], -.5)]], .38, .32, .7);
+    const pts = Array.from({ length: n }, (_, i) => f(i / (n - 1)));
+    const raio = (i) => r * (.32 + .68 * Math.min(1, (i / (n - 1)) * 2.4));
+    const luz = `<path d="M${pts.map(([x, y]) => `${f1(x)} ${f1(y)}`).join('L')}" fill="none" stroke="${cores[0]}" stroke-width="${f1(r * 2.6)}" stroke-linecap="round" stroke-linejoin="round" opacity=".42" filter="${c.u('br')}"/>`;
+    const gomos = pts.map(([x, y], i) => `<circle cx="${f1(x)}" cy="${f1(y)}" r="${f1(raio(i))}" fill="${i % 4 < 2 ? g1 : g2}"/>`).join('');
+    const [hx, hy] = pts[n - 1], [ax, ay] = pts[n - 3];
+    const ang = Math.atan2(hy - ay, hx - ax), fx = Math.cos(ang), fy = Math.sin(ang), R = r * 1.28;
+    const olho = (s) => {
+      const x = hx + fx * R * .34 - fy * R * .52 * s, y = hy + fy * R * .34 + fx * R * .52 * s;
+      return `<circle cx="${f1(x)}" cy="${f1(y)}" r="${f1(R * .42)}" fill="#fff"/><circle cx="${f1(x + fx * R * .15)}" cy="${f1(y + fy * R * .15)}" r="${f1(R * .23)}" fill="#0A0E18"/><circle cx="${f1(x + fx * R * .08 - R * .08)}" cy="${f1(y + fy * R * .08 - R * .1)}" r="${f1(R * .08)}" fill="#fff"/>`;
+    };
+    const cabeca = `<circle cx="${f1(hx)}" cy="${f1(hy)}" r="${f1(R)}" fill="${g1}"/>${olho(1)}${olho(-1)}`;
+    const onda = vivo ? pts.filter((_, i) => i % 2 === 0).map(([x, y], i, l) => `<circle class="pw-onda" opacity="0" style="animation-delay:-${f1((l.length - i) * .07)}s" cx="${f1(x - r * .22)}" cy="${f1(y - r * .26)}" r="${f1(r * .26)}" fill="#fff"/>`).join('') : '';
+    return [luz + gomos + cabeca, onda];
+  }
+
+  const PAREDES = {
+    arena: { nome: 'Arena Neon', grupo: 'arena', arte(c, rnd) {
+      const f = c.rg('f', [[0, '#1B3C78'], [.5, '#0B1838'], [1, '#03060F']], .5, .46, .72);
+      c.defs += `<pattern id="${c.id}hx" width="96" height="166.3" patternUnits="userSpaceOnUse"><path d="M48 0L96 27.7V83.1L48 110.9L0 83.1V27.7ZM48 110.9V166.3" fill="none" stroke="#4FA8FF" stroke-opacity=".2" stroke-width="2"/></pattern>`;
+      c.blur('br', 26); c.blur('bm', 7);
+      const cor = ['#FF4FA3', '#FFD84D', '#3DDC84', '#7DF9FF', '#FF7A1A', '#B98BFF'];
+      const [corpo, onda] = cobra(c, 'c', (t) => [-170 + t * 1060, 450 + Math.sin(t * 7.4 + .6) * 165 * (.55 + t * .45)], { n: 62, r: 42, cores: ['#FF7A1A', '#FFD84D'] });
+      const bola = (x, y, r, k) => `<circle cx="${f1(x)}" cy="${f1(y)}" r="${f1(r)}" fill="${cor[k]}"/>`;
+      let brilho = '', vivas = '';
+      for (let i = 0; i < 90; i++) {
+        const x = rnd() * 1600, y = rnd() * 900, r = 4 + rnd() * 9, k = Math.floor(rnd() * 6);
+        if (i % 3) brilho += bola(x, y, r * 1.6, k); else vivas += `<g class="pw-pisca" ${anima(rnd, 3)}>${bola(x, y, r, k)}<circle cx="${f1(x - r * .3)}" cy="${f1(y - r * .3)}" r="${f1(r * .3)}" fill="#fff"/></g>`;
+      }
+      return [`<rect width="1600" height="900" fill="${f}"/><rect width="1600" height="900" fill="${c.u('hx')}"/><g filter="${c.u('bm')}" opacity=".9">${brilho}</g>${corpo}`, vivas + onda];
+    } },
+    duelo: { nome: 'Duelo', grupo: 'arena', arte(c, rnd) {
+      c.blur('br', 30); c.blur('bm', 12);
+      const fe = c.lg('fe', [[0, '#3A1606'], [1, '#120602']]), fd = c.lg('fd', [[0, '#06204A'], [1, '#020A1E']]);
+      const cl = c.rg('cl', [[0, '#FFFFFF', 1], [.14, '#FFF0C2', .95], [.4, '#FFB347', .45], [1, '#FFB347', 0]]);
+      const raio = 'M836 -20L770 180L846 240L742 470L836 520L748 920L1600 920L1600 -20Z';
+      c.defs += `<pattern id="${c.id}hx" width="96" height="166.3" patternUnits="userSpaceOnUse"><path d="M48 0L96 27.7V83.1L48 110.9L0 83.1V27.7ZM48 110.9V166.3" fill="none" stroke="#fff" stroke-opacity=".08" stroke-width="2"/></pattern>`;
+      const ge = c.rg('ge', [[0, '#FF7A1A', .55], [1, '#FF7A1A', 0]]), gd = c.rg('gd', [[0, '#3BA4FF', .55], [1, '#3BA4FF', 0]]);
+      const [a, av] = cobra(c, 'a', (t) => { const k = 1 - Math.pow(1 - t, 1.5); return [-90 + k * 760, 860 - k * 450 + Math.sin(t * 8) * 70 * (1 - t)]; }, { n: 46, r: 48, cores: ['#FF7A1A', '#FFD84D'] });
+      const [b, bv] = cobra(c, 'b', (t) => { const k = 1 - Math.pow(1 - t, 1.5); return [1690 - k * 760, 860 - k * 450 + Math.sin(t * 8 + 2) * 70 * (1 - t)]; }, { n: 46, r: 48, cores: ['#3BA4FF', '#B98BFF'] });
+      const raios = Array.from({ length: 26 }, (_, i) => { const g = i / 26 * Math.PI * 2, l = 170 + rnd() * 240; return `<path d="M800 410L${f1(800 + Math.cos(g - .025) * l)} ${f1(410 + Math.sin(g - .025) * l)}L${f1(800 + Math.cos(g + .025) * l)} ${f1(410 + Math.sin(g + .025) * l)}Z" fill="#FFF3C2" opacity="${f1(.25 + rnd() * .5)}"/>`; }).join('');
+      const fag = Array.from({ length: 34 }, () => { const g = rnd() * 6.28, l = 60 + rnd() * 320, x = 800 + Math.cos(g) * l, y = 410 + Math.sin(g) * l * .8; return `<path class="pw-pisca" ${anima(rnd, 1.8)} d="${brilho4(x, y, 6 + rnd() * 12)}" fill="${rnd() > .5 ? '#FFD84D' : '#7FC0FF'}"/>`; }).join('');
+      return [`<rect width="1600" height="900" fill="${fe}"/><path d="${raio}" fill="${fd}"/><rect width="1600" height="900" fill="${c.u('hx')}"/><circle cx="330" cy="520" r="520" fill="${ge}"/><circle cx="1270" cy="520" r="520" fill="${gd}"/><path d="M836 -20L770 180L846 240L742 470L836 520L748 920" fill="none" stroke="#FFE9B0" stroke-width="7" filter="${c.u('bm')}"/><path d="M836 -20L770 180L846 240L742 470L836 520L748 920" fill="none" stroke="#fff" stroke-width="3"/>${a}${b}<g filter="${c.u('bm')}">${raios}</g><circle cx="800" cy="410" r="240" fill="${cl}"/>`,
+        `<circle class="pw-pulsa" cx="800" cy="410" r="120" fill="${cl}"/>${fag}${av}${bv}`];
+    } },
+    colosso: { nome: 'Serpente Colossal', grupo: 'arena', arte(c, rnd) {
+      c.blur('br', 34); c.blur('bm', 60);
+      const ceu = c.lg('ceu', [[0, '#04101F'], [.55, '#0B2E3A'], [1, '#124B47']]);
+      const lua = c.rg('lua', [[0, '#FBFFE8'], [.7, '#E2F2C8'], [1, '#A9CFA0']], .42, .38, .65), halo = c.rg('halo', [[0, '#D8FFD0', .55], [1, '#D8FFD0', 0]]);
+      const m1 = c.lg('m1', [[0, '#0F3A3A'], [1, '#082220']]), m2 = c.lg('m2', [[0, '#072422'], [1, '#020C0C']]);
+      const crateras = [[720, 300, 46], [900, 250, 30], [860, 430, 60], [670, 470, 28], [950, 370, 20], [760, 170, 22]].map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#B9D8A8" opacity=".45"/><circle cx="${x + 3}" cy="${y + 4}" r="${r * .82}" fill="#CFE6BC" opacity=".5"/>`).join('');
+      const [corpo, onda] = cobra(c, 'c', (t) => { const g = t * Math.PI * 3.7 - .9; const R = 440 - t * 230; return [800 + Math.cos(g) * R, 410 + Math.sin(g) * R * .58 + (1 - t) * 240 - t * 40]; }, { n: 78, r: 62, cores: ['#1FBF7A', '#D6FF6B'] });
+      return [`<rect width="1600" height="900" fill="${ceu}"/>${estrelas2(rnd, 240, 520)}<circle cx="800" cy="340" r="480" fill="${halo}"/><circle cx="800" cy="340" r="290" fill="${lua}"/>${crateras}`
+        + `<path d="${serra(rnd, 640, 120, 90)}" fill="${m1}"/><ellipse cx="800" cy="700" rx="900" ry="100" fill="#A8FFD8" opacity=".14" filter="${c.u('bm')}"/><path d="${serra(rnd, 760, 90, 70)}" fill="${m2}"/>${corpo}`, brilhos(rnd, 12, 480, '#E8FFD8') + onda + cadente(1380, 90, 1)];
+    } },
+    synth: { nome: 'Sol Retrô', grupo: 'neon', arte(c, rnd) {
+      c.blur('bm', 22);
+      const ceu = c.lg('ceu', [[0, '#0E0330'], [.34, '#3A0B6B'], [.54, '#A3127A'], [.64, '#FF4F7B']]);
+      const sol = c.lg('sol', [[0, '#FFF27A'], [.45, '#FFA02E'], [1, '#FF2F86']]);
+      const chao = c.lg('chao', [[0, '#2C0657'], [1, '#07011A']]);
+      const mont = (d, cor) => `<path d="${d}" fill="#14063A"/><path d="${d}" fill="none" stroke="${cor}" stroke-width="3" stroke-linejoin="round"/>`;
+      const horiz = 590;
+      const faixas = [0, 1, 2, 3, 4, 5, 6].map((i) => `<rect x="480" y="${380 + i * 34}" width="640" height="${6 + i * 3}" fill="#25084F"/>`).join('');
+      c.defs += `<clipPath id="${c.id}s"><rect x="0" y="0" width="1600" height="${horiz}"/></clipPath>`;
+      const vert = Array.from({ length: 41 }, (_, i) => { const x = (i - 20) * 44; return `M${800 + x} ${horiz}L${800 + x * 9} 900`; }).join('');
+      const pal = (x, h, inv) => { const fol = [-1.2, -.7, -.2, .3, .8, 1.3].map((a) => `M0 0Q${f1(Math.sin(a) * 70)} ${f1(-34 - Math.cos(a) * 50)} ${f1(Math.sin(a) * 138)} ${f1(14 - Math.cos(a) * 62)}Q${f1(Math.sin(a) * 66)} ${f1(-18 - Math.cos(a) * 30)} 0 0Z`).join(''); return `<g transform="translate(${x} ${900 - h}) scale(${inv ? -1 : 1} 1)"><path d="M-7 0Q30 ${h * .5} 22 ${h}H46Q58 ${h * .5} 7 0Z" fill="#090216"/><path d="${fol}" fill="#090216"/></g>`; };
+      const linhas = Array.from({ length: 8 }, (_, i) => `<rect class="pw-avanca" style="animation-delay:-${f1(i * .5)}s" x="-10" y="${horiz}" width="1620" height="3" fill="#FF4FD8"/>`).join('');
+      const estat = [0, 7, 22, 46, 84, 140, 215, 306].map((d) => `<rect x="-10" y="${horiz + d}" width="1620" height="${2 + d / 80}" fill="#FF4FD8" opacity=".9"/>`).join('');
+      return [`<rect width="1600" height="900" fill="${ceu}"/>${estrelas2(rnd, 220, 400)}<circle cx="800" cy="360" r="300" fill="#FF6AA8" opacity=".5" filter="${c.u('bm')}"/><g clip-path="url(#${c.id}s)"><circle cx="800" cy="360" r="262" fill="${sol}"/>${faixas}</g>`
+        + mont(`M-20 ${horiz}L120 470L230 530L350 420L470 540L560 500L640 ${horiz}Z`, '#3BE8FF') + mont(`M1620 ${horiz}L1480 460L1370 530L1250 430L1140 535L1040 500L960 ${horiz}Z`, '#3BE8FF')
+        + `<rect y="${horiz}" width="1600" height="310" fill="${chao}"/><path d="${vert}" stroke="#FF4FD8" stroke-width="2" opacity=".85" fill="none"/>${estat}<rect y="${horiz - 3}" width="1600" height="6" fill="#FFB8F0"/>${pal(90, 420)}${pal(1510, 420, true)}`,
+      `<g class="pw-recorte">${linhas}</g>${brilhos(rnd, 10, 320)}`];
+    } },
+    cidade: { nome: 'Cidade Cyber', grupo: 'neon', arte(c, rnd) {
+      c.blur('bm', 28); c.blur('bp', 4);
+      const ceu = c.lg('ceu', [[0, '#05071F'], [.5, '#1B0F52'], [.85, '#7A1F8A'], [1, '#D13A9A']]);
+      const lua = c.lg('lua', [[0, '#7DF9FF'], [.6, '#C79BFF'], [1, '#FF6FCF']]);
+      const predios = (y, w, cor, jan, pass, op = 1) => {
+        let b = '', x = -30, janelas = [];
+        while (x < 1640) {
+          const lw = w * (.55 + rnd() * .9), ly = y + (rnd() - .4) * 220 * (1 - Math.abs(x - 800) / 1800), topo = rnd();
+          b += `<rect x="${f1(x)}" y="${f1(ly)}" width="${f1(lw)}" height="${f1(900 - ly)}" fill="${cor}"/>`;
+          if (topo > .7) b += `<path d="M${f1(x + lw / 2)} ${f1(ly)}v-${f1(30 + rnd() * 60)}" stroke="${cor}" stroke-width="4"/>`;
+          else if (topo < .25) b += `<path d="M${f1(x)} ${f1(ly)}L${f1(x + lw / 2)} ${f1(ly - 34)}L${f1(x + lw)} ${f1(ly)}Z" fill="${cor}"/>`;
+          for (let wx = x + 10; wx < x + lw - 8; wx += pass) for (let wy = ly + 14; wy < 900; wy += pass * 1.3) if (rnd() > .62) janelas.push([wx, wy]);
+          x += lw + rnd() * 12;
+        }
+        const pal = (l, cor2) => `<path d="${l.map(([a, e]) => `M${f1(a)} ${f1(e)}h.01`).join('')}" stroke="${cor2}" stroke-width="${pass * .42}" stroke-linecap="square" opacity="${op}"/>`;
+        const n = janelas.length;
+        return b + pal(janelas.filter((_, i) => i % 3 === 0), jan[0]) + pal(janelas.filter((_, i) => i % 3 === 1), jan[1]) + pal(janelas.filter((_, i) => i % 3 === 2 && i < n), jan[2]);
+      };
+      const neon = (x, y, w, h, cor) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="4" fill="none" stroke="${cor}" stroke-width="10" opacity=".5" filter="${c.u('bp')}"/><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="4" fill="#10062A" stroke="${cor}" stroke-width="3"/>`;
+      const cob = `M0 0c14-16 28 16 42 0s28 16 42 0`;
+      const placa = neon(636, 470, 120, 76, '#3BE8FF') + `<path d="${cob}" transform="translate(654 508)" fill="none" stroke="#3BE8FF" stroke-width="6" stroke-linecap="round"/>` + neon(860, 520, 76, 130, '#FF4FA3') + `<path d="M898 540v90M880 562h36M880 604h36" stroke="#FF4FA3" stroke-width="5" stroke-linecap="round"/>`;
+      const carro = (y, cor, dur, atraso, volta) => `<g class="pw-deriva${volta ? ' volta' : ''}" style="animation-duration:${dur}s;animation-delay:-${atraso}s"><path d="M-70 ${y}h46" stroke="${cor}" stroke-width="5" stroke-linecap="round"/><circle cx="-22" cy="${y}" r="5" fill="#fff"/></g>`;
+      const chuva = `<g class="pw-chuva" opacity=".5">${Array.from({ length: 70 }, () => { const x = rnd() * 1700, y = rnd() * 1000 - 100; return `<path d="M${f1(x)} ${f1(y)}l-7 34" stroke="#BFE9FF" stroke-width="1.6"/>`; }).join('')}</g>`;
+      return [`<rect width="1600" height="900" fill="${ceu}"/>${estrelas2(rnd, 120, 340)}<circle cx="800" cy="300" r="270" fill="#C79BFF" opacity=".4" filter="${c.u('bm')}"/><circle cx="800" cy="300" r="205" fill="${lua}"/>`
+        + predios(420, 110, '#2A1668', ['#7A4FD0', '#FF6FCF', '#3BE8FF'], 16, .55) + predios(560, 130, '#150A40', ['#FFD36E', '#3BE8FF', '#FF6FCF'], 18, .8) + placa + predios(700, 170, '#070318', ['#FFD36E', '#FF9F4A', '#3BE8FF'], 22, .95), carro(330, '#3BE8FF', 11, 2) + carro(392, '#FF4FA3', 15, 6, true) + carro(446, '#FFD36E', 9, 4) + carro(270, '#fff', 19, 11, true) + chuva];
+    } },
+    codigo: { nome: 'Código', grupo: 'neon', arte(c, rnd) {
+      c.blur('br', 18); c.blur('bm', 34);
+      const gr = c.lg('gr', [[0, '#0B3D1C', 0], [.7, '#22C55E', .75], [1, '#CFFFE0']]);
+      const pool = '01ABCDEF<>/#$%&=+*{}[]';
+      const coluna = (x, y, n, tam, classe = '', extra = '') => {
+        const s = Array.from({ length: n }, () => pool[Math.floor(rnd() * pool.length)]).join('').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return `<text class="${classe}" ${extra} font-family="monospace" font-weight="700" font-size="${tam}" fill="${c.u('gr')}" x="${Array(n).fill(f1(x)).join(' ')}" y="${Array.from({ length: n }, (_, i) => f1(y + i * tam * 1.14)).join(' ')}">${s}</text>`;
+      };
+      let base = '', vivo = '';
+      for (let i = 0; i < 44; i++) {
+        const x = 12 + i * 36 + rnd() * 6, n = 14 + Math.floor(rnd() * 20), y = -40 + rnd() * 500, tam = 22;
+        if (i % 3 === 2) vivo += coluna(x, y, n, tam, 'pw-cai pw-lento', anima(rnd, 9)); else base += coluna(x, y, n, tam);
+      }
+      const gsk = c.rg('gsk', [[0, '#39FF88', .5], [1, '#39FF88', 0]]);
+      const [corpo, onda] = cobra(c, 'c', (t) => [420 + t * 450, 470 + Math.sin(t * 8.6 - .8) * 170], { n: 48, r: 36, cores: ['#16A34A', '#7CFF4F'] });
+      return [`<rect width="1600" height="900" fill="#010A05"/><rect width="1600" height="900" fill="#02200E" opacity=".6"/>${base}<ellipse cx="800" cy="450" rx="620" ry="330" fill="${gsk}"/>${corpo}`, vivo + onda];
+    } },
+    circuito: { nome: 'Circuito', grupo: 'neon', arte(c, rnd) {
+      c.blur('br', 10); c.blur('bm', 44);
+      const f = c.rg('f', [[0, '#0A3548'], [.6, '#051A28'], [1, '#020A12']], .5, .46, .8);
+      const ch = c.lg('ch', [[0, '#1A3B4A'], [1, '#0A1A24']]), lg = c.lg('lg', [[0, '#7DF9FF'], [1, '#2FE38A']], 1, 1);
+      let tr = '', pads = [], vivo = '', ramos = 44;
+      for (let i = 0; i < ramos; i++) {
+        const lado = i % 4, t = (Math.floor(i / 4) + .5) / (ramos / 4);
+        let x = lado < 2 ? 655 + t * 290 : lado === 2 ? 650 : 950, y = lado < 2 ? (lado ? 305 : 595) : 305 + t * 290;
+        const dx = lado === 2 ? -1 : lado === 3 ? 1 : (x < 800 ? -1 : 1), dy = lado === 0 ? 1 : lado === 1 ? -1 : (y < 450 ? -1 : 1);
+        let d = `M${f1(x)} ${f1(y)}`;
+        const pernas = 3 + Math.floor(rnd() * 3);
+        for (let p = 0; p < pernas; p++) {
+          const l = 50 + rnd() * 170;
+          if (lado < 2 ? p % 2 === 0 : p % 2 === 1) y += dy * l * (lado < 2 ? 1 : .5); else x += dx * l * (lado < 2 ? .5 : 1);
+          d += `L${f1(x)} ${f1(y)}`;
+          if (p < pernas - 1) { const k = 22; x += dx * k; y += dy * k; d += `L${f1(x)} ${f1(y)}`; }
+        }
+        pads.push([x, y]);
+        const cor = i % 3 ? '#2FE3F2' : '#2FE38A';
+        tr += `<path d="${d}" fill="none" stroke="${cor}" stroke-opacity=".5" stroke-width="3" stroke-linejoin="round"/>`;
+        if (i % 2 === 0) vivo += `<path class="pw-corre" ${anima(rnd, 5)} d="${d}" fill="none" stroke="#E9FFFF" stroke-width="4" stroke-linecap="round" stroke-dasharray="26 1400"/>`;
+      }
+      const pernas = Array.from({ length: 11 }, (_, i) => { const p = 660 + i * 28; return `M${p} 300v-18M${p} 600v18M645 ${p - 360 + 5}h-18M955 ${p - 360 + 5}h18`; }).join('');
+      const [corpo] = cobra(c, 'c', (t) => [690 + t * 200, 450 + Math.sin(t * 8) * 66], { n: 28, r: 20, cores: ['#2FE3F2', '#2FE38A'], vivo: false });
+      return [`<rect width="1600" height="900" fill="${f}"/>${tr}${pontos(pads, '#7DF9FF', 11)}${pontos(pads, '#04121A', 4)}<rect x="630" y="280" width="340" height="340" rx="26" fill="#2FE3F2" opacity=".35" filter="${c.u('bm')}"/><path d="${pernas}" stroke="#7FA9B8" stroke-width="10"/><rect x="645" y="300" width="310" height="300" rx="20" fill="${ch}" stroke="${lg}" stroke-width="5"/><rect x="664" y="318" width="272" height="264" rx="10" fill="none" stroke="#2FE3F2" stroke-opacity=".35" stroke-width="2"/>${corpo}`, vivo + brilhos(rnd, 8, 900, '#7DF9FF')];
+    } },
+    galaxia: { nome: 'Galáxia', grupo: 'espaco', arte(c, rnd) {
+      c.blur('bm', 60); c.blur('bg', 26);
+      const f = c.rg('f', [[0, '#1A0E4A'], [.5, '#0A0626'], [1, '#02010A']], .5, .46, .8);
+      const nu = c.rg('nu', [[0, '#FFFFFF'], [.1, '#FFE8C2'], [.3, '#FF9FE0', .7], [.65, '#7A5CFF', .28], [1, '#3A1C9A', 0]]);
+      const gira = (x, y, a = -.32, ach = .46) => { const yy = y * ach; return [800 + x * Math.cos(a) - yy * Math.sin(a), 440 + x * Math.sin(a) + yy * Math.cos(a)]; };
+      const grupos = { a: [], b: [], d: [], e: [] };
+      for (let i = 0; i < 2300; i++) {
+        const braco = i % 3, t = Math.pow(rnd(), .62), th = t * 6.1 + braco * 2.094, r = 26 + t * 700, esp = (1 - t * .55) * 76 * (rnd() - .5) * (1 + rnd());
+        const [x, y] = gira(Math.cos(th) * (r + esp), Math.sin(th) * (r + esp));
+        const k = rnd();
+        (k < .4 ? grupos.a : k < .7 ? grupos.b : k < .9 ? grupos.d : grupos.e).push([x, y]);
+      }
+      const nuvem = (l, cor, r) => l.map(([x, y]) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${cor}"/>`).join('');
+      return [`<rect width="1600" height="900" fill="${f}"/>${estrelas2(rnd, 340)}<g transform="rotate(-18 800 440)" filter="${c.u('bm')}" opacity=".85">${nuvem([[420, 430], [1180, 450], [620, 330], [980, 550]], '#6A3BFF', 150)}${nuvem([[300, 460], [1300, 420]], '#FF4FA3', 100)}${nuvem([[860, 330], [720, 560]], '#2FE3F2', 90)}</g>`
+        + pontos(grupos.a, '#CFE4FF', 2) + pontos(grupos.b, '#FFE4F6', 2.6) + pontos(grupos.d, '#C79BFF', 3.4) + pontos(grupos.e, '#FFFFFF', 4.2)
+        + `<ellipse cx="800" cy="440" rx="330" ry="190" transform="rotate(-18 800 440)" fill="${nu}"/>`, brilhos(rnd, 16, 900, '#fff', 5, 13) + cadente(1320, 150, 2) + cadente(560, 80, 7)];
+    } },
+    saturno: { nome: 'Anéis', grupo: 'espaco', arte(c, rnd) {
+      c.blur('bm', 70); c.blur('bg', 18);
+      const f = c.lg('f', [[0, '#03071C'], [.6, '#0B1236'], [1, '#160C3A']]);
+      const pl = c.lg('pl', [[0, '#FFE9B8'], [.25, '#E9B26A'], [.42, '#FFF0CC'], [.58, '#D08A52'], [.75, '#F2C78A'], [1, '#8A4C2E']]);
+      const som = c.rg('som', [[0, '#000', 0], [.62, '#000', 0], [1, '#050310', .9]], .36, .34, .78);
+            c.defs += `<clipPath id="${c.id}fr"><path d="M-200 430H1800V1200H-200Z" transform="rotate(-14 800 430)"/></clipPath>`;
+      const aneis = [[655, 154, 26, '#FFE9C2', .9], [612, 142, 14, '#C79B6A', .8], [570, 131, 24, '#FFD9A0', .95], [524, 120, 10, '#8A6A5A', .7], [490, 112, 16, '#F2C78A', .85], [454, 103, 7, '#FFF3DC', .6]].map(([x, y, w, cor, op]) => `<ellipse cx="800" cy="430" rx="${x}" ry="${y}" fill="none" stroke="${cor}" stroke-opacity="${op}" stroke-width="${w}" transform="rotate(-14 800 430)"/>`).join('');
+      const faixas = [[-140, 44], [-70, 22], [-20, 60], [70, 30], [130, 40]].map(([y, h], i) => `<ellipse cx="800" cy="${430 + y}" rx="300" ry="${h}" fill="${i % 2 ? '#FFF0CC' : '#A85F3A'}" opacity=".24"/>`).join('');
+      c.defs += `<clipPath id="${c.id}cp"><circle cx="800" cy="430" r="250"/></clipPath>`;
+      return [`<rect width="1600" height="900" fill="${f}"/>${estrelas2(rnd, 420)}<ellipse cx="310" cy="210" rx="360" ry="190" fill="#6A3BFF" opacity=".34" filter="${c.u('bm')}"/><ellipse cx="1320" cy="680" rx="380" ry="200" fill="#FF7AB8" opacity=".24" filter="${c.u('bm')}"/><circle cx="800" cy="430" r="262" fill="#FFD9A0" opacity=".5" filter="${c.u('bg')}"/>${aneis}<circle cx="800" cy="430" r="250" fill="${pl}"/><g clip-path="url(#${c.id}cp)">${faixas}</g><circle cx="800" cy="430" r="250" fill="${som}"/><g clip-path="url(#${c.id}fr)">${aneis}</g>`,
+        `<g class="pw-flutua"><circle cx="1250" cy="690" r="46" fill="#CFE4FF"/><circle cx="1240" cy="680" r="34" fill="#F4F9FF" opacity=".6"/><circle cx="1266" cy="706" r="9" fill="#A8BEDC"/></g>${brilhos(rnd, 14, 900, '#fff', 5, 13)}${cadente(420, 110, 3)}`];
+    } },
+    buraco: { nome: 'Buraco Negro', grupo: 'espaco', arte(c, rnd) {
+      c.blur('br', 14); c.blur('bm', 40); c.blur('bg', 100);
+      const disco = c.lg('disco', [[0, '#FF6A1A', .08], [.22, '#FF8A2B'], [.5, '#FFFBE8'], [.78, '#FFB347'], [1, '#FF6A1A', .08]], 1, 0);
+      const aro = c.rg('aro', [[0, '#000'], [.8, '#000'], [.86, '#FFF3D0'], [.9, '#FFB347', .8], [1, '#FF6A1A', 0]]);
+      const dob = c.lg('dob', [[0, '#FFF3D0'], [.5, '#FF9A3D'], [1, '#FF6A1A', 0]]);
+      const elipses = Array.from({ length: 12 }, (_, i) => { const rx = 330 + i * 52, ry = 62 + i * 7.5; return `<ellipse cx="800" cy="450" rx="${rx}" ry="${ry}" fill="none" stroke="${disco}" stroke-width="${i < 6 ? 9 : 6}" opacity="${f1(1 - i * .07)}"/>`; }).join('');
+      c.defs += `<clipPath id="${c.id}fr"><rect x="0" y="450" width="1600" height="450"/></clipPath>`;
+      const vivo = Array.from({ length: 5 }, (_, i) => { const rx = 340 + i * 90, ry = 64 + i * 13; return `<ellipse class="pw-corre lento" clip-path="url(#${c.id}fr)" ${anima(rnd, 6 + i)} cx="800" cy="450" rx="${rx}" ry="${ry}" fill="none" stroke="#FFF3D0" stroke-width="4" stroke-linecap="round" stroke-dasharray="90 1800"/>`; }).join('');
+      return [`<rect width="1600" height="900" fill="#020108"/>${estrelas2(rnd, 460)}<ellipse cx="800" cy="450" rx="760" ry="230" fill="#FF7A1A" opacity=".2" filter="${c.u('bg')}"/><g filter="${c.u('br')}">${elipses}</g>${elipses}<circle cx="800" cy="450" r="285" fill="#FF8A2B" opacity=".55" filter="${c.u('bm')}"/><circle cx="800" cy="450" r="272" fill="${aro}"/><path d="M522 450A278 278 0 0 1 1078 450" fill="none" stroke="${dob}" stroke-width="14"/><g clip-path="url(#${c.id}fr)"><g filter="${c.u('br')}">${elipses}</g>${elipses}<path d="M560 450A240 110 0 0 0 1040 450" fill="none" stroke="${disco}" stroke-width="30"/></g>`,
+        vivo + brilhos(rnd, 12, 900, '#FFE3C2', 4, 11)];
+    } },
+    aurora: { nome: 'Aurora Boreal', grupo: 'natureza', arte(c, rnd) {
+      c.blur('br', 24); c.blur('bm', 50);
+      const ceu = c.lg('ceu', [[0, '#020818'], [.45, '#062A3E'], [.72, '#0E5A5A']]);
+      const au = c.lg('au', [[0, '#7A5CFF', 0], [.3, '#B05CFF', .55], [.62, '#2FE3A2', .95], [1, '#7DFFB5', 0]]);
+      const au2 = c.lg('au2', [[0, '#2FE3F2', 0], [.5, '#2FE3A2', .85], [1, '#CFFF9F', 0]]);
+      const m1 = c.lg('m1', [[0, '#E8FBFF'], [.22, '#8FC9D8'], [.32, '#1D5A6A'], [1, '#0A2C3A']]), m2 = c.lg('m2', [[0, '#123F4C'], [1, '#051720']]);
+      const fita = (y0, amp, h, fase, g, n = 100) => {
+        let s = '';
+        for (let i = 0; i < n; i++) { const x = i / (n - 1) * 1640 - 20, y = y0 + Math.sin(x / 210 + fase) * amp + Math.sin(x / 90 + fase * 2) * amp * .3, a = h * (.7 + rnd() * .5); s += `<rect x="${f1(x)}" y="${f1(y - a)}" width="${f1(13 + rnd() * 7)}" height="${f1(a)}" fill="${g}" opacity="${f1(.35 + rnd() * .55)}"/>`; }
+        return s;
+      };
+      const lago = c.lg('lago', [[0, '#0E5A5A'], [1, '#02101C']]);
+      const pinos = (y, e, n, cor) => Array.from({ length: n }, () => { const x = rnd() * 1640, h = e * (.6 + rnd() * .7); return `<path d="M${f1(x)} ${f1(y - h)}L${f1(x + h * .3)} ${y + 6}H${f1(x - h * .3)}Z" fill="${cor}"/>`; }).join('');
+      const fundo = `<g filter="${c.u('br')}">${fita(420, 90, 300, .4, au)}${fita(380, 70, 240, 2.2, au2)}</g>${fita(430, 90, 170, .4, au2, 70)}`;
+      const mont = `<path d="${serra(rnd, 520, 170, 150, 660)}" fill="${m1}"/><path d="${serra(rnd, 610, 60, 70, 660)}" fill="${m2}"/>`;
+      return [`<rect width="1600" height="900" fill="${ceu}"/>${estrelas2(rnd, 380, 560)}${fundo}${mont}<rect y="656" width="1600" height="244" fill="${lago}"/><g transform="matrix(1 0 0 -.55 0 1020)" opacity=".5">${fundo}</g><rect y="656" width="1600" height="4" fill="#BFFFE8" opacity=".35"/>${pinos(662, 66, 60, '#04151C')}<path d="${curva(860, 20, 170, 1, 900)}" fill="#020C12"/>${pinos(866, 130, 26, '#010709')}`, brilhos(rnd, 14, 420, '#E8FFF4', 5, 12) + cadente(1190, 70, 4)];
+    } },
+    oceano: { nome: 'Mar Profundo', grupo: 'natureza', arte(c, rnd) {
+      c.blur('br', 18); c.blur('bm', 36);
+      const f = c.lg('f', [[0, '#1AA0C8'], [.3, '#0B5E8F'], [.68, '#052A52'], [1, '#010A1E']]);
+      const ra = c.lg('ra', [[0, '#DFFFFF', .55], [1, '#DFFFFF', 0]]), ag = c.rg('ag', [[0, '#FF8FE0', .95], [.6, '#A85CFF', .6], [1, '#4B2FD0', .15]], .5, .4, .7), halo = c.rg('halo', [[0, '#D06CFF', .55], [1, '#D06CFF', 0]]);
+      const raios = Array.from({ length: 11 }, (_, i) => { const x = 240 + i * 112 + rnd() * 40, w = 28 + rnd() * 60, d = (x - 800) * .95; return `<path d="M${f1(x)} -10H${f1(x + w)}L${f1(x + w * 2.6 + d)} 800H${f1(x + d)}Z" fill="${ra}"/>`; }).join('');
+      const agua = (x, y, e) => {
+        const tent = [-46, -28, -10, 10, 28, 46].map((a, i) => `<path class="pw-balanca" style="animation-delay:-${f1(i * .4)}s" d="M${a} 8c${a * .3} 44 ${-a * .5} 66 ${a * .24} ${108 + (i % 2) * 34}" fill="none" stroke="#E0A8FF" stroke-opacity=".75" stroke-width="5" stroke-linecap="round"/>`).join('');
+        return `<g class="pw-flutua" style="animation-duration:${6 + e * 2}s"><g transform="translate(${x} ${y}) scale(${e})"><ellipse cx="0" cy="-10" rx="170" ry="150" fill="${halo}"/>${tent}<path d="M-72 10C-76 -86 76 -86 72 10C50 22 22 4 0 16C-24 4 -52 22 -72 10Z" fill="${ag}"/><ellipse cx="-24" cy="-40" rx="17" ry="10" fill="#fff" opacity=".6"/><path d="M-50 2C-44 -52 44 -52 50 2" fill="none" stroke="#FFD6F5" stroke-opacity=".6" stroke-width="4"/></g></g>`;
+      };
+      const coral = (x, h, cor) => { let s = ''; for (let i = 0; i < 7; i++) { const a = -.95 + i * .32, l = h * (.65 + rnd() * .5), mx = x + Math.sin(a) * l * .5, my = 900 - Math.cos(a) * l * .55; s += `<path d="M${x} 900Q${f1(mx)} ${f1(my + 30)} ${f1(x + Math.sin(a) * l)} ${f1(900 - Math.cos(a) * l)}" fill="none" stroke="${cor}" stroke-width="${f1(10 + rnd() * 12)}" stroke-linecap="round"/><circle cx="${f1(x + Math.sin(a) * l)}" cy="${f1(900 - Math.cos(a) * l)}" r="${f1(9 + rnd() * 10)}" fill="${cor}"/>`; } return s; };
+      const peixes = Array.from({ length: 26 }, () => { const x = 1000 + rnd() * 420, y = 230 + rnd() * 240, e = .6 + rnd() * .8; return `<path d="M${f1(x)} ${f1(y)}q${f1(16 * e)} ${f1(-9 * e)} ${f1(32 * e)} 0q${f1(-16 * e)} ${f1(9 * e)} ${f1(-32 * e)} 0l${f1(-11 * e)} ${f1(-7 * e)}v${f1(14 * e)}z" fill="#BFF3FF" opacity=".75"/>`; }).join('');
+      const bolhas = Array.from({ length: 34 }, () => { const x = rnd() * 1600, y = rnd() * 900, r = 3 + rnd() * 11; return `<g class="pw-sobe" ${anima(rnd, 12)}><circle cx="${f1(x)}" cy="${f1(y)}" r="${f1(r)}" fill="#fff" fill-opacity=".12" stroke="#DFFFFF" stroke-opacity=".75" stroke-width="1.6"/><circle cx="${f1(x - r * .3)}" cy="${f1(y - r * .3)}" r="${f1(r * .22)}" fill="#fff"/></g>`; }).join('');
+      return [`<rect width="1600" height="900" fill="${f}"/><g filter="${c.u('br')}">${raios}</g>${peixes}<path d="${serra(rnd, 760, 110, 80)}" fill="#062040"/>${coral(160, 240, '#0E3A5E')}${coral(1400, 260, '#0E3A5E')}<path d="${serra(rnd, 840, 70, 60)}" fill="#020F24"/>${coral(70, 190, '#031A36')}${coral(1520, 200, '#031A36')}${coral(420, 130, '#FF6FA8')}${coral(1180, 120, '#FFB347')}`,
+        agua(800, 400, 1.35) + agua(500, 260, .7) + agua(1130, 590, .6) + bolhas];
+    } },
+    selva: { nome: 'Selva Noturna', grupo: 'natureza', arte(c, rnd) {
+      c.blur('br', 22); c.blur('bm', 70);
+      const f = c.rg('f', [[0, '#5EE0B0'], [.28, '#1B7E72'], [.65, '#0A3D3F'], [1, '#031517']], .5, .4, .75);
+      const lua = c.rg('lua', [[0, '#FFFFF0'], [.8, '#E8FFD8'], [1, '#BFF5C8']]);
+      const folha = (x, y, l, a, cor) => { const v = `M0 0C${f1(l * .25)} ${f1(-l * .24)} ${f1(l * .75)} ${f1(-l * .22)} ${l} 0C${f1(l * .75)} ${f1(l * .22)} ${f1(l * .25)} ${f1(l * .24)} 0 0Z`; const nerv = Array.from({ length: 6 }, (_, i) => { const p = l * (.15 + i * .13); return `M${f1(p)} 0L${f1(p + l * .1)} ${f1(-l * .13)}M${f1(p)} 0L${f1(p + l * .1)} ${f1(l * .13)}`; }).join(''); return `<g transform="translate(${f1(x)} ${f1(y)}) rotate(${f1(a)})"><path d="${v}" fill="${cor}"/><path d="M0 0H${l}${nerv}" fill="none" stroke="#fff" stroke-opacity=".08" stroke-width="2"/></g>`; };
+      const moita = (x, y, n, l, a0, ab, cor) => Array.from({ length: n }, (_, i) => folha(x + (rnd() - .5) * 60, y + (rnd() - .5) * 60, l * (.7 + rnd() * .5), a0 + ab * (i / n) + rnd() * 12, cor[i % cor.length])).join('');
+      const cip = [[300, 0, 300, 470], [1180, 0, 1250, 400], [1330, 0, 1300, 540], [190, 0, 130, 370]].map(([a, b, x, y]) => `<path d="M${a} ${b}Q${(a + x) / 2 + 40} ${y * .5} ${x} ${y}" fill="none" stroke="#04211F" stroke-width="9" stroke-linecap="round"/>`).join('');
+      const [corpo, onda] = cobra(c, 'c', (t) => [-40 + t * 860, 210 + Math.sin(t * 6.4) * 34 + t * t * t * t * 250], { n: 50, r: 30, cores: ['#7CFF4F', '#FFD84D'] });
+      const galho = `<path d="M-40 250C200 170 460 260 680 190C780 158 880 200 980 150C1220 90 1420 150 1640 90" fill="none" stroke="#0B1F16" stroke-width="42" stroke-linecap="round"/><path d="M-40 240C200 160 460 250 680 180C780 148 880 190 980 140C1220 80 1420 140 1640 80" fill="none" stroke="#1E3F2C" stroke-width="10" stroke-linecap="round"/>`;
+      const verdes = ['#0C4A3E', '#0F5A46', '#0A3A34'], escuros = ['#04211E', '#062A25', '#031A18'];
+      const vag = Array.from({ length: 30 }, () => { const x = rnd() * 1600, y = 150 + rnd() * 700; return `<g class="pw-vaga" ${anima(rnd, 7)}><circle cx="${f1(x)}" cy="${f1(y)}" r="11" fill="#E6FF7A" opacity=".22"/><circle cx="${f1(x)}" cy="${f1(y)}" r="3.6" fill="#F4FFC2"/></g>`; }).join('');
+      return [`<rect width="1600" height="900" fill="${f}"/><circle cx="800" cy="350" r="420" fill="#BFFFE0" opacity=".3" filter="${c.u('bm')}"/><circle cx="800" cy="350" r="170" fill="${lua}"/>${moita(240, 640, 16, 300, -80, 150, verdes)}${moita(1360, 640, 16, 300, 100, 150, verdes)}${cip}${galho}${corpo}${moita(-20, 880, 18, 430, -80, 90, escuros)}${moita(1620, 880, 18, 430, 170, 90, escuros)}${moita(800, 960, 12, 300, -150, 120, escuros)}${moita(1620, 20, 14, 330, 80, 90, escuros)}${moita(-20, 20, 14, 330, 0, 90, escuros)}`, vag + onda];
+    } },
+    sakura: { nome: 'Sakura', grupo: 'natureza', arte(c, rnd) {
+      c.blur('bm', 60);
+      const ceu = c.lg('ceu', [[0, '#1E1250'], [.36, '#6E2A86'], [.62, '#E8679E'], [.8, '#FFC3A3']]);
+      const sol = c.lg('sol', [[0, '#FFF6E8'], [1, '#FFC2D6']]);
+      const fu = c.lg('fu', [[0, '#FFFFFF'], [.2, '#F4D8F0'], [.32, '#7A4A9A'], [1, '#3C2466']]);
+      const lago = c.lg('lago', [[0, '#E884AE'], [1, '#2A1650']]);
+      const flor = ['#FFD6E8', '#FFB3D1', '#FF8FBC', '#FFE8F2'];
+      const copa = (x, y, rx, ry, n) => { let s = ''; for (let i = 0; i < n; i++) { const a = rnd() * 6.28, d = Math.sqrt(rnd()); s += `<circle cx="${f1(x + Math.cos(a) * rx * d)}" cy="${f1(y + Math.sin(a) * ry * d)}" r="${f1(9 + rnd() * 18)}" fill="${flor[i % 4]}" opacity="${f1(.65 + rnd() * .35)}"/>`; } return s; };
+      const tronco = `<path d="M-40 900C60 720 40 560 130 430C190 345 300 290 420 210M112 470C70 360 40 270 -40 190M178 370C250 370 330 390 440 370" fill="none" stroke="#2A1230" stroke-width="30" stroke-linecap="round"/><path d="M1640 760C1540 640 1500 480 1430 330C1390 250 1300 190 1190 140M1450 390C1500 310 1560 270 1640 240M1420 310C1350 310 1280 340 1180 330" fill="none" stroke="#2A1230" stroke-width="26" stroke-linecap="round"/>`;
+      const pag = `<g fill="#1E0F38"><path d="M1090 640V556H1150V640ZM1062 560L1120 512L1178 560ZM1098 516V470H1142V516ZM1072 474L1120 432L1168 474ZM1104 436V402H1136V436ZM1084 406L1120 370L1156 406Z"/></g>`;
+      const pet = Array.from({ length: 44 }, () => { const x = rnd() * 1600, y = rnd() * 900, e = .7 + rnd() * .9; return `<path class="pw-cai pw-roda" ${anima(rnd, 11)} d="M${f1(x)} ${f1(y)}c${f1(6 * e)} ${f1(-8 * e)} ${f1(16 * e)} ${f1(-6 * e)} ${f1(17 * e)} ${f1(2 * e)}c${f1(-5 * e)} ${f1(7 * e)} ${f1(-13 * e)} ${f1(6 * e)} ${f1(-17 * e)} ${f1(-2 * e)}z" fill="${flor[Math.floor(rnd() * 4)]}"/>`; }).join('');
+      return [`<rect width="1600" height="900" fill="${ceu}"/>${estrelas2(rnd, 70, 230)}<circle cx="800" cy="370" r="330" fill="#FFD6E8" opacity=".55" filter="${c.u('bm')}"/><circle cx="800" cy="370" r="186" fill="${sol}"/><path d="M340 650L700 300Q800 240 900 300L1260 650Z" fill="${fu}"/><path d="${serra(rnd, 610, 54, 90, 650)}" fill="#46286E"/>${pag}<rect y="646" width="1600" height="254" fill="${lago}"/>${[676, 712, 748, 790].map((y, i) => `<rect x="${620 + i * 22}" y="${y}" width="${360 - i * 44}" height="5" rx="2.5" fill="#FFF6E8" opacity=".55"/>`).join('')}<path d="${curva(860, 16, 200, 2, 900)}" fill="#1A0A2E"/>${tronco}${copa(120, 120, 260, 150, 120)}${copa(360, 230, 200, 110, 90)}${copa(1480, 110, 260, 140, 120)}${copa(1240, 190, 190, 100, 80)}`, pet];
+    } },
+    tempestade: { nome: 'Tempestade', grupo: 'natureza', arte(c, rnd) {
+      c.blur('br', 30); c.blur('bm', 12);
+      const f = c.lg('f', [[0, '#080A1E'], [.5, '#1A1F4A'], [.75, '#2C3A7A'], [1, '#0A1030']]);
+      const nv = (x, y, w, cor, n) => Array.from({ length: n }, () => `<ellipse cx="${f1(x + (rnd() - .5) * w)}" cy="${f1(y + (rnd() - .5) * 110)}" rx="${f1(70 + rnd() * 110)}" ry="${f1(36 + rnd() * 54)}" fill="${cor}"/>`).join('');
+      const rioD = 'M812 170L760 330L836 352L742 520L812 540L716 760M760 330L640 410L668 430L590 520M812 540L910 640L892 660L990 760';
+      const mar = c.lg('mar', [[0, '#2A4A9A'], [1, '#030818']]);
+      const raio = (cl) => `<g class="${cl}"${cl ? ' opacity="0"' : ''}><path d="${rioD}" fill="none" stroke="#9FD0FF" stroke-width="30" stroke-linejoin="round" opacity=".6" filter="${c.u('bm')}"/><path d="${rioD}" fill="none" stroke="#fff" stroke-width="8" stroke-linejoin="round" stroke-linecap="round"/></g>`;
+      const chuva = `<g class="pw-chuva" opacity=".55">${Array.from({ length: 110 }, () => { const x = rnd() * 1700, y = rnd() * 1000 - 100; return `<path d="M${f1(x)} ${f1(y)}l-12 46" stroke="#BFD4FF" stroke-width="2"/>`; }).join('')}</g>`;
+      return [`<rect width="1600" height="900" fill="${f}"/><ellipse cx="790" cy="430" rx="620" ry="420" fill="${c.rg('cl', [[0, '#7FA8FF', .6], [1, '#7FA8FF', 0]])}"/><g filter="${c.u('br')}">${nv(800, 170, 1800, '#59619E', 22)}${nv(800, 104, 1800, '#2E3370', 26)}${nv(800, 30, 1800, '#12143A', 24)}</g>${raio('')}<path d="${curva(760, 26, 120, .7)}" fill="${mar}"/><path d="${curva(800, 34, 90, 2.4)}" fill="#0C1A4A"/><path d="${curva(850, 26, 70, 4)}" fill="#050C2A"/>`,
+        `<rect class="pw-flash" opacity="0" width="1600" height="900" fill="#CFE0FF"/>${raio('pw-flash')}${chuva}`];
+    } },
+    dunas: { nome: 'Dunas', grupo: 'natureza', arte(c, rnd) {
+      c.blur('bm', 50);
+      const ceu = c.lg('ceu', [[0, '#1E0E52'], [.3, '#7A2A86'], [.55, '#F2607A'], [.72, '#FFB35C']]);
+      const sol = c.lg('sol', [[0, '#FFF7CF'], [1, '#FFC24D']]);
+      const d1 = c.lg('d1', [[0, '#C76A52'], [1, '#6E2F54']]), d2 = c.lg('d2', [[0, '#E89158'], [1, '#8A3F4E']]), d3 = c.lg('d3', [[0, '#FFB86B'], [1, '#A84E3E']]), d4 = c.lg('d4', [[0, '#F29E5A'], [1, '#5A2238']]);
+      const rastro = (t) => [80 + t * 1440, 742 + Math.sin(t * 13) * 34 + (t - .5) * 40];
+      const trilha = Array.from({ length: 70 }, (_, i) => rastro(i / 69));
+      const d = `M${trilha.map(([x, y]) => `${f1(x)} ${f1(y)}`).join('L')}`;
+      const cacto = (x, y, e, cor) => `<g transform="translate(${x} ${y}) scale(${e})" fill="none" stroke="${cor}" stroke-linecap="round" stroke-width="22"><path d="M0 0V-136"/><path d="M0 -44H-40V-92" stroke-width="16"/><path d="M0 -66H38V-110" stroke-width="16"/></g>`;
+      const piram = `<path d="M1090 560L1210 420L1340 575Z" fill="#7A2F5C"/><path d="M1210 420L1340 575L1240 590Z" fill="#4E1E46"/><path d="M1270 560L1340 480L1420 575Z" fill="#6E2A54"/>`;
+      const vento = Array.from({ length: 16 }, () => `<path class="pw-deriva" style="animation-duration:${f1(5 + rnd() * 6)}s;animation-delay:-${f1(rnd() * 10)}s" d="M-200 ${f1(560 + rnd() * 320)}h${f1(60 + rnd() * 110)}" stroke="#FFE3B0" stroke-opacity=".5" stroke-width="2.4" stroke-linecap="round"/>`).join('');
+      const aves = [[520, 230, 1], [580, 200, .7], [470, 190, .6]].map(([x, y, e]) => `<path class="pw-flutua" d="M${x} ${y}q${14 * e} ${-16 * e} ${28 * e} 0q${14 * e} ${-16 * e} ${28 * e} 0" fill="none" stroke="#2A0E3A" stroke-width="4" stroke-linecap="round"/>`).join('');
+      return [`<rect width="1600" height="900" fill="${ceu}"/>${estrelas2(rnd, 80, 240)}<circle cx="800" cy="500" r="380" fill="#FFD27A" opacity=".5" filter="${c.u('bm')}"/><circle cx="800" cy="500" r="205" fill="${sol}"/>${piram}<path d="${curva(590, 34, 190, 1)}" fill="${d1}"/><path d="${curva(650, 42, 150, 3.2)}" fill="${d2}"/><path d="${curva(720, 30, 240, 5)}" fill="${d3}"/>`
+        + `<path d="${d}" fill="none" stroke="#7A3A3A" stroke-opacity=".5" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/><path d="${d}" fill="none" stroke="#FFD9A3" stroke-opacity=".55" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 -6)"/>${cacto(250, 700, 1, '#2C1038')}${cacto(1420, 760, .7, '#2C1038')}<path d="${curva(838, 22, 200, 2)}" fill="${d4}"/>${cacto(1500, 860, 1.5, '#1A0A26')}`, aves + vento];
+    } },
+    trono: { nome: 'Trono de Ouro', grupo: 'campeao', titulos: 1, arte(c, rnd) {
+      c.blur('bm', 46); c.blur('bp', 8);
+      const f = c.rg('f', [[0, '#7A4A08'], [.45, '#2C1604'], [1, '#080401']], .5, .42, .82);
+      const ou = c.lg('ou', [[0, '#FFF8D6'], [.4, '#FFD95A'], [.8, '#D9930E'], [1, '#7A4A00']]);
+      const ou2 = c.lg('ou2', [[0, '#7A4A00'], [.5, '#FFD95A'], [1, '#7A4A00']], 1, 0);
+      const pil = c.lg('pil', [[0, '#3A2206'], [.3, '#B97F14'], [.5, '#FFE28A'], [.7, '#B97F14'], [1, '#3A2206']], 1, 0);
+      const manto = c.lg('manto', [[0, '#5B1FA8'], [1, '#22083F']]);
+      const raios = Array.from({ length: 36 }, (_, i) => { const g = i / 36 * Math.PI * 2; return i % 2 ? '' : `<path d="M800 330L${f1(800 + Math.cos(g - .06) * 1100)} ${f1(330 + Math.sin(g - .06) * 1100)}L${f1(800 + Math.cos(g + .06) * 1100)} ${f1(330 + Math.sin(g + .06) * 1100)}Z" fill="#FFD95A" opacity=".13"/>`; }).join('');
+      const coluna = (x) => `<rect x="${x}" y="60" width="96" height="780" fill="${c.u('pil')}"/><rect x="${x - 16}" y="40" width="128" height="30" rx="5" fill="${c.u('ou')}"/><rect x="${x - 16}" y="830" width="128" height="30" rx="5" fill="${c.u('ou')}"/>`;
+      const coroa = `<path d="M580 470L536 180L676 300L800 90L924 300L1064 180L1020 470Z" fill="${ou}" stroke="#7A4A00" stroke-width="7" stroke-linejoin="round"/><path d="M800 90L800 470M676 300L640 470M924 300L960 470" stroke="#FFF8D6" stroke-opacity=".45" stroke-width="7"/><rect x="566" y="456" width="468" height="62" rx="16" fill="${ou2}" stroke="#7A4A00" stroke-width="6"/>${[[536, 180], [800, 90], [1064, 180]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="24" fill="#FFFDF0" stroke="#7A4A00" stroke-width="6"/>`).join('')}<path d="M800 338l26 40-26 40-26-40z" fill="#7DF9FF" stroke="#fff" stroke-width="4"/><circle cx="664" cy="487" r="16" fill="#3B82F6" stroke="#FFF8D6" stroke-width="3"/><circle cx="936" cy="487" r="16" fill="#22E07A" stroke="#FFF8D6" stroke-width="3"/><circle cx="800" cy="487" r="18" fill="#FF4F8A" stroke="#FFF8D6" stroke-width="3"/>`;
+      const deg = [0, 1, 2].map((i) => `<rect x="${360 - i * 80}" y="${630 + i * 50}" width="${880 + i * 160}" height="${50}" fill="${i % 2 ? '#3A2206' : '#5A3A0E'}"/><rect x="${360 - i * 80}" y="${630 + i * 50}" width="${880 + i * 160}" height="5" fill="#FFD95A" opacity=".7"/>`).join('');
+      const fa = Array.from({ length: 36 }, () => { const x = 200 + rnd() * 1200, y = rnd() * 900, r = 3 + rnd() * 7; return `<g class="pw-sobe" ${anima(rnd, 10)}><circle cx="${f1(x)}" cy="${f1(y)}" r="${f1(r)}" fill="#FFD95A"/></g>`; }).join('');
+      return [`<rect width="1600" height="900" fill="${f}"/>${raios}<path d="M-40 -10H620C520 180 320 300 110 330L-40 340Z" fill="${manto}"/><path d="M1640 -10H980C1080 180 1280 300 1490 330L1640 340Z" fill="${manto}"/><path d="M-40 330C160 330 480 210 620 -10" fill="none" stroke="#FFD95A" stroke-width="9"/><path d="M1640 330C1440 330 1120 210 980 -10" fill="none" stroke="#FFD95A" stroke-width="9"/>${coluna(170)}${coluna(1334)}${deg}<circle cx="800" cy="320" r="360" fill="#FFD95A" opacity=".42" filter="${c.u('bm')}"/><rect x="540" y="500" width="520" height="132" fill="#2C1604"/><rect x="540" y="500" width="520" height="12" fill="${ou2}"/>${coroa}`,
+        `${fa}${brilhos(rnd, 16, 700, '#FFF8D6', 8, 20)}`];
+    } },
+    salao: { nome: 'Salão dos Campeões', grupo: 'campeao', titulos: 1, arte(c, rnd) {
+      c.blur('bm', 40); c.blur('bp', 5);
+      const f = c.lg('f', [[0, '#050A1E'], [.55, '#0E1A44'], [.7, '#0A0F2C']]);
+      const ch = c.lg('ch', [[0, '#1C2A66'], [1, '#050817']]);
+      const ou = c.lg('ou', [[0, '#FFF8D6'], [.35, '#FFD95A'], [.7, '#E39A12'], [1, '#FFE28A']], 1, 0);
+      const luz = c.lg('luz', [[0, '#CFE4FF', .6], [1, '#CFE4FF', 0]]);
+      const taca = (x, y, e, g) => `<g transform="translate(${x} ${y}) scale(${e})" fill="${g}" stroke="#7A4A00" stroke-width="${f1(4 / e)}" stroke-linejoin="round"><path d="M-74 -212C-132 -212 -128 -118 -56 -106L-50 -130C-92 -138 -94 -188 -70 -190ZM74 -212C132 -212 128 -118 56 -106L50 -130C92 -138 94 -188 70 -190Z"/><path d="M-82 -240H82C82 -110 42 -72 14 -62V-26H-14V-62C-42 -72 -82 -110 -82 -240Z"/><path d="M-46 -26H46L60 0H-60Z"/></g>`;
+      const feixe = (x, a) => `<path d="M${x} -20L${x + a - 90} 720H${x + a + 90}Z" fill="${luz}"/>`;
+      const prat = (y, l) => `<rect x="${l ? 0 : 1160}" y="${y}" width="440" height="16" fill="#2A3770"/><rect x="${l ? 0 : 1160}" y="${y}" width="440" height="3" fill="#7DA0FF"/>`;
+      const fila = (y, l) => [60, 170, 280, 390].map((x, i) => taca(l ? x : 1600 - x, y, .36 + (i % 2) * .05, c.u(i % 3 === 2 ? 'pr' : 'ou'))).join('');
+      c.lg('pr', [[0, '#FFFFFF'], [.5, '#AEBBD0'], [1, '#EEF2F8']], 1, 0);
+      const pil = (x) => `<rect x="${x}" y="0" width="64" height="660" fill="#101A48"/><rect x="${x}" y="0" width="16" height="660" fill="#22337A"/>`;
+      const band = (x, cor) => `<path d="M${x} 90H${x + 150}V330L${x + 75} 270L${x} 330Z" fill="${cor}"/><path d="M${x + 75} 150l13 26 29 4-21 20 5 29-26-14-26 14 5-29-21-20 29-4z" fill="#FFD95A"/>`;
+      const refl = `<g transform="matrix(1 0 0 -.5 0 985)" opacity=".28">${taca(800, 640, 1.35, c.u('ou'))}</g>`;
+      const fa = Array.from({ length: 30 }, () => { const x = 480 + rnd() * 640, y = rnd() * 700, r = 3 + rnd() * 6; return `<g class="pw-sobe" ${anima(rnd, 11)}><circle cx="${f1(x)}" cy="${f1(y)}" r="${f1(r)}" fill="#FFE8A3"/></g>`; }).join('');
+      return [`<rect width="1600" height="900" fill="${f}"/>${pil(446)}${pil(1090)}${band(528, '#3B1E8A')}${band(922, '#0F5E7A')}${prat(380, true)}${prat(380, false)}${prat(620, true)}${prat(620, false)}${fila(380, true)}${fila(380, false)}${fila(620, true)}${fila(620, false)}<rect y="640" width="1600" height="260" fill="${ch}"/><rect y="640" width="1600" height="4" fill="#7DA0FF" opacity=".5"/>${[-3, -2, -1, 0, 1, 2, 3].map((i) => `<path d="M${800 + i * 130} 640L${800 + i * 520} 900" stroke="#3A4FA8" stroke-width="2"/>`).join('')}${[696, 770, 860].map((y) => `<rect y="${y}" width="1600" height="2" fill="#3A4FA8"/>`).join('')}${refl}${feixe(500, 300)}${feixe(1100, -300)}${feixe(800, 0)}<circle cx="800" cy="440" r="280" fill="#FFD95A" opacity=".38" filter="${c.u('bm')}"/><rect x="640" y="640" width="320" height="30" rx="6" fill="#27357A"/><rect x="680" y="608" width="240" height="34" rx="6" fill="#3A4FA8"/>${taca(800, 610, 1.35, c.u('ou'))}`, fa + brilhos(rnd, 12, 640, '#FFF8D6', 8, 20)];
+    } },
+    supernova: { nome: 'Supernova', grupo: 'campeao', titulos: 2, arte(c, rnd) {
+      c.blur('bm', 30); c.blur('bg', 90); c.blur('bp', 10);
+      const nu = c.rg('nu', [[0, '#FFFFFF'], [.14, '#FFFFFF'], [.3, '#BFF9FF', .95], [.55, '#FF6FCF', .5], [1, '#7A2FFF', 0]]);
+      const raios = Array.from({ length: 150 }, () => { const g = rnd() * 6.283, l = 180 + rnd() * rnd() * 840, w = .008 + rnd() * .02, cor = ['#FFFFFF', '#BFF9FF', '#FF9FE0', '#C79BFF', '#FFE3A3'][Math.floor(rnd() * 5)]; return `<path d="M800 440L${f1(800 + Math.cos(g - w) * l)} ${f1(440 + Math.sin(g - w) * l * .78)}L${f1(800 + Math.cos(g + w) * l)} ${f1(440 + Math.sin(g + w) * l * .78)}Z" fill="${cor}" opacity="${f1(.25 + rnd() * .6)}"/>`; }).join('');
+      const nuvem = Array.from({ length: 16 }, (_, i) => { const g = i / 16 * 6.283, d = 300 + rnd() * 260, cor = i % 3 ? '#7A2FFF' : '#FF4FA3'; return `<ellipse cx="${f1(800 + Math.cos(g) * d)}" cy="${f1(440 + Math.sin(g) * d * .7)}" rx="${f1(120 + rnd() * 130)}" ry="${f1(80 + rnd() * 80)}" fill="${cor}" opacity=".5"/>`; }).join('');
+      const aneis = [0, 1, 2].map((i) => `<ellipse class="pw-expande" style="animation-delay:-${i * 2}s" cx="800" cy="440" rx="${380}" ry="${300}" fill="none" stroke="#BFF9FF" stroke-width="5"/>`).join('');
+      const est = [[300, 3], [460, 2]].map(([r, w]) => `<ellipse cx="800" cy="440" rx="${r}" ry="${r * .78}" fill="none" stroke="#BFF9FF" stroke-opacity=".35" stroke-width="${w}"/>`).join('');
+      const est2 = Array.from({ length: 40 }, () => { const g = rnd() * 6.283, l = 220 + rnd() * 560, x = 800 + Math.cos(g) * l, y = 440 + Math.sin(g) * l * .78; return `<path class="pw-pisca" ${anima(rnd, 2.6)} d="${brilho4(x, y, 6 + rnd() * 12)}" fill="#fff"/>`; }).join('');
+      return [`<rect width="1600" height="900" fill="#04010F"/>${estrelas2(rnd, 340)}<g filter="${c.u('bg')}">${nuvem}</g><g filter="${c.u('bp')}" opacity=".7">${raios}</g>${raios}${est}<ellipse cx="800" cy="440" rx="520" ry="410" fill="${nu}"/><circle cx="800" cy="440" r="120" fill="#fff" filter="${c.u('bm')}"/>`, aneis + est2];
+    } },
+    reino: { nome: 'Reino Diamante', grupo: 'campeao', titulos: 3, arte(c, rnd) {
+      c.blur('bm', 44); c.blur('bg', 90); c.blur('bp', 5);
+      const f = c.rg('f', [[0, '#3A2FA8'], [.5, '#120E3A'], [1, '#03021A']], .5, .42, .85);
+      const ARCO = ['#FF8FB1', '#FFD36E', '#8BFFB0', '#7DE3FF', '#B79BFF'];
+      const fac = [['#FFFFFF', '#CFEFFF'], ['#BFE3FF', '#7FA8FF'], ['#E8F8FF', '#A9C8FF'], ['#8FA8FF', '#5B5FD8'], ['#D6F2FF', '#8FC8FF']].map(([a, b], i) => c.lg(`g${i}`, [[0, a], [1, b]], 1, 1));
+      const cristal = (x, h, w, k) => { const y = 900 - h; return `<path d="M${f1(x - w / 2)} 900L${f1(x - w / 2)} ${f1(y + w * .6)}L${f1(x)} ${f1(y)}V900Z" fill="${fac[k % 5]}"/><path d="M${f1(x + w / 2)} 900L${f1(x + w / 2)} ${f1(y + w * .6)}L${f1(x)} ${f1(y)}V900Z" fill="${fac[(k + 3) % 5]}"/><path d="M${f1(x - w / 2)} ${f1(y + w * .6)}L${f1(x)} ${f1(y)}L${f1(x)} ${f1(y + w * .95)}Z" fill="#fff" fill-opacity=".5"/>`; };
+      const atras = Array.from({ length: 16 }, (_, i) => { const x = 40 + i * 104 + rnd() * 30; return { x, h: 170 + Math.abs(x - 800) * .28 + rnd() * 130, w: 90 + rnd() * 70, k: i }; });
+      const frente = Array.from({ length: 12 }, (_, i) => { const x = 20 + i * 142 + rnd() * 40; return { x, h: 60 + Math.abs(x - 800) * .24 + rnd() * 100, w: 90 + rnd() * 70, k: i + 2 }; });
+      const raiosA = Array.from({ length: 22 }, (_, i) => { const g = i / 22 * 6.283, p = (d) => `${f1(800 + 1100 * Math.cos(g + d))} ${f1(360 + 1100 * Math.sin(g + d))}`; return `<path d="M800 360L${p(-.05)}L${p(.05)}Z" fill="${ARCO[i % 5]}" opacity=".2"/>`; }).join('');
+      const X = 800, Y = 350;
+      const pt = (a, b) => `${X + a} ${Y + b}`;
+      const gem = [[pt(-240, -60), pt(-130, -170), pt(-60, -60), fac[2]], [pt(-130, -170), pt(0, -170), pt(-60, -60), fac[0]], [pt(0, -170), pt(60, -60), pt(-60, -60), fac[4]], [pt(0, -170), pt(130, -170), pt(60, -60), fac[0]], [pt(130, -170), pt(240, -60), pt(60, -60), fac[1]],
+        [pt(-240, -60), pt(-60, -60), pt(0, 240), fac[1]], [pt(-60, -60), pt(60, -60), pt(0, 240), fac[0]], [pt(60, -60), pt(240, -60), pt(0, 240), fac[3]]].map(([a, b, d, g]) => `<path d="M${a}L${b}L${d}Z" fill="${g}" stroke="#fff" stroke-opacity=".75" stroke-width="3" stroke-linejoin="round"/>`).join('');
+      const fa = Array.from({ length: 34 }, () => { const x = rnd() * 1600, y = rnd() * 760, r = 7 + rnd() * 15; return `<path class="pw-pisca" ${anima(rnd, 3)} d="${brilho4(x, y, r)}" fill="${ARCO[Math.floor(rnd() * 5)]}"/>`; }).join('');
+      return [`<rect width="1600" height="900" fill="${f}"/>${estrelas2(rnd, 260, 620)}${raiosA}<ellipse cx="800" cy="360" rx="520" ry="420" fill="#8FA8FF" opacity=".5" filter="${c.u('bg')}"/>${atras.map((a) => cristal(a.x, a.h, a.w, a.k)).join('')}<rect y="560" width="1600" height="340" fill="${c.lg('nev', [[0, '#1A1660', 0], [1, '#0B0830', .85]])}"/>${frente.map((a) => cristal(a.x, a.h, a.w, a.k)).join('')}<ellipse cx="800" cy="350" rx="280" ry="250" fill="#CFE4FF" opacity=".55" filter="${c.u('bm')}"/>`,
+        `<g class="pw-flutua" style="animation-duration:7s">${gem}<path class="pw-pisca" d="${brilho4(700, 215, 46)}" fill="#fff"/></g>${fa}`];
+    } },
+  };
+  const GRUPOS_PAREDE = { arena: 'ARENA', neon: 'NEON', espaco: 'ESPAÇO', natureza: 'NATUREZA', campeao: 'SÓ CAMPEÃO' };
+  let numParede = 0;
+  // parte: 'tudo' (imagem parada), 'base' (só o que não mexe) ou 'vivo' (só o que mexe, sem o fundo)
+  function paredeSVG(id, parte = 'tudo') {
+    const p = PAREDES[id];
+    if (!p) return '';
+    const c = { id: `pw${++numParede}`, defs: '' };
+    const paradas = (l) => l.map(([o, cor, a]) => `<stop offset="${o}" stop-color="${cor}"${a === undefined ? '' : ` stop-opacity="${a}"`}/>`).join('');
+    c.u = (n) => `url(#${c.id}${n})`;
+    c.lg = (n, l, x2 = 0, y2 = 1) => { c.defs += `<linearGradient id="${c.id}${n}" x1="0" y1="0" x2="${x2}" y2="${y2}">${paradas(l)}</linearGradient>`; return c.u(n); };
+    c.rg = (n, l, cx = .5, cy = .5, r = .5) => { c.defs += `<radialGradient id="${c.id}${n}" cx="${cx}" cy="${cy}" r="${r}">${paradas(l)}</radialGradient>`; return c.u(n); };
+    c.blur = (n, d) => { c.defs += `<filter id="${c.id}${n}" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="${d}"/></filter>`; };
+    const [base, vivo] = p.arte(c, sorteio(Object.keys(PAREDES).indexOf(id) * 97 + 11));
+    const corpo = parte === 'base' ? base : parte === 'vivo' ? vivo : base + vivo;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice"${parte === 'vivo' ? ' class="par-vivo" aria-hidden="true"' : ''}><defs>${c.defs}</defs>${corpo}</svg>`;
+  }
+  // no site: a imagem parada é gerada uma vez só e reaproveitada em todo lugar (não pesa a lista)
+  const urlsParede = new Map();
+  function urlParede(id, parte = 'tudo') {
+    const k = `${id}:${parte}`;
+    if (!urlsParede.has(k)) urlsParede.set(k, URL.createObjectURL(new Blob([paredeSVG(id, parte)], { type: 'image/svg+xml' })));
+    return urlsParede.get(k);
+  }
+  const paredeDe = (k) => { const r = elenco.get(k); return r && PAREDES[r.parede] ? r.parede : null; };
+  // a plaquinha do jogador (linha do ranking, pódio, membros...): classe e imagem em quem aparece a pessoa
+  function comParede(n, k, cls = 'tem-parede') {
+    const id = paredeDe(k);
+    n.classList.toggle(cls, !!id);
+    if (id) n.style.setProperty('--parede', `url("${urlParede(id)}")`); else n.style.removeProperty('--parede');
+    return n;
+  }
+  // a versão animada (atrás do perfil e na prévia): a base parada e só o que mexe por cima
+  function paredeAoVivo(box, id) {
+    if ((box.dataset.parede || '') === (id || '')) return;
+    box.dataset.parede = id || '';
+    box.style.backgroundImage = id ? `url("${urlParede(id, 'base')}")` : '';
+    box.innerHTML = id ? paredeSVG(id, 'vivo') : '';
+  }
+
+  // ---------- escolher o papel de parede ----------
+  const ICONE_PAREDE = '<rect x="3" y="4.5" width="18" height="15" rx="2.5"/><circle cx="8.5" cy="9.5" r="1.7"/><path d="M4 18l5-5 3.5 3.5L16 13l4.5 4.5"/>';
+  let pad = null; // { k, id, tinha, titulos }
+  const podeMudarParede = (k) => paredeOk && podeMudarAvatar(k);
+  const paredeTrancada = (id) => !!id && (PAREDES[id].titulos || 0) > pad.titulos;
+  function abrirParede(k) {
+    const r = elenco.get(k);
+    if (!r || !podeMudarParede(k)) return;
+    const id = paredeDe(k);
+    pad = { k, id, tinha: !!id, titulos: titulosDe(k) };
+    $('tituloParede').replaceChildren(lerEu() === k ? 'SEU PAPEL DE ' : `${r.nick.toUpperCase()} · PAPEL DE `, el('span', { class: 'laranja', text: 'PAREDE' }));
+    $('btnParTirar').hidden = !pad.tinha;
+    const pts = ptsPat(k);
+    $('parId').replaceChildren(avatarDe(r.nick, pts, 'av-g'), el('div', { class: 'par-id-txt' },
+      el('span', { class: 'pp-tag', text: `[${TAG}]` }), el('b', { text: r.nick }), chipPatente(pts)));
+    const ordem = Object.keys(GRUPOS_PAREDE).sort((a, b) => (b === 'campeao') - (a === 'campeao'));
+    trocar($('parCorpo'), ordem.map((g) => {
+      const lenda = g === 'campeao';
+      return el('section', { class: 'avd-sec' },
+        el('h3', { class: `avd-rot ${lenda ? 'avd-rot-lenda' : ''}` }, GRUPOS_PAREDE[g],
+          lenda ? el('span', { class: 'avd-titulos', text: pad.titulos ? `${pad.titulos} ${pad.titulos === 1 ? 'TÍTULO' : 'TÍTULOS'}` : 'SÓ CAMPEÃO' }) : null),
+        el('div', { class: 'par-grade', role: 'radiogroup', 'aria-label': GRUPOS_PAREDE[g] }, ...Object.keys(PAREDES).filter((id) => PAREDES[id].grupo === g).map((id) => {
+          const p = PAREDES[id], tranca = paredeTrancada(id);
+          return el('button', { type: 'button', class: `par-op ${p.titulos ? 'raro-' + p.titulos : ''} ${tranca ? 'trancada' : ''}`, role: 'radio', 'data-par': id, 'aria-checked': 'false',
+            'aria-label': `${p.nome}${tranca ? `, só pra campeão ${p.titulos}×` : ''}`, onclick: () => { pad.id = id; marcarParede(); } },
+            el('span', { class: 'par-img', style: `background-image:url("${urlParede(id)}")` }, tranca ? el('span', { class: 'par-cadeado' }, svg(ICONE_CADEADO, 18)) : null),
+            el('span', { class: 'par-nome', text: p.nome }),
+            p.titulos ? el('span', { class: 'par-req' }, svg(ICONE_COROA, 11), tranca ? `CAMPEÃO ${p.titulos}×` : RARIDADE[p.titulos]) : null);
+        })));
+    }));
+    marcarParede();
+    $('dlgParede').showModal();
+    $('dlgParede').focus();
+  }
+  // parede trancada dá pra ver (e babar), mas não dá pra salvar
+  function marcarParede() {
+    const { id } = pad, p = PAREDES[id], trava = paredeTrancada(id);
+    paredeAoVivo($('parFundo'), id);
+    $('parPalco').classList.toggle('sem-parede', !id);
+    trocar($('parSelo'), !p ? null : trava
+      ? el('span', { class: 'avd-raro trancada' }, svg(ICONE_CADEADO, 13), `CAMPEÃO ${p.titulos}×`)
+      : el('span', { class: 'par-selo-nome', text: p.nome }));
+    document.querySelectorAll('.par-op').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.par === id)));
+    $('btnParSalvar').disabled = trava || !id;
+    $('btnParSalvar').textContent = trava ? 'Bloqueado' : 'Salvar';
+  }
+  async function salvarParede(novo) {
+    const r = elenco.get(pad.k);
+    const btns = [$('btnParSalvar'), $('btnParTirar')];
+    btns.forEach((b) => { b.disabled = true; });
+    try {
+      if (!DEMO) {
+        const res = await sb.rpc('jogador_parede', { p_parede: novo, p_player: r.id });
+        if (res.error) throw new Error(res.error.message);
+        if (res.data === 'bloqueada') { toast('Esse papel de parede é só pra campeão de temporada.', true); return; }
+        if (res.data !== 'ok') throw new Error(res.data);
+      }
+      r.parede = novo;
+      $('dlgParede').close();
+      render();
+      if (chat.eu && chatVisivel()) desenharChat();
+      toast(novo ? 'Papel de parede salvo! Já aparece pro clã todo.' : 'Papel de parede tirado.');
+    } catch (e) {
+      console.error(e);
+      toast('Não deu pra salvar o papel de parede agora. Tenta de novo.', true);
+    } finally {
+      btns.forEach((b) => { b.disabled = false; });
+      if ($('dlgParede').open) marcarParede();
+    }
+  }
   function btnPerfil(j, classe, conteudo) {
     return el('button', { type: 'button', class: classe, onclick: () => abrirPerfil(j.chave), 'aria-label': `Ver perfil de ${comTag(j.nome)}` }, conteudo || comTag(j.nome));
   }
@@ -2761,6 +3225,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
         linhaRegra('Coroa', 'o campeão usa a temporada seguinte inteira'),
         linhaRegra('Perde a coroa', 'se não ganhar de novo'),
         linhaRegra('Skins lendárias', 'só quem já foi campeão (pra sempre)'),
+        linhaRegra('Papéis de parede raros', 'só quem já foi campeão (pra sempre)'),
         linhaRegra('Pontos do mês', 'zeram no dia 1'),
         linhaRegra('Patente', `cai ${CAI_NA_VIRADA} no dia 1`),
         linhaRegra('Insígnia', 'a patente final fica no perfil'),
@@ -3461,12 +3926,16 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     const ctx = contexto();
     const j = ctx.pontos.find((x) => x.chave === k) || montarRanking('geral', 'pontos', true).find((x) => x.chave === k);
     const nome = j ? j.nome : r ? r.nick : null;
+    const parede = nome ? paredeDe(k) : null;
+    paredeAoVivo($('ppParede'), parede);
+    $('perfilPagina').classList.toggle('com-parede', !!parede);
 
     const barra = el('div', { class: 'pp-barra' },
       el('button', { type: 'button', class: 'btn btn-sec pp-voltar', onclick: fecharPerfil }, svg(ICONE_VOLTAR, 18), 'Ranking'),
       nome ? el('div', { class: 'pp-acoes' },
         r && podeMudarAvatar(k) ? el('button', { type: 'button', class: `btn ${r.avatar ? 'btn-sec' : 'btn-pri btn-avatar-novo'}`, onclick: () => abrirAvatar(k) },
           svg(ICONE_AVATAR, 18), el('span', { class: 'btn-txt', text: r.avatar ? 'Avatar' : 'Criar avatar' })) : null,
+        r && podeMudarParede(k) ? el('button', { type: 'button', class: 'btn btn-sec', 'aria-label': 'Mudar o papel de parede', onclick: () => abrirParede(k) }, svg(ICONE_PAREDE, 18), el('span', { class: 'btn-txt', text: 'Papel de parede' })) : null,
         lerEu() === k ? el('button', { type: 'button', class: 'btn btn-sec', 'aria-label': 'Sair da conta', onclick: () => sairConta() }, svg(ICONE_SAIR, 18), el('span', { class: 'btn-txt', text: 'Sair' })) : null,
         el('button', { type: 'button', class: 'btn btn-sec', onclick: () => compartilharPerfil(nome) }, svg(ICONE_LINK, 18), el('span', { class: 'btn-txt', text: 'Compartilhar' }))) : null);
 
@@ -3505,7 +3974,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
 
     festejarMedalhas(k, meds);
     if (!j) {
-      box.replaceChildren(barra, topo, el('p', { class: 'vazio perfil-vazio', text: 'Sem partidas ainda.' }), secaoMedalhas(k, ctx, meds));
+      box.replaceChildren(barra, topo, el('div', { class: 'pp-miolo' }, el('p', { class: 'vazio perfil-vazio', text: 'Sem partidas ainda.' }), secaoMedalhas(k, ctx, meds)));
       return;
     }
 
@@ -3603,7 +4072,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     // em cima: números e conquistas de temporada; no meio, a sala de medalhas inteira; embaixo, a história
     const lado = [secaoTrofeusPerfil(k, ctx), secaoInsigniasPerfil(k)].filter(Boolean);
     const evolucao = el('section', { class: 'pp-sec', 'aria-labelledby': 'ppEvo' }, el('h2', { class: 'perfil-h3', id: 'ppEvo', text: ultimas.length > 1 ? `EVOLUÇÃO · ÚLTIMAS ${ultimas.length} PARTIDAS` : 'EVOLUÇÃO' }), g);
-    trocar(box, barra, topo,
+    trocar(box, barra, topo, el('div', { class: 'pp-miolo' },
       el('div', { class: `pp-grade ${lado.length ? '' : 'pp-grade-1'}` },
         el('div', { class: 'pp-col' }, posicoes, prog, numeros, lado.length ? evolucao : null),
         lado.length ? el('div', { class: 'pp-col' }, ...lado) : null),
@@ -3614,7 +4083,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
         return el('div', { class: `pp-grade ${hist.length ? '' : 'pp-grade-1'}` },
           hist.length ? el('div', { class: 'pp-col' }, ...hist) : null,
           el('div', { class: 'pp-col' }, historico));
-      })());
+      })()));
   }
   // troféu (campeão) e medalha de prata (vice) de torneio; curto = só o número (tabela do ranking)
   function chipTorneios(k, curto = false) {
@@ -4148,7 +4617,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       if (!lado && livre) lado = el('div', { class: 'tn-conta' }, el('span', { class: 'tn-conta-rot', text: 'VALENDO' }), el('b', { class: 'tn-rodada', text: 'O DONO DÁ O RESULTADO' }));
     } else {
       lado = camp
-        ? el('div', { class: 'tn-campeao' },
+        ? comParede(el('div', { class: 'tn-campeao' },
             el('span', { class: 'tn-taca', 'aria-hidden': 'true' }, svg(ICONE_TROFEU, 40)),
             avatarDe(camp.nome, ptsGeralDe(camp.chave), 'av-g'),
             el('span', { class: 'tn-campeao-rot', text: 'CAMPEÃO' }),
@@ -4156,7 +4625,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
             camp.txt ? el('span', { class: 'tn-campeao-val', text: camp.txt }) : null,
             vice ? el('button', { type: 'button', class: 'tn-vice', onclick: () => abrirPerfil(vice.chave) },
               el('span', { class: 'tn-vice-ic', 'aria-hidden': 'true' }, svg(ICONE_MEDALHA, 18)),
-              el('span', { class: 'tn-vice-txt' }, el('small', { text: 'VICE' }), el('b', { text: vice.nome }))) : null)
+              el('span', { class: 'tn-vice-txt' }, el('small', { text: 'VICE' }), el('b', { text: vice.nome }))) : null), camp.chave)
         : el('div', { class: 'tn-campeao' }, el('span', { class: 'tn-campeao-rot', text: 'ENCERRADO SEM CAMPEÃO' }),
             admin && livre ? el('span', { class: 'tn-campeao-val', text: 'Escolha o campeão logo abaixo.' }) : null);
     }
@@ -4272,7 +4741,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     const podio = com.length
       ? el('div', { class: 'podio tn-podio' }, ...[1, 0, 2].filter((i) => com[i]).map((i) => {
           const l = com[i];
-          return el('article', { class: `lugar l${i + 1}` },
+          return comParede(el('article', { class: `lugar l${i + 1}` },
             i === 0 ? svg(st === 'fim' ? ICONE_TROFEU : ICONE_COROA, 34, 'class="coroa"') : i === 1 && st === 'fim' ? svg(ICONE_MEDALHA, 26, 'class="tn-med-ic"') : null,
             el('div', { class: 'avatar', 'aria-hidden': 'true', text: l.nome.charAt(0).toUpperCase() }),
             el('div', null,
@@ -4281,7 +4750,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
             el('div', { class: 'lugar-massa', text: fmt(l.total) }),
             el('div', { class: 'lugar-data', text: `${unidadeTn(t, l.total)} · ${l.qtd} ${l.qtd === 1 ? 'partida' : 'partidas'}` }),
             meta ? el('div', { class: 'barra', 'aria-hidden': 'true' }, el('span', { style: `width:${Math.max(4, pctMeta(l))}%` })) : null,
-            t.premios && t.premios[i] ? el('div', { class: 'cem-selo', text: t.premios[i] }) : null);
+            t.premios && t.premios[i] ? el('div', { class: 'cem-selo', text: t.premios[i] }) : null), l.chave);
         }))
       : el('p', { class: 'vazio', text: st === 'breve' ? 'O placar abre quando o torneio começar.' : 'Ninguém pontuou ainda. O primeiro resultado já assume a liderança!' });
 
@@ -4370,14 +4839,14 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       pod[0]
         ? el('div', { class: 'podio tn-podio' }, ...[1, 0, 2].filter((i) => pod[i]).map((i) => {
             const p = pod[i];
-            return el('article', { class: `lugar l${i + 1}` },
+            return comParede(el('article', { class: `lugar l${i + 1}` },
               i === 0 ? svg(ICONE_TROFEU, 34, 'class="coroa"') : svg(ICONE_MEDALHA, 26, 'class="tn-med-ic"'),
               el('div', { class: 'avatar', 'aria-hidden': 'true', text: p.nome.charAt(0).toUpperCase() }),
               el('div', null,
                 el('div', { class: 'lugar-pos', text: `${i + 1}º · ${ROT_PODIO[i]}` }),
                 btnPerfil(p, 'lugar-nome', p.nome),
                 p.chave === eu ? el('span', { class: 'chip', text: 'VOCÊ' }) : null),
-              t.premios && t.premios[i] ? el('div', { class: 'cem-selo', text: t.premios[i] }) : null);
+              t.premios && t.premios[i] ? el('div', { class: 'cem-selo', text: t.premios[i] }) : null), p.chave);
           }))
         : el('p', { class: 'vazio', text: st === 'breve' ? 'O torneio ainda não começou. Lê as regras e se prepara!' : 'Valendo! Quando acabar, o dono do clã confere e o campeão e o vice aparecem aqui com troféu e medalha.' }));
   }
@@ -5926,12 +6395,14 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     if (DEMO) return;
     let [r, rj, rt, rl] = await Promise.all([
       lerTudo(() => sb.from('scores').select('id, player, mass, print_path, created_at').order('created_at', { ascending: false }).order('id')),
-      lerTudo(() => sb.from('players').select('id, nick, cargo, ativo, avatar, vitrine, created_at').order('nick').order('id')),
+      lerTudo(() => sb.from('players').select('id, nick, cargo, ativo, avatar, vitrine, parede, created_at').order('nick').order('id')),
       lerTudo(() => sb.from('torneios').select('*').order('inicio', { ascending: false }).order('id')),
       lerTudo(() => sb.from('torneio_lancamentos').select('id, torneio_id, player_id, valor, nota, print_path, created_at').order('created_at', { ascending: false }).order('id')),
     ]);
     if (r.error) throw new Error(r.error.message);
     partidas = r.data || [];
+    paredeOk = !rj.error;
+    if (rj.error) rj = await lerTudo(() => sb.from('players').select('id, nick, cargo, ativo, avatar, vitrine, created_at').order('nick').order('id'));
     vitrineOk = !rj.error;
     if (rj.error) rj = await lerTudo(() => sb.from('players').select('id, nick, cargo, ativo, avatar, created_at').order('nick').order('id'));
     // sem a tabela players (script novo ainda não rodado) o site continua funcionando
@@ -5966,8 +6437,9 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     return [
       ['VENO', 'Líder', true, 60], ['Shawdow', 'Vice-líder', true, 55], ['VETERANO', 'Membro', true, 50], ['Kaiser', 'Membro', true, 40],
       ['Mamba', 'Membro', true, 30], ['Naja', 'Membro', true, 6], ['Cascavel', 'Membro', true, 2], ['Sucuri', 'Membro', false, 45],
-    ].map(([nick, cargo, ativo, dias], i) => ({ id: 'dj' + i, nick, cargo, ativo, avatar: AVATARES_DEMO[nick] || null, vitrine: nick === 'Shawdow' ? ['massa', 'rei', 'fundador'] : null, created_at: d(dias) }));
+    ].map(([nick, cargo, ativo, dias], i) => ({ id: 'dj' + i, nick, cargo, ativo, avatar: AVATARES_DEMO[nick] || null, vitrine: nick === 'Shawdow' ? ['massa', 'rei', 'fundador'] : null, parede: PAREDES_DEMO[nick] || null, created_at: d(dias) }));
   }
+  const PAREDES_DEMO = { VENO: 'trono', Shawdow: 'buraco', VETERANO: 'aurora', Kaiser: 'cidade', Mamba: 'selva', Naja: 'duelo' };
   const AVATARES_DEMO = {
     Shawdow: { pele: 'preto', cor2: 'ciano', padrao: 'raio', olhos: 'neon', boca: 'presas', cabeca: 'headset', rosto: 'nada', cor3: 'ciano', fundo: 'noite', estampa: 'grade' },
     Kaiser: { pele: 'vermelho', cor2: 'amarelo', padrao: 'chamas', olhos: 'bravo', boca: 'deboche', cabeca: 'bone', rosto: 'escuros', cor3: 'preto', fundo: 'brasa', estampa: 'raios' },
@@ -6831,6 +7303,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     if (!l) return;
     const n = numTemp(Date.now()), eu = l.chave === chave(meuNick());
     f.classList.toggle('eu', eu);
+    comParede(f, l.chave);
     trocar(f, el('span', { class: 'ch-brabo-av' }, avatarChat(l.nome, 'av-p')),
       el('span', { class: 'ch-brabo-rot' }, svg(ICONE_CHAMA, 13), n >= 1 ? `TOP 1 · T${n}` : 'TOP 1'),
       el('b', { class: 'ch-brabo-nick', text: l.nome }),
@@ -6916,10 +7389,10 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   }
   function membroChat(x) {
     const p = patenteDe(ptsPat(x.k)).atual, brabo = !x.semPerfil && ehLider(x.k);
-    return el('button', { type: 'button', class: `ch-membro ${x.st} ${brabo ? 'lider' : ''}`, disabled: !!x.semPerfil, onclick: () => abrirPerfil(x.k) },
+    return comParede(el('button', { type: 'button', class: `ch-membro ${x.st} ${brabo ? 'lider' : ''}`, disabled: !!x.semPerfil, onclick: () => abrirPerfil(x.k) },
       el('span', { class: 'ch-membro-av' }, avatarChat(x.nick), el('span', { class: `ch-st ${x.st}` })),
       el('span', { class: 'ch-membro-txt' }, el('b', { class: brabo ? 'lider-nick' : '', style: `--pc:${p.cor}`, text: x.nick }),
-        el('span', { class: 'ch-membro-sub', text: x.st === 'jogo' ? (x.ate ? `jogando · até ${horaChat(x.ate)}` : 'jogando') : brabo ? `top 1 · ${nomeTemp(Date.now()).toLowerCase()}` : p.nome })));
+        el('span', { class: 'ch-membro-sub', text: x.st === 'jogo' ? (x.ate ? `jogando · até ${horaChat(x.ate)}` : 'jogando') : brabo ? `top 1 · ${nomeTemp(Date.now()).toLowerCase()}` : p.nome }))), x.k);
   }
 
   // ---------- página ----------
@@ -8885,6 +9358,10 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     $('btnAvCancelar').addEventListener('click', () => $('dlgAvatar').close());
     $('btnAvSalvar').addEventListener('click', () => salvarAvatar(avd.av));
     $('btnAvTirar').addEventListener('click', () => salvarAvatar(null));
+    $('btnFecharParede').addEventListener('click', () => $('dlgParede').close());
+    $('btnParCancelar').addEventListener('click', () => $('dlgParede').close());
+    $('btnParSalvar').addEventListener('click', () => salvarParede(pad.id));
+    $('btnParTirar').addEventListener('click', () => salvarParede(null));
     ligarFaixa(document.querySelector('.avd-abas'));
     $('maisGrade').addEventListener('click', (e) => { if (e.target.closest('a')) $('dlgMais').close(); });
     document.addEventListener('keydown', (e) => {

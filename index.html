@@ -424,6 +424,7 @@
 </main>
 
 <main id="perfilPagina" class="perfil-pagina" hidden>
+  <div class="pp-parede" id="ppParede" aria-hidden="true"></div>
   <div class="wrap" id="perfilCorpo"></div>
 </main>
 
@@ -780,6 +781,26 @@
     <span class="espaco"></span>
     <button type="button" class="btn btn-sec" id="btnAvCancelar">Cancelar</button>
     <button type="button" class="btn btn-pri" id="btnAvSalvar">Salvar</button>
+  </div>
+</dialog>
+
+<!-- papel de parede: a cena que fica atrás do perfil (e na plaquinha do jogador pelo site) -->
+<dialog id="dlgParede" class="dlg dlg-avatar dlg-parede" aria-labelledby="tituloParede" tabindex="-1">
+  <div class="mais-topo">
+    <h2 id="tituloParede">SEU PAPEL DE <span class="laranja">PAREDE</span></h2>
+    <button type="button" class="tn-x" id="btnFecharParede" aria-label="Fechar">×</button>
+  </div>
+  <div class="par-palco" id="parPalco">
+    <div class="par-fundo" id="parFundo" aria-hidden="true"></div>
+    <div class="par-id" id="parId"></div>
+    <div class="par-selo" id="parSelo"></div>
+  </div>
+  <div class="avd-corpo" id="parCorpo"></div>
+  <div class="linha-btns avd-pe">
+    <button type="button" class="btn btn-perigo-sec" id="btnParTirar">Tirar</button>
+    <span class="espaco"></span>
+    <button type="button" class="btn btn-sec" id="btnParCancelar">Cancelar</button>
+    <button type="button" class="btn btn-pri" id="btnParSalvar">Salvar</button>
   </div>
 </dialog>
 
