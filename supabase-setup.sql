@@ -2378,6 +2378,552 @@ drop trigger if exists freio_cadastro on auth.users;
 create trigger freio_cadastro before insert on auth.users
   for each row execute function public.freio_cadastro();
 
+-- 11) Sala de jogos (começa pela damas). Quem está no clã chama outro pra jogar; o convite tem
+--     prazo, aceitou sorteia as cores e começa a partida. Cada jogada é conferida no servidor
+--     (/api/jogos na Vercel, com as regras do damas-regras.js) e gravada aqui por jogos_gravar_lance,
+--     que só a chave service_role chama. O site lê tudo ao vivo e não grava nada direto.
+--     Configuração (config_site, chave 'jogos'): tempo_jogada (segundos por jogada),
+--     ao_acabar_tempo ('perde_partida' ou 'perde_vez': 3 tempos estourados seguidos = perde),
+--     maioria_obrigatoria (lei da maioria) e convite_expira (segundos pra responder o convite).
+--     O pg_cron fecha as partidas com o tempo vencido e os convites esquecidos a cada minuto.
+create table if not exists public.jogos_partidas (
+  id                  uuid primary key default gen_random_uuid(),
+  jogo                text not null default 'damas' check (jogo in ('damas')),
+  status              text not null check (status in ('convite', 'recusado', 'expirado', 'cancelado', 'andamento', 'fim')),
+  convidou            uuid not null references public.players (id),
+  convidado           uuid not null references public.players (id),
+  brancas             uuid references public.players (id),
+  pretas              uuid references public.players (id),
+  estado              jsonb,
+  versao              integer not null default 0,           -- sobe a cada lance: é o "lance 31" da sala
+  prazo               timestamptz,                          -- convite: até quando responder; partida: fim da jogada da vez
+  tempos_estourados   jsonb not null default '{}'::jsonb,   -- { player_id: tempos seguidos } (modo perde_vez)
+  empate_proposto_por uuid references public.players (id),
+  vencedor            uuid references public.players (id),  -- null com status fim = empate
+  motivo              text check (motivo in ('sem_pecas', 'sem_jogadas', 'desistencia', 'tempo', 'empate_acordo', 'empate_20')),
+  revanche_de         uuid references public.jogos_partidas (id) on delete set null,
+  criado_em           timestamptz not null default now(),
+  inicio              timestamptz,
+  fim                 timestamptz,
+  check (convidou <> convidado)
+);
+create index if not exists jogos_partidas_status_idx on public.jogos_partidas (status);
+create index if not exists jogos_partidas_convidado_idx on public.jogos_partidas (convidado, status);
+create index if not exists jogos_partidas_fim_idx on public.jogos_partidas (fim);
+
+create table if not exists public.jogos_lances (
+  id          bigint generated always as identity primary key,
+  partida     uuid not null references public.jogos_partidas (id) on delete cascade,
+  n           integer not null,
+  player      uuid not null references public.players (id),
+  caminho     integer[] not null,                 -- casas 0..31; vazio = perdeu a vez (tempo)
+  capturas    integer[] not null default '{}',
+  virou_dama  boolean not null default false,
+  criado_em   timestamptz not null default now(),
+  unique (partida, n)                             -- já serve de índice (partida, n)
+);
+
+alter table public.jogos_partidas enable row level security;
+alter table public.jogos_lances enable row level security;
+revoke all on public.jogos_partidas, public.jogos_lances from anon, authenticated;
+grant select on public.jogos_partidas, public.jogos_lances to authenticated;
+drop policy if exists "membros veem partidas" on public.jogos_partidas;
+create policy "membros veem partidas" on public.jogos_partidas
+  for select to authenticated using ((select public.is_membro()));
+drop policy if exists "membros veem lances" on public.jogos_lances;
+create policy "membros veem lances" on public.jogos_lances
+  for select to authenticated using ((select public.is_membro()));
+
+-- padrão da configuração (o que o Dono já mudou fica)
+insert into public.config_site (chave, valor)
+values ('jogos', '{"tempo_jogada": 60, "ao_acabar_tempo": "perde_partida", "maioria_obrigatoria": true, "convite_expira": 60}')
+on conflict (chave) do nothing;
+
+-- convites de jogos no celular: ligado pra todo mundo, cada um desliga se quiser
+alter table public.push_prefs add column if not exists jogos boolean not null default true;
+
+-- configuração com os padrões por baixo (se faltar alguma chave)
+create or replace function public.jogos_cfg()
+returns jsonb
+language sql stable security definer set search_path = public
+as $$
+  select '{"tempo_jogada": 60, "ao_acabar_tempo": "perde_partida", "maioria_obrigatoria": true, "convite_expira": 60}'::jsonb
+         || coalesce((select valor from config_site where chave = 'jogos'), '{}'::jsonb);
+$$;
+
+-- o Dono (ou admin) muda a configuração
+create or replace function public.admin_salvar_jogos(p_valor jsonb)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v jsonb := jogos_cfg() || coalesce(p_valor, '{}'::jsonb);
+begin
+  perform exigir_admin('jogos_config', p_valor);
+  if jsonb_typeof(v -> 'tempo_jogada') <> 'number' or (v ->> 'tempo_jogada')::numeric not between 15 and 600
+     or v ->> 'ao_acabar_tempo' not in ('perde_partida', 'perde_vez')
+     or jsonb_typeof(v -> 'maioria_obrigatoria') <> 'boolean'
+     or jsonb_typeof(v -> 'convite_expira') <> 'number' or (v ->> 'convite_expira')::numeric not between 15 and 600 then
+    raise exception 'configuração inválida';
+  end if;
+  v := jsonb_build_object('tempo_jogada', (v ->> 'tempo_jogada')::numeric::int, 'ao_acabar_tempo', v ->> 'ao_acabar_tempo',
+                          'maioria_obrigatoria', (v ->> 'maioria_obrigatoria')::boolean, 'convite_expira', (v ->> 'convite_expira')::numeric::int);
+  insert into config_site (chave, valor, atualizado_em) values ('jogos', v, now())
+  on conflict (chave) do update set valor = excluded.valor, atualizado_em = now();
+end;
+$$;
+
+-- quem joga tem que ser jogador do clã com login
+create or replace function public.jogos_eu()
+returns uuid
+language plpgsql stable security definer set search_path = public
+as $$
+declare v uuid := jogador_eu();
+begin
+  if v is null then raise exception 'Só jogador do clã com login pode jogar' using errcode = '42501'; end if;
+  return v;
+end;
+$$;
+
+create or replace function public.jogos_nick(p_player uuid)
+returns text
+language sql stable security definer set search_path = public
+as $$
+  select coalesce((select nick from players where id = p_player), 'Alguém');
+$$;
+
+-- a partida em andamento de um jogador (null se está livre)
+create or replace function public.jogos_partida_de(p_player uuid)
+returns uuid
+language sql stable security definer set search_path = public
+as $$
+  select id from jogos_partidas where status = 'andamento' and p_player in (brancas, pretas) limit 1;
+$$;
+
+-- fecha a partida (vencedor null = empate)
+create or replace function public.jogos_fechar(p_partida uuid, p_vencedor uuid, p_motivo text)
+returns void
+language sql security definer set search_path = public
+as $$
+  update jogos_partidas set status = 'fim', vencedor = p_vencedor, motivo = p_motivo, fim = now(), prazo = null,
+                            empate_proposto_por = null
+  where id = p_partida and status = 'andamento';
+$$;
+
+-- convite (também usado pela revanche). Devolve o id da partida.
+create or replace function public.jogos_criar_convite(p_eu uuid, p_jogo text, p_convidado uuid, p_revanche uuid)
+returns uuid
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_id uuid;
+begin
+  perform pg_advisory_xact_lock(hashtext('jogos'));
+  if p_jogo is distinct from 'damas' then raise exception 'Jogo desconhecido'; end if;
+  if p_convidado is null or p_convidado = p_eu then raise exception 'Escolha outro jogador'; end if;
+  if not exists (select 1 from players where id = p_convidado and ativo) then raise exception 'Jogador não encontrado'; end if;
+  if not exists (select 1 from player_contas where player_id = p_convidado) then
+    raise exception '% ainda não tem login no site', jogos_nick(p_convidado);
+  end if;
+  if jogos_partida_de(p_eu) is not null then raise exception 'Você já está numa partida'; end if;
+  if jogos_partida_de(p_convidado) is not null then raise exception '% está jogando agora', jogos_nick(p_convidado); end if;
+  if exists (select 1 from jogos_partidas where status = 'convite' and prazo > now()
+               and convidou = p_eu and convidado = p_convidado) then
+    raise exception 'Você já chamou %: espere a resposta', jogos_nick(p_convidado);
+  end if;
+  if exists (select 1 from jogos_partidas where status = 'convite' and prazo > now()
+               and convidou = p_convidado and convidado = p_eu) then
+    raise exception '% já te chamou: aceite o convite', jogos_nick(p_convidado);
+  end if;
+  if (select count(*) from jogos_partidas where status = 'convite' and prazo > now() and convidou = p_eu) >= 3 then
+    raise exception 'Espere responderem os convites que você já mandou';
+  end if;
+  insert into jogos_partidas (jogo, status, convidou, convidado, prazo, revanche_de)
+  values (p_jogo, 'convite', p_eu, p_convidado, now() + make_interval(secs => (jogos_cfg() ->> 'convite_expira')::int), p_revanche)
+  returning id into v_id;
+  return v_id;
+end;
+$$;
+
+create or replace function public.jogos_convidar(p_jogo text, p_convidado uuid)
+returns uuid
+language plpgsql security definer set search_path = public
+as $$
+begin
+  return jogos_criar_convite(jogos_eu(), p_jogo, p_convidado, null);
+end;
+$$;
+
+-- o convidado aceita (cores sorteadas; na revanche, trocadas) ou recusa. Devolve o id da partida.
+create or replace function public.jogos_responder(p_partida uuid, p_aceitar boolean)
+returns uuid
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_eu uuid := jogos_eu();
+  p jogos_partidas;
+  v_antes jogos_partidas;
+  v_brancas uuid;
+  v_pretas uuid;
+begin
+  perform pg_advisory_xact_lock(hashtext('jogos'));
+  select * into p from jogos_partidas where id = p_partida for update;
+  if p.id is null or p.convidado <> v_eu then raise exception 'Convite não encontrado'; end if;
+  if p.status <> 'convite' then raise exception 'Esse convite não vale mais'; end if;
+  if p.prazo <= now() then
+    update jogos_partidas set status = 'expirado', prazo = null where id = p_partida;
+    raise exception 'O convite expirou';
+  end if;
+  if not coalesce(p_aceitar, false) then
+    update jogos_partidas set status = 'recusado', prazo = null where id = p_partida;
+    return p_partida;
+  end if;
+  if jogos_partida_de(v_eu) is not null then raise exception 'Você já está numa partida'; end if;
+  if jogos_partida_de(p.convidou) is not null then raise exception '% já está jogando outra partida', jogos_nick(p.convidou); end if;
+
+  if p.revanche_de is not null then
+    select * into v_antes from jogos_partidas where id = p.revanche_de;
+  end if;
+  if v_antes.id is not null and p.convidou in (v_antes.brancas, v_antes.pretas) and v_eu in (v_antes.brancas, v_antes.pretas) then
+    v_brancas := v_antes.pretas; v_pretas := v_antes.brancas;
+  elsif random() < 0.5 then
+    v_brancas := p.convidou; v_pretas := v_eu;
+  else
+    v_brancas := v_eu; v_pretas := p.convidou;
+  end if;
+
+  update jogos_partidas set status = 'andamento', brancas = v_brancas, pretas = v_pretas,
+    estado = '{"tab": "pppppppppppp........bbbbbbbbbbbb", "vez": "b", "semProgresso": 0}'::jsonb,
+    versao = 0, inicio = now(), prazo = now() + make_interval(secs => (jogos_cfg() ->> 'tempo_jogada')::int)
+  where id = p_partida;
+  -- os outros convites dos dois saem da sala
+  update jogos_partidas set status = 'cancelado', prazo = null
+  where status = 'convite' and id <> p_partida
+    and (convidou in (v_eu, p.convidou) or convidado in (v_eu, p.convidou));
+  return p_partida;
+end;
+$$;
+
+-- quem chamou desiste do convite
+create or replace function public.jogos_cancelar(p_partida uuid)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  update jogos_partidas set status = 'cancelado', prazo = null
+  where id = p_partida and status = 'convite' and convidou = jogos_eu();
+  if not found then raise exception 'Esse convite não vale mais'; end if;
+end;
+$$;
+
+create or replace function public.jogos_desistir(p_partida uuid)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_eu uuid := jogos_eu();
+  p jogos_partidas;
+begin
+  select * into p from jogos_partidas where id = p_partida for update;
+  if p.id is null or v_eu not in (p.brancas, p.pretas) then raise exception 'Partida não encontrada'; end if;
+  if p.status <> 'andamento' then raise exception 'A partida já acabou'; end if;
+  perform jogos_fechar(p_partida, case when v_eu = p.brancas then p.pretas else p.brancas end, 'desistencia');
+end;
+$$;
+
+create or replace function public.jogos_propor_empate(p_partida uuid)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_eu uuid := jogos_eu();
+  p jogos_partidas;
+begin
+  select * into p from jogos_partidas where id = p_partida for update;
+  if p.id is null or v_eu not in (p.brancas, p.pretas) then raise exception 'Partida não encontrada'; end if;
+  if p.status <> 'andamento' then raise exception 'A partida já acabou'; end if;
+  if p.empate_proposto_por is not null and p.empate_proposto_por <> v_eu then
+    -- o outro já tinha proposto: proposta dos dois = empate
+    perform jogos_fechar(p_partida, null, 'empate_acordo');
+    return;
+  end if;
+  update jogos_partidas set empate_proposto_por = v_eu where id = p_partida;
+end;
+$$;
+
+create or replace function public.jogos_responder_empate(p_partida uuid, p_aceitar boolean)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_eu uuid := jogos_eu();
+  p jogos_partidas;
+begin
+  select * into p from jogos_partidas where id = p_partida for update;
+  if p.id is null or v_eu not in (p.brancas, p.pretas) then raise exception 'Partida não encontrada'; end if;
+  if p.status <> 'andamento' then raise exception 'A partida já acabou'; end if;
+  if p.empate_proposto_por is null or p.empate_proposto_por = v_eu then raise exception 'Não tem proposta de empate'; end if;
+  if coalesce(p_aceitar, false) then
+    perform jogos_fechar(p_partida, null, 'empate_acordo');
+  else
+    update jogos_partidas set empate_proposto_por = null where id = p_partida;
+  end if;
+end;
+$$;
+
+-- revanche: convite pro mesmo adversário com as cores trocadas. Se ele já pediu, já começa.
+create or replace function public.jogos_revanche(p_partida uuid)
+returns uuid
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_eu uuid := jogos_eu();
+  p jogos_partidas;
+  v_outro uuid;
+  v_id uuid;
+begin
+  select * into p from jogos_partidas where id = p_partida;
+  if p.id is null or v_eu not in (p.brancas, p.pretas) then raise exception 'Partida não encontrada'; end if;
+  if p.status <> 'fim' then raise exception 'A partida ainda não acabou'; end if;
+  v_outro := case when v_eu = p.brancas then p.pretas else p.brancas end;
+  select id into v_id from jogos_partidas
+  where revanche_de = p_partida and status = 'convite' and prazo > now() and convidou = v_outro and convidado = v_eu;
+  if v_id is not null then return jogos_responder(v_id, true); end if;
+  select id into v_id from jogos_partidas
+  where revanche_de = p_partida and status = 'convite' and prazo > now() and convidou = v_eu;
+  if v_id is not null then return v_id; end if;
+  return jogos_criar_convite(v_eu, p.jogo, v_outro, p_partida);
+end;
+$$;
+
+-- grava um lance já conferido pelas regras (/api/jogos). Só a chave service_role chama.
+-- p_lance: {"caminho": [...], "capturas": [...], "virou_dama": bool}
+-- p_fim: null ou {"vencedor": "b" | "p" | null, "motivo": "sem_pecas" | "sem_jogadas" | "empate_20"}
+-- Erros com código PT4xx: o /api/jogos devolve o mesmo número (409 desatualizado, 410 tempo esgotado).
+create or replace function public.jogos_gravar_lance(p_partida uuid, p_versao integer, p_novo_estado jsonb, p_lance jsonb, p_fim jsonb default null)
+returns jsonb
+language plpgsql security definer set search_path = public
+as $$
+declare
+  p jogos_partidas;
+  v_quem uuid;
+  v_venc uuid;
+  v_prazo timestamptz;
+begin
+  select * into p from jogos_partidas where id = p_partida for update;
+  if p.id is null then raise exception 'partida não encontrada' using errcode = 'PT404'; end if;
+  if p.status <> 'andamento' then raise exception 'a partida já acabou' using errcode = 'PT409'; end if;
+  if p.versao <> p_versao then raise exception 'desatualizado' using errcode = 'PT409'; end if;
+  if p.prazo < now() - interval '2 seconds' then raise exception 'tempo esgotado' using errcode = 'PT410'; end if;
+  v_quem := case when p.estado ->> 'vez' = 'b' then p.brancas else p.pretas end;
+
+  insert into jogos_lances (partida, n, player, caminho, capturas, virou_dama)
+  values (p_partida, p.versao + 1, v_quem,
+          array(select jsonb_array_elements_text(p_lance -> 'caminho')::int),
+          array(select jsonb_array_elements_text(coalesce(p_lance -> 'capturas', '[]'::jsonb))::int),
+          coalesce((p_lance ->> 'virou_dama')::boolean, false));
+
+  v_prazo := now() + make_interval(secs => (jogos_cfg() ->> 'tempo_jogada')::int);
+  update jogos_partidas set estado = p_novo_estado, versao = versao + 1, prazo = v_prazo,
+    empate_proposto_por = null, tempos_estourados = tempos_estourados - v_quem::text
+  where id = p_partida;
+
+  if p_fim is not null then
+    v_venc := case p_fim ->> 'vencedor' when 'b' then p.brancas when 'p' then p.pretas end;
+    perform jogos_fechar(p_partida, v_venc, p_fim ->> 'motivo');
+    return jsonb_build_object('versao', p.versao + 1, 'status', 'fim');
+  end if;
+  return jsonb_build_object('versao', p.versao + 1, 'status', 'andamento', 'prazo', v_prazo);
+end;
+$$;
+
+-- o tempo da vez acabou: perde a partida ou (modo perde_vez) passa a vez; 3 seguidas = perde.
+-- Devolve true se mexeu na partida.
+create or replace function public.jogos_aplicar_tempo(p_partida uuid, p_folga interval)
+returns boolean
+language plpgsql security definer set search_path = public
+as $$
+declare
+  p jogos_partidas;
+  cfg jsonb := jogos_cfg();
+  v_quem uuid;
+  v_outro uuid;
+  v_n integer;
+begin
+  select * into p from jogos_partidas where id = p_partida and status = 'andamento' and prazo < now() - p_folga for update;
+  if p.id is null then return false; end if;
+  v_quem := case when p.estado ->> 'vez' = 'b' then p.brancas else p.pretas end;
+  v_outro := case when v_quem = p.brancas then p.pretas else p.brancas end;
+  v_n := coalesce((p.tempos_estourados ->> v_quem::text)::int, 0) + 1;
+  if cfg ->> 'ao_acabar_tempo' = 'perde_vez' and v_n < 3 then
+    insert into jogos_lances (partida, n, player, caminho) values (p_partida, p.versao + 1, v_quem, '{}');
+    update jogos_partidas set
+      estado = jsonb_set(estado, '{vez}', to_jsonb(case when estado ->> 'vez' = 'b' then 'p' else 'b' end)),
+      versao = versao + 1, empate_proposto_por = null,
+      tempos_estourados = tempos_estourados || jsonb_build_object(v_quem::text, v_n),
+      prazo = now() + make_interval(secs => (cfg ->> 'tempo_jogada')::int)
+    where id = p_partida;
+  else
+    perform jogos_fechar(p_partida, v_outro, 'tempo');
+  end if;
+  return true;
+end;
+$$;
+
+-- qualquer um que esteja vendo a partida avisa que o relógio zerou (o banco confere a hora)
+create or replace function public.jogos_tempo(p_partida uuid)
+returns boolean
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if not is_membro() then raise exception 'acesso negado' using errcode = '42501'; end if;
+  return jogos_aplicar_tempo(p_partida, interval '2 seconds');
+end;
+$$;
+
+-- pg_cron (a cada minuto): partidas com o tempo vencido e convites esquecidos
+create or replace function public.jogos_vencer_prazos()
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare v uuid;
+begin
+  for v in select id from jogos_partidas where status = 'andamento' and prazo < now() - interval '5 seconds' loop
+    perform jogos_aplicar_tempo(v, interval '5 seconds');
+  end loop;
+  update jogos_partidas set status = 'expirado', prazo = null where status = 'convite' and prazo < now();
+end;
+$$;
+select cron.schedule('jogos-prazos', '* * * * *', 'select public.jogos_vencer_prazos()');
+
+-- placar de cada jogador. aproveitamento = vitórias / partidas (0..100).
+-- maior_sequencia = mais vitórias seguidas ("melhor fase"); ultimo = V | D | E.
+create or replace function public.jogos_placar(p_jogo text default 'damas')
+returns table (player_id uuid, nick text, partidas integer, vitorias integer, derrotas integer, empates integer,
+               aproveitamento integer, maior_sequencia integer, ultimo text)
+language sql stable security definer set search_path = public
+as $$
+  with fim as (
+    select * from jogos_partidas where jogo = p_jogo and status = 'fim' and is_membro()
+  ), r as (
+    select brancas as jogador, id, fim as quando,
+           case when vencedor is null then 'E' when vencedor = brancas then 'V' else 'D' end as res from fim
+    union all
+    select pretas, id, fim,
+           case when vencedor is null then 'E' when vencedor = pretas then 'V' else 'D' end from fim
+  ), g as (
+    select *, row_number() over (partition by jogador order by quando, id)
+            - row_number() over (partition by jogador, res order by quando, id) as grupo
+    from r
+  ), seq as (
+    select jogador, max(n)::int as maior from (
+      select jogador, grupo, count(*) as n from g where res = 'V' group by jogador, grupo
+    ) x group by jogador
+  ), ult as (
+    select distinct on (jogador) jogador, res from r order by jogador, quando desc, id desc
+  ), t as (
+    select jogador, count(*)::int as partidas,
+           count(*) filter (where res = 'V')::int as vitorias,
+           count(*) filter (where res = 'D')::int as derrotas,
+           count(*) filter (where res = 'E')::int as empates
+    from r group by jogador
+  )
+  select t.jogador, pl.nick, t.partidas, t.vitorias, t.derrotas, t.empates,
+         round(100.0 * t.vitorias / t.partidas)::int, coalesce(seq.maior, 0), ult.res
+  from t join players pl on pl.id = t.jogador
+  left join seq on seq.jogador = t.jogador
+  left join ult on ult.jogador = t.jogador
+  order by t.vitorias desc, t.vitorias::numeric / t.partidas desc, t.partidas desc, lower(pl.nick);
+$$;
+
+-- convite novo: notificação no celular do convidado ("convites de jogos" ligado, o padrão)
+create or replace function public.jogos_avisar_push()
+returns trigger
+language plpgsql security definer set search_path = public, extensions
+as $$
+declare
+  cfg push_config;
+  v_envios jsonb;
+  v_nick text;
+begin
+  if new.status <> 'convite' then return new; end if;
+  select * into cfg from push_config where id = 1;
+  if cfg.url is null or cfg.vapid_privada is null then return new; end if;
+  v_nick := jogos_nick(new.convidou);
+  select jsonb_agg(jsonb_build_object('endpoint', i.endpoint, 'p256dh', i.p256dh, 'auth', i.auth, 'payload', jsonb_build_object(
+      'title', '🎮 ' || v_nick || ' te chamou pra jogar ' || new.jogo,
+      'body', 'Toque pra aceitar ou recusar',
+      'tag', 'jogos-convite',
+      'url', '/#jogos')))
+  into v_envios
+  from player_contas c
+  join push_inscricoes i on i.user_id = c.user_id
+  left join push_prefs pf on pf.user_id = c.user_id
+  where c.player_id = new.convidado and coalesce(pf.jogos, true);
+  if v_envios is null then return new; end if;
+  perform net.http_post(
+    url := cfg.url,
+    body := jsonb_build_object('segredo', cfg.segredo, 'sujeito', cfg.sujeito, 'publica', cfg.vapid_publica, 'privada', cfg.vapid_privada,
+                               'sb', cfg.sb_url, 'chave', cfg.sb_chave, 'envios', v_envios),
+    headers := '{"Content-Type": "application/json"}'::jsonb,
+    timeout_milliseconds := 8000);
+  return new;
+exception when others then
+  -- notificação nunca atrapalha o convite
+  return new;
+end;
+$$;
+drop trigger if exists jogos_avisar_push on public.jogos_partidas;
+create trigger jogos_avisar_push after insert on public.jogos_partidas
+  for each row execute function public.jogos_avisar_push();
+
+-- liga/desliga a notificação de convites de jogos
+create or replace function public.push_salvar_jogos(p_ligado boolean)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if not is_membro() then raise exception 'acesso negado' using errcode = '42501'; end if;
+  insert into push_prefs (user_id, jogos) values (auth.uid(), coalesce(p_ligado, true))
+  on conflict (user_id) do update set jogos = excluded.jogos;
+end;
+$$;
+
+-- quem executa o quê
+do $$
+declare f text;
+begin
+  -- só por dentro (outras funções, pg_cron, gatilho) ou pela service_role
+  foreach f in array array[
+    'jogos_nick(uuid)', 'jogos_partida_de(uuid)', 'jogos_fechar(uuid, uuid, text)',
+    'jogos_criar_convite(uuid, text, uuid, uuid)', 'jogos_aplicar_tempo(uuid, interval)', 'jogos_vencer_prazos()',
+    'jogos_avisar_push()', 'jogos_gravar_lance(uuid, integer, jsonb, jsonb, jsonb)'] loop
+    execute format('revoke all on function public.%s from public, anon, authenticated', f);
+  end loop;
+  -- membro logado
+  foreach f in array array[
+    'jogos_cfg()', 'jogos_eu()', 'jogos_convidar(text, uuid)', 'jogos_responder(uuid, boolean)', 'jogos_cancelar(uuid)',
+    'jogos_desistir(uuid)', 'jogos_propor_empate(uuid)', 'jogos_responder_empate(uuid, boolean)', 'jogos_revanche(uuid)',
+    'jogos_tempo(uuid)', 'jogos_placar(text)', 'push_salvar_jogos(boolean)', 'admin_salvar_jogos(jsonb)'] loop
+    execute format('revoke all on function public.%s from public, anon', f);
+    execute format('grant execute on function public.%s to authenticated', f);
+  end loop;
+end;
+$$;
+grant execute on function public.jogos_gravar_lance(uuid, integer, jsonb, jsonb, jsonb) to service_role;
+
+-- sala ao vivo
+do $$
+declare t text;
+begin
+  foreach t in array array['jogos_partidas', 'jogos_lances'] loop
+    if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
+      execute format('alter publication supabase_realtime add table public.%I', t);
+    end if;
+  end loop;
+end;
+$$;
+
 -- Pronto! Se apareceu "Success. No rows returned", deu certo.
 --
 -- Pra dar acesso de admin a alguém (depois de criar a conta em
