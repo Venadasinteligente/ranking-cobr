@@ -586,6 +586,7 @@
   function forcar(n) {
     if (n.status === 'convite' || n.status === 'andamento') J.lista.set(n.id, n); else J.lista.delete(n.id);
     if (J.aberta && J.aberta.id === n.id) J.aberta = n;
+    if (n.status === 'fim' && n.fim && C.damasFim) C.damasFim(n); // medalha "Campeão de damas"
   }
   // guarda a versão nova de uma partida; notícia velha (ex.: chegou depois da jogada otimista) fica de fora
   function guardar(n) {

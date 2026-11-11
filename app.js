@@ -27,6 +27,7 @@
   let jogPorId = new Map();   // id do elenco -> jogador (torneios guardam o id, não o nick)
   let torneios = [];          // tabela torneios (rascunho só vem pra admin)
   let lancamentos = [];       // resultados lançados na mão nos torneios (kills, massa extra...)
+  let damasFins = [];         // partidas de damas terminadas (id, brancas, pretas, vencedor, fim), da mais velha pra mais nova
   let torneiosOk = true;      // false se as tabelas de torneio ainda não existem no banco
   let torneioAtual = null;    // id do torneio aberto na página própria
   let vitrineOk = true;       // false se a coluna players.vitrine ainda não existe no banco
@@ -2831,6 +2832,9 @@ ${frente}
       req: (v) => `${fmt(v)} partidas de ${marcoTxt}`, icone: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>' },
     { id: 'rei', nome: 'Rei do clã', desc: 'Vezes que assumiu o 1º lugar do ranking geral', niveis: [1, 3, 6, 10],
       req: (v) => (v === 1 ? 'assumir o 1º do ranking geral' : `assumir o 1º do geral ${v}×`), icone: ICONE_COROA },
+    { id: 'damas', nome: 'Campeão de damas', desc: 'Vezes que assumiu o 1º lugar do ranking de damas', niveis: [1, 3, 6, 10],
+      req: (v) => (v === 1 ? 'assumir o 1º do ranking de damas' : `assumir o 1º das damas ${v}×`),
+      icone: '<ellipse cx="12" cy="7.5" rx="8" ry="3.2"/><path d="M4 7.5v3.6c0 1.8 3.6 3.2 8 3.2s8-1.4 8-3.2V7.5"/><path d="M4 11.1v4.6c0 1.8 3.6 3.2 8 3.2s8-1.4 8-3.2v-4.6"/>' },
     { id: 'recorde', nome: 'Quebra-recorde', desc: 'Vezes que quebrou o recorde de massa do clã', niveis: [1, 2, 4, 7],
       req: (v) => (v === 1 ? 'quebrar o recorde do clã' : `quebrar o recorde do clã ${v}×`), icone: ICONE_ESTRELA },
     { id: 'temporada', nome: 'Campeão de temporada', desc: 'Temporadas ganhas (1º em pontos no mês)', niveis: [1, 2, 4, 6],
@@ -2929,6 +2933,46 @@ ${frente}
     return por;
   }
 
+  // "Campeão de damas": refaz o ranking de damas partida por partida (mesma ordem do jogos_placar:
+  // vitórias, aproveitamento, partidas, nick) e anota quando cada um ASSUME o 1º. chave -> [ms]
+  let cacheDamas = null;
+  function liderancasDamas() {
+    const ck = `${damasFins.length}:${damasFins.length ? damasFins[damasFins.length - 1].id : ''}:${jogPorId.size}`;
+    if (cacheDamas && cacheDamas.k === ck) return cacheDamas.v;
+    const placar = new Map(); // player id -> { id, p, v, nome }
+    const por = new Map();
+    const frente = (a, b) => (a.v !== b.v ? a.v > b.v : a.v * b.p !== b.v * a.p ? a.v * b.p > b.v * a.p : a.p !== b.p ? a.p > b.p : a.nome < b.nome);
+    let lider = null;
+    for (const p of damasFins) {
+      for (const id of [p.brancas, p.pretas]) {
+        if (!id) continue;
+        let x = placar.get(id);
+        if (!x) { const r = jogPorId.get(id); placar.set(id, x = { id, p: 0, v: 0, nome: r ? r.nick.toLocaleLowerCase('pt-BR') : '' }); }
+        x.p += 1;
+        if (p.vencedor === id) x.v += 1;
+      }
+      let top = null;
+      for (const x of placar.values()) if (x.v && (!top || frente(x, top))) top = x;
+      if (!top || top.id === lider) continue;
+      lider = top.id;
+      const r = jogPorId.get(top.id);
+      if (!r) continue;
+      const k = chave(r.nick);
+      if (!por.has(k)) por.set(k, []);
+      por.get(k).push(Date.parse(p.fim));
+    }
+    cacheDamas = { k: ck, v: por };
+    return por;
+  }
+  // o jogos.js avisa quando uma partida de damas termina com o site aberto
+  function damasFim(p) {
+    if (!p || !p.id || !p.fim || (p.jogo && p.jogo !== 'damas') || damasFins.some((x) => x.id === p.id)) return;
+    damasFins.push({ id: p.id, brancas: p.brancas, pretas: p.pretas, vencedor: p.vencedor || null, fim: p.fim });
+    damasFins.sort((a, b) => Date.parse(a.fim) - Date.parse(b.fim) || (a.id < b.id ? -1 : 1));
+    cacheRaras = null;
+    if (perfilAtual) renderPerfil();
+  }
+
   // estado de cada medalha do jogador: nivel = quantos níveis já tem (0 = trancada)
   function medalhasDe(k, ctx) {
     const h = historicoMedalhas().get(k) || { v: {}, datas: {} };
@@ -2944,6 +2988,7 @@ ${frente}
     const tn = trofeusDe(k);
     porDatas('torneio', tn.filter((x) => x.pos === 1).map((x) => x.quando));
     porDatas('vice', tn.filter((x) => x.pos === 2).map((x) => x.quando));
+    porDatas('damas', liderancasDamas().get(k) || []);
     // patente: a mais alta que já teve; a "data" é a temporada em que chegou
     v.patente = 0; datas.patente = [];
     for (const [mc, mapa] of patentesPorTemporada()) {
@@ -6405,11 +6450,12 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
 
   async function carregar() {
     if (DEMO) return;
-    let [r, rj, rt, rl] = await Promise.all([
+    let [r, rj, rt, rl, rd] = await Promise.all([
       lerTudo(() => sb.from('scores').select('id, player, mass, print_path, created_at').order('created_at', { ascending: false }).order('id')),
       lerTudo(() => sb.from('players').select('id, nick, cargo, ativo, avatar, vitrine, parede, created_at').order('nick').order('id')),
       lerTudo(() => sb.from('torneios').select('*').order('inicio', { ascending: false }).order('id')),
       lerTudo(() => sb.from('torneio_lancamentos').select('id, torneio_id, player_id, valor, nota, print_path, created_at').order('created_at', { ascending: false }).order('id')),
+      lerTudo(() => sb.from('jogos_partidas').select('id, brancas, pretas, vencedor, fim').eq('jogo', 'damas').eq('status', 'fim').order('fim').order('id')),
     ]);
     if (r.error) throw new Error(r.error.message);
     partidas = r.data || [];
@@ -6427,6 +6473,9 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     if (!torneiosOk) console.warn('torneios:', (rt.error || rl.error).message);
     torneios = (rt.data || []).map((t) => ({ ...t, participantes: t.participantes || [], premios: t.premios || [] }));
     lancamentos = rl.data || [];
+    // sem a seção 11 do SQL a medalha de damas só fica trancada
+    if (rd.error) console.warn('damas:', rd.error.message);
+    damasFins = rd.error ? [] : rd.data || [];
   }
 
   function dadosDemo() {
@@ -9524,7 +9573,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     redesenharPerfil: () => { if (perfilAtual) renderPerfil(); },
     membroLinha: (x, o) => membroChat(x, o),
     euChat: () => euChat(), meuNick: () => meuNick(), // quem assiste uma partida (jogos.js)
-    marcarJogando,
+    marcarJogando, damasFim,
     get sb() { return sb; },
     get euId() { return euId; },
     get pag() { return perfilAtual || torneioAtual ? null : pagAtual; },
