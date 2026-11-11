@@ -31,6 +31,9 @@
     ligado: false, carregou: false, rt: null, conectou: false, tique: null,
     lista: new Map(),        // partidas vivas (convite e andamento): id -> linha
     ultimas: [], temMais: false,
+    placar: null, rankTodo: false, // ranking de damas (jogos_placar)
+    perfis: new Map(),       // perfil: player_id -> { em, lista: últimas partidas dele }
+    tempoPed: null,          // relógio zerado: pedido de "tempo" já mandado ({ id, versao, em, n })
     aberta: null,            // a partida aberta em #jogos/<id> (pode já ter acabado)
     cfg: { tempo_jogada: 60, ao_acabar_tempo: 'perde_partida', maioria_obrigatoria: true, convite_expira: 60 },
     desvio: 0,               // relógio do servidor menos o do aparelho (ms)
@@ -111,10 +114,11 @@
   }
   async function carregar() {
     const sb = C.sb;
-    const [vivas, ult, cfg] = await Promise.all([
+    const [vivas, ult, cfg, placar] = await Promise.all([
       sb.from('jogos_partidas').select(CAMPOS).in('status', ['convite', 'andamento']),
-      sb.from('jogos_partidas').select(CAMPOS).eq('status', 'fim').order('fim', { ascending: false }).limit(POR_PAGINA),
+      sb.from('jogos_partidas').select(CAMPOS).eq('jogo', 'damas').eq('status', 'fim').order('fim', { ascending: false }).limit(POR_PAGINA),
       sb.rpc('jogos_cfg'),
+      sb.rpc('jogos_placar', { p_jogo: 'damas' }),
     ]);
     if (vivas.error) throw vivas.error;
     J.lista = new Map(vivas.data.map((p) => [p.id, p]));
@@ -123,8 +127,10 @@
     if (doBanco && doBanco.status === 'andamento' && doBanco.versao < pend.versao) J.lista.set(pend.id, pend);
     if (!ult.error) { J.ultimas = ult.data; J.temMais = ult.data.length === POR_PAGINA; }
     if (!cfg.error && cfg.data) J.cfg = { ...J.cfg, ...cfg.data };
+    if (!placar.error) J.placar = (placar.data || []).slice().sort(ordemPlacar);
     if (J.aberta && J.lista.has(J.aberta.id)) J.aberta = J.lista.get(J.aberta.id);
     J.carregou = true;
+    preencherPerfilAberto();
   }
   let recarregando = null;
   function recarregar() {
@@ -151,7 +157,7 @@
   async function maisUltimas(bt) {
     bt.disabled = true;
     const de = J.ultimas.length;
-    const r = await C.sb.from('jogos_partidas').select(CAMPOS).eq('status', 'fim').order('fim', { ascending: false }).range(de, de + POR_PAGINA - 1);
+    const r = await C.sb.from('jogos_partidas').select(CAMPOS).eq('jogo', 'damas').eq('status', 'fim').order('fim', { ascending: false }).range(de, de + POR_PAGINA - 1);
     if (r.error) { bt.disabled = false; toast('Não consegui carregar mais partidas.', true); return; }
     const ja = new Set(J.ultimas.map((p) => p.id));
     J.ultimas.push(...r.data.filter((p) => !ja.has(p.id)));
@@ -176,6 +182,7 @@
     if (!guardar(n)) return;
     if (n.id === partidaDaUrl()) J.ultNoticia = Date.now();
     if (n.status === 'fim' && !J.ultimas.some((p) => p.id === n.id)) J.ultimas.unshift(n);
+    if (n.status === 'fim' && (!antes || antes.status !== 'fim')) atualizarPlacar();
     const meu = eu();
     if (meu) {
       if (ev.eventType === 'INSERT' && n.status === 'convite' && n.convidado === meu) somConvite();
@@ -302,6 +309,7 @@
       env.map((p) => cartaoConvite(p)),
       listaOnline(minha, rec, env),
       vivas.length ? [rotulo(el('span', { text: 'ACONTECENDO AGORA' }), rotVivo()), el('div', { class: 'jg-card' }, vivas.map(cartaoVivo))] : null,
+      rankingDamas(),
       ultimasPartidas());
   }
   function cartaoMinha(p) {
@@ -381,6 +389,181 @@
       el('ul', { class: 'jg-ult' }, J.ultimas.map((p) => linhaUltima(p))),
       J.temMais ? el('button', { type: 'button', class: 'btn btn-sec jg-mais', text: 'Ver mais partidas', onclick: (e) => maisUltimas(e.currentTarget) }) : null,
     ];
+  }
+
+  // ---------- ranking de damas (imagem 05): o pódio e a tabela do ranking de massa ----------
+  const TABELA_TOPO = 10;
+  const pct = (x) => `${x.aproveitamento != null ? x.aproveitamento : Math.round((100 * x.vitorias) / Math.max(1, x.partidas))}%`;
+  function fase(x) {
+    const s = x.maior_sequencia | 0;
+    if (s >= 2) return `${s} vitórias seguidas${s >= 3 ? ' 🔥' : ''}`;
+    return `última: ${x.ultimo === 'V' ? 'vitória' : x.ultimo === 'E' ? 'empate' : 'derrota'}`;
+  }
+  const verPerfil = (nk) => ({ type: 'button', onclick: () => C.abrirPerfil(C.chave(nk)), 'aria-label': `Ver perfil de [${C.TAG}] ${nk}` });
+  function podioDamas(pl) {
+    const topo = Math.max(1, pl[0].vitorias);
+    return el('div', { class: 'podio', id: 'podioDamas' }, [1, 0, 2].filter((i) => pl[i]).map((i) => {
+      const x = pl[i];
+      return C.comParede(el('article', { class: `lugar l${i + 1}` },
+        i === 0 ? C.svg(C.ICONE_COROA, 40, 'class="coroa"') : null,
+        C.avatarPodio(x.nick),
+        el('div', { class: 'lugar-id' },
+          el('div', { class: 'lugar-pos', text: `${i + 1}º LUGAR` }),
+          el('button', { ...verPerfil(x.nick), class: 'lugar-nome' }, el('span', { class: 'lugar-tag', text: `[${C.TAG}] ` }), x.nick),
+          el('div', { class: 'lugar-pat' }, C.chipPatente(x.nick))),
+        el('div', { class: 'lugar-massa', text: String(x.vitorias) }),
+        el('div', { class: 'lugar-data', text: `${x.vitorias === 1 ? 'vitória' : 'vitórias'} · ${pct(x)} de aproveit.` }),
+        el('div', { class: 'cem-selo', text: `${x.partidas} ${x.partidas === 1 ? 'partida' : 'partidas'}` }),
+        el('div', { class: 'barra', 'aria-hidden': 'true' }, el('span', { style: `width:${Math.max(4, Math.round((x.vitorias / topo) * 100))}%` }))), C.chave(x.nick));
+    }));
+  }
+  function tabelaDamas(pl) {
+    const meu = eu();
+    const iEu = pl.findIndex((x) => x.player_id === meu);
+    const cortar = !J.rankTodo && pl.length > TABELA_TOPO + 2;
+    const est = (rot, val, cls) => el('span', { class: cls || null }, el('small', { text: rot }), el('b', { text: val }));
+    const linhas = [];
+    pl.forEach((x, i) => {
+      if (cortar && i >= TABELA_TOPO && i !== iEu) return;
+      if (cortar && i === iEu && i > TABELA_TOPO) linhas.push(el('tr', { class: 'pulo', 'aria-hidden': 'true' }, el('td', { colspan: '6', text: '⋯' })));
+      linhas.push(C.comParede(el('tr', { class: [i === 0 ? 'topo1' : '', x.player_id === meu ? 'eu-linha' : ''].join(' ').trim() || null },
+        el('td', { class: `pos p${i + 1}`, text: `#${i + 1}` }),
+        el('td', { class: 'nome-cel' },
+          el('div', { class: 'nome-linha' }, C.avatarChat(x.nick, 'av-p'),
+            el('button', { ...verPerfil(x.nick), class: 'link-nome forte' }, el('span', { class: 'tag-nick', text: `[${C.TAG}] ` }), x.nick),
+            el('span', { class: 'nome-chips' }, C.chipPatente(x.nick))),
+          el('div', { class: 'nome-melhor' }, 'melhor fase: ', el('b', { text: fase(x) }))),
+        el('td', { class: 'dir c-pts num', 'data-un': 'VIT', text: String(x.vitorias) }),
+        el('td', { class: 'dir c-cem' }, el('span', { class: 'sec', text: String(x.derrotas) })),
+        el('td', { class: 'dir c-rec sec', 'data-un': '', text: String(x.empates) }),
+        el('td', { class: 'dir sec c-qtd', text: pct(x) }),
+        el('td', { class: 'mob-est', 'aria-hidden': 'true' },
+          est('PARTIDAS', String(x.partidas)),
+          est('V · D · E', `${x.vitorias} · ${x.derrotas} · ${x.empates}`),
+          est('APROVEIT.', pct(x), 'tem-cem'))), C.chave(x.nick), 'linha-parede'));
+    });
+    return el('div', { class: 'painel', id: 'tabelaDamas' },
+      el('div', { class: 'painel-topo' }, el('h2', { text: 'TABELA DE DAMAS' }), el('span', { class: 'ao-vivo' }, el('span', { class: 'ponto' }), 'ao vivo')),
+      el('div', { class: 'tabela-box' },
+        el('table', null,
+          el('thead', null, el('tr', null, el('th', { text: 'POS' }), el('th', { text: 'JOGADOR' }), el('th', { class: 'dir ativo', text: 'VITÓRIAS' }), el('th', { class: 'dir', text: 'DERROTAS' }), el('th', { class: 'dir', text: 'EMPATES' }), el('th', { class: 'dir', text: '%' }))),
+          el('tbody', null, linhas))),
+      pl.length > TABELA_TOPO + 2 ? el('div', { class: 'ver-mais-box' },
+        el('button', { type: 'button', class: 'btn btn-sec ver-mais', text: J.rankTodo ? 'Mostrar só o top 10' : `Ver todos os ${pl.length} jogadores`, onclick: () => { J.rankTodo = !J.rankTodo; desenhar(); } })) : null);
+  }
+  function rankingDamas() {
+    const pl = J.placar;
+    if (!pl) return null;
+    return el('div', { id: 'jgRanking' },
+      rotulo(el('span', { text: 'RANKING DE DAMAS' }), el('button', { type: 'button', class: 'info-btn', 'data-info': 'damas', 'aria-label': 'Como funciona o ranking de damas', text: 'i' })),
+      pl.length ? [podioDamas(pl), tabelaDamas(pl)] : el('div', { class: 'jg-card' }, el('p', { class: 'jg-vazio', text: 'Ninguém jogou damas ainda. Desafie alguém!' })));
+  }
+  // uma partida acabou: placar, ranking e perfis mudam
+  let esperaPlacar;
+  function atualizarPlacar() {
+    clearTimeout(esperaPlacar);
+    esperaPlacar = setTimeout(async () => {
+      if (!J.ligado) return;
+      try {
+        const r = await C.sb.rpc('jogos_placar', { p_jogo: 'damas' });
+        if (r.error) throw r.error;
+        J.placar = (r.data || []).slice().sort(ordemPlacar);
+      } catch (e) { return; }
+      J.perfis.clear();
+      preencherPerfilAberto();
+      if (naSala()) desenharSala();
+    }, 800);
+  }
+
+  // ---------- perfil (imagem 07): seção DAMAS antes das medalhas ----------
+  // o app.js chama na hora de montar o perfil; os dados chegam depois e a seção se preenche
+  C.perfilDamas = (id) => {
+    if (C.DEMO || !id) return null;
+    const sec = el('section', { class: 'pp-sec', id: 'ppDamas', 'aria-labelledby': 'ppDamasT', 'data-jogador': id });
+    const c = J.perfis.get(id);
+    if (c && J.placar) preencherPerfil(sec, id, c.lista); else sec.hidden = true;
+    if (J.ligado && (!c || Date.now() - c.em > 30000)) carregarPerfil(id);
+    return sec;
+  };
+  const carregandoPerfil = new Set();
+  async function carregarPerfil(id) {
+    if (carregandoPerfil.has(id)) return;
+    carregandoPerfil.add(id);
+    try {
+      const [r, pl] = await Promise.all([
+        C.sb.from('jogos_partidas').select(CAMPOS).eq('jogo', 'damas').eq('status', 'fim').or(`brancas.eq.${id},pretas.eq.${id}`).order('fim', { ascending: false }).limit(5),
+        J.placar ? null : C.sb.rpc('jogos_placar', { p_jogo: 'damas' }),
+      ]);
+      if (r.error) throw r.error;
+      if (pl && !pl.error) J.placar = (pl.data || []).slice().sort(ordemPlacar);
+      J.perfis.set(id, { em: Date.now(), lista: r.data || [] });
+    } catch (e) { console.warn('jogos:', e.message); }
+    carregandoPerfil.delete(id);
+    const sec = document.getElementById('ppDamas');
+    if (sec && sec.dataset.jogador === id && J.perfis.has(id) && J.placar) preencherPerfil(sec, id, J.perfis.get(id).lista);
+  }
+  function preencherPerfilAberto() {
+    const sec = document.getElementById('ppDamas');
+    if (!sec) return;
+    const id = sec.dataset.jogador, c = J.perfis.get(id);
+    if (c && J.placar) preencherPerfil(sec, id, c.lista);
+    else if (J.ligado) carregarPerfil(id);
+  }
+  function preencherPerfil(sec, id, lista) {
+    const pl = J.placar || [];
+    const i = pl.findIndex((x) => x.player_id === id);
+    if (i < 0) { sec.hidden = true; sec.replaceChildren(); return; }
+    const x = pl[i], tot = Math.max(1, x.partidas);
+    const larg = (n) => `width:${((100 * n) / tot).toFixed(1)}%`;
+    const stat = (rot, n, cls) => el('div', { class: 'pstat' }, el('span', { class: 'pstat-rot', text: rot }), el('span', { class: 'pstat-num' + (cls ? ' ' + cls : ''), text: n }));
+    const res = (p) => (!p.vencedor ? 'e' : p.vencedor === id ? 'v' : 'd');
+    sec.hidden = false;
+    trocar(sec,
+      el('h2', { class: 'perfil-h3', id: 'ppDamasT' }, 'DAMAS ', el('span', { class: 'sec', text: `${x.partidas} ${x.partidas === 1 ? 'partida' : 'partidas'}` })),
+      el('div', { class: 'jg-pf-pos' }, el('b', { text: `#${i + 1}` }), el('span', null, 'no ranking de damas do clã', el('br'), `${pct(x)} de aproveitamento`)),
+      el('div', { class: 'perfil-stats jg-pf-grade' }, stat('VITÓRIAS', String(x.vitorias), 'laranja'), stat('DERROTAS', String(x.derrotas)), stat('EMPATES', String(x.empates)), stat('%', pct(x))),
+      el('div', { class: 'jg-pf-barra', role: 'img', 'aria-label': `${x.vitorias} vitórias, ${x.empates} empates, ${x.derrotas} derrotas` },
+        el('i', { style: larg(x.vitorias) }), el('i', { style: larg(x.empates) }), el('i', { style: larg(x.derrotas) })),
+      el('div', { class: 'jg-pf-leg' }, el('span', { text: 'vitórias' }), el('span', { text: 'empates' }), el('span', { text: 'derrotas' })),
+      lista.length ? [
+        el('h2', { class: 'perfil-h3', text: lista.length > 1 ? `ÚLTIMAS ${lista.length}` : 'ÚLTIMA' }),
+        el('div', { class: 'jg-forma', role: 'img', 'aria-label': 'Da mais recente pra mais antiga: ' + lista.map((p) => ({ v: 'vitória', d: 'derrota', e: 'empate' })[res(p)]).join(', ') },
+          lista.map((p) => el('i', { class: res(p), text: res(p).toUpperCase() }))),
+        el('ul', { class: 'jg-ult', style: 'margin-top:12px' }, lista.slice(0, 3).map((p) => linhaUltima(p, id))),
+      ] : null);
+  }
+
+  // ---------- relógio zerado: avisa o servidor (api/jogos {acao:"tempo"}) ----------
+  // o banco confere a hora (2 s de folga); se ainda não venceu, tenta de novo daqui a pouco.
+  // Ninguém com o site aberto? O pg_cron fecha a partida em até 1 minuto.
+  function conferirRelogio() {
+    if (!J.ligado || document.hidden) return;
+    const id = partidaDaUrl();
+    const p = (id && linhaDe(id)) || minhaPartida();
+    if (!p || p.status !== 'andamento' || !p.prazo || J.enviando) return;
+    if (agora() < ms(p.prazo) + 2500) return;
+    const t = J.tempoPed;
+    const mesmo = t && t.id === p.id && t.versao === p.versao;
+    if (mesmo && (t.indo || t.n >= 8 || Date.now() - t.em < 4000)) return;
+    pedirTempo(p, mesmo ? t.n + 1 : 1);
+  }
+  async function pedirTempo(p, n) {
+    const t = { id: p.id, versao: p.versao, em: Date.now(), n, indo: true };
+    J.tempoPed = t;
+    try {
+      const r = await api({ acao: 'tempo', partida: p.id });
+      const cur = linhaDe(p.id);
+      if (r.status === 'fim') {
+        const x = await buscarPartida(p.id).catch(() => null);
+        if (x) mudou({ eventType: 'UPDATE', new: x });
+      } else if (cur && (r.versao | 0) > (cur.versao | 0)) {
+        mudou({ eventType: 'UPDATE', new: { ...cur, status: r.status, estado: r.estado, versao: r.versao, prazo: r.prazo, empate_proposto_por: null } });
+      } else if (cur && r.prazo && r.prazo !== cur.prazo) {
+        conferir(p.id);
+      }
+    } catch (e) { /* tenta de novo no próximo segundo (até 8 vezes) */ }
+    t.indo = false;
+    t.em = Date.now();
   }
 
   // ---------- partida ao vivo (imagens 02 e 04) ----------
@@ -470,6 +653,10 @@
           som(virou ? 'dama' : mov.capturas.length ? 'capturar' : 'mover');
         } else J.ult = null;
       }
+    } else if (p.versao === v.versao + 1 && est.tab === v.tab && est.vez !== v.vez && p.status === 'andamento') {
+      // ninguém mexeu peça: o tempo de quem estava na vez acabou e a vez passou (ao_acabar_tempo = perde_vez)
+      J.ult = null;
+      toast(v.vez === minhaCor ? 'Seu tempo acabou: a vez passou.' : `Acabou o tempo do ${nick(v.vez === 'b' ? p.brancas : p.pretas)}: a vez passou.`);
     } else if (p.versao > v.versao) { J.ult = null; buscarUltimoLance(p); }
     if (minhaCor && p.status === 'andamento' && p.versao > v.versao && v.vez !== est.vez && est.vez === minhaCor) {
       if (navigator.vibrate) navigator.vibrate(80);
@@ -965,6 +1152,7 @@
     let venceu = false;
     document.querySelectorAll('.jg-tiq').forEach((n) => { if (n._tique && n._tique() === false) { n._tique = null; venceu = true; } });
     if (venceu) desenhar();
+    conferirRelogio();
     // o tempo real pode cair sem avisar: com a partida aberta, confere no banco de vez em quando
     const id = J.ligado && partidaDaUrl();
     const p = id && linhaDe(id);
@@ -991,7 +1179,7 @@
     if (J.rt && C.sb) C.sb.removeChannel(J.rt);
     J.rt = null; J.conectou = false; J.carregou = false;
     clearInterval(J.tique);
-    J.lista.clear(); J.ultimas = []; J.aberta = null;
+    J.lista.clear(); J.ultimas = []; J.aberta = null; J.placar = null; J.perfis.clear(); J.tempoPed = null; J.rankTodo = false;
     J.sel = null; J.ctx = null; J.visto = null; J.ult = null; J.anim = null; J.assin = null; J.pendente = null; J.fimInfo = null;
     fecharFim();
     if (J.pop) { J.pop.remove(); J.pop = null; J.popId = null; }
@@ -1053,4 +1241,6 @@
   });
   if (C.DEMO) desenharDemo();
   else if (C.aberto) ligar();
+  // perfil aberto antes deste arquivo carregar: monta de novo, agora com a seção DAMAS
+  if (!C.DEMO && C.redesenharPerfil && !document.getElementById('ppDamas')) C.redesenharPerfil();
 })();

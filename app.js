@@ -3977,7 +3977,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
 
     festejarMedalhas(k, meds);
     if (!j) {
-      box.replaceChildren(barra, topo, el('div', { class: 'pp-miolo' }, el('p', { class: 'vazio perfil-vazio', text: 'Sem partidas ainda.' }), secaoMedalhas(k, ctx, meds)));
+      box.replaceChildren(barra, topo, el('div', { class: 'pp-miolo' }, el('p', { class: 'vazio perfil-vazio', text: 'Sem partidas ainda.' }), secaoDamas(r), secaoMedalhas(k, ctx, meds)));
       return;
     }
 
@@ -4080,6 +4080,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
         el('div', { class: 'pp-col' }, posicoes, prog, numeros, lado.length ? evolucao : null),
         lado.length ? el('div', { class: 'pp-col' }, ...lado) : null),
       lado.length ? null : evolucao,
+      secaoDamas(r),
       secaoMedalhas(k, ctx, meds),
       (() => {
         const hist = [secaoTorneiosPerfil(k), momentos].filter(Boolean);
@@ -4087,6 +4088,12 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
           hist.length ? el('div', { class: 'pp-col' }, ...hist) : null,
           el('div', { class: 'pp-col' }, historico));
       })()));
+  }
+  // seção DAMAS (quem monta é o jogos.js; só aparece pra quem já jogou)
+  function secaoDamas(r) {
+    const f = window.COBR && window.COBR.perfilDamas;
+    if (!f || !r) return null;
+    try { return f(r.id); } catch (e) { console.warn('damas:', e); return null; }
   }
   // troféu (campeão) e medalha de prata (vice) de torneio; curto = só o número (tabela do ranking)
   function chipTorneios(k, curto = false) {
@@ -9510,7 +9517,11 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   }
   window.COBR = {
     DEMO, aberto: false, $, el, trocar, svg, toast, chave, confirmar, irPara, abrirPerfil, abrirRegras, linhaRegra, tituloRegra,
-    avatarChat, comParede, ehLider, ptsPat, ICONE_COROA, regras: REGRAS_EXTRA,
+    avatarChat, comParede, ehLider, ptsPat, ICONE_COROA, regras: REGRAS_EXTRA, TAG,
+    avatarPodio: (nick) => avatarPodio({ nome: nick, chave: chave(nick) }),
+    chipPatente: (nick) => chipPatente(ptsPat(chave(nick))),
+    perfilDamas: null, // o jogos.js põe aqui a seção DAMAS do perfil (antes das medalhas)
+    redesenharPerfil: () => { if (perfilAtual) renderPerfil(); },
     membroLinha: (x, o) => membroChat(x, o),
     marcarJogando,
     get sb() { return sb; },

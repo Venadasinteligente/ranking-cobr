@@ -1375,8 +1375,8 @@ button.mm-jogo.aberto { box-shadow: 0 0 0 1px rgba(255, 122, 26, .3), 0 0 20px r
 
 /* tabela: top 10, a linha de quem é "eu" e o resto num toque */
 .duas-col { padding-block: 28px 16px; }
-#tabela tr.eu-linha { background: color-mix(in srgb, var(--laranja) 9%, transparent); box-shadow: inset 3px 0 0 var(--laranja); }
-#tabela tr.pulo td { padding: 0 8px; height: 22px; text-align: center; color: var(--texto-3); border-top: 1px dashed var(--linha-forte); line-height: 1; }
+:is(#tabela, #tabelaDamas) tr.eu-linha { background: color-mix(in srgb, var(--laranja) 9%, transparent); box-shadow: inset 3px 0 0 var(--laranja); }
+:is(#tabela, #tabelaDamas) tr.pulo td { padding: 0 8px; height: 22px; text-align: center; color: var(--texto-3); border-top: 1px dashed var(--linha-forte); line-height: 1; }
 .ver-mais-box { display: flex; justify-content: center; padding: 12px 16px; border-top: 1px solid var(--linha); }
 .ver-mais-box.solto { border-top: 0; padding: 4px 0 24px; }
 .ver-mais { min-width: 220px; }
@@ -1577,7 +1577,7 @@ button.mm-jogo.aberto { box-shadow: 0 0 0 1px rgba(255, 122, 26, .3), 0 0 20px r
 .av-xg.av-dia { box-shadow: 0 0 0 8px rgba(125, 249, 255, .12), 0 0 60px rgba(125, 249, 255, .55); }
 
 /* linha da tabela */
-#tabela tr.linha-dia { background: linear-gradient(90deg, rgba(125, 249, 255, .12), rgba(198, 168, 255, .05) 45%, transparent 75%); box-shadow: inset 3px 0 0 var(--dia); }
+:is(#tabela, #tabelaDamas) tr.linha-dia { background: linear-gradient(90deg, rgba(125, 249, 255, .12), rgba(198, 168, 255, .05) 45%, transparent 75%); box-shadow: inset 3px 0 0 var(--dia); }
 
 /* degrau da escada */
 .degrau.degrau-dia {
@@ -1854,9 +1854,9 @@ h2 .info-btn { width: 22px; height: 22px; font-size: 13px; transform: translateY
   box-shadow: 0 0 12px rgba(255, 216, 77, .55); animation: ouroCorre 3s linear infinite;
 }
 .rei-tag svg { fill: currentColor; stroke: none; }
-#tabela tr.linha-rei { background: linear-gradient(90deg, rgba(255, 216, 77, .16), rgba(255, 122, 26, .05) 45%, transparent 75%); box-shadow: inset 3px 0 0 #FFD84D; }
-#tabela tr.linha-rei .link-nome.forte { color: #FFE58A; text-shadow: 0 0 12px rgba(255, 216, 77, .45); }
-#tabela tr.linha-rei td { padding-top: 18px; }
+:is(#tabela, #tabelaDamas) tr.linha-rei { background: linear-gradient(90deg, rgba(255, 216, 77, .16), rgba(255, 122, 26, .05) 45%, transparent 75%); box-shadow: inset 3px 0 0 #FFD84D; }
+:is(#tabela, #tabelaDamas) tr.linha-rei .link-nome.forte { color: #FFE58A; text-shadow: 0 0 12px rgba(255, 216, 77, .45); }
+:is(#tabela, #tabelaDamas) tr.linha-rei td { padding-top: 18px; }
 .pp-topo.pp-rei { border-color: rgba(255, 216, 77, .7); box-shadow: 0 0 46px rgba(255, 216, 77, .22), inset 0 0 80px rgba(255, 184, 0, .12); }
 .pp-rei .pp-nome { background: linear-gradient(100deg, #FFB800, #FFF7C2 40%, #FFD84D 60%, #F29A00); background-size: 220% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent; animation: ouroCorre 4s linear infinite; filter: drop-shadow(0 0 14px rgba(255, 216, 77, .35)); }
 
@@ -3022,53 +3022,53 @@ button.pd-membro:hover { border-color: var(--linha-forte); }
         | partidas · recorde (ou pontos) · 100K+
    ============================================================= */
 @media (max-width: 560px) {
-  #tabela table, #tabela tbody { display: block; min-width: 0; font-size: 14px; }
-  #tabela thead { display: none; }
-  #tabela tr {
+  :is(#tabela, #tabelaDamas) table, :is(#tabela, #tabelaDamas) tbody { display: block; min-width: 0; font-size: 14px; }
+  :is(#tabela, #tabelaDamas) thead { display: none; }
+  :is(#tabela, #tabelaDamas) tr {
     display: grid; grid-template-columns: 28px 34px minmax(0, 1fr) auto; grid-template-areas: "pos av nome val" "pos av chips chips" "pos est est est";
     align-items: start; column-gap: 10px; padding: 12px 14px; border-top: 1px solid #22170F;
   }
-  #tabela tbody tr:first-child { border-top: 0; }
-  #tabela td, #tabela tr.linha-rei td { padding: 0; border: 0; }
-  #tabela tr.linha-rei { padding-top: 22px; }
+  :is(#tabela, #tabelaDamas) tbody tr:first-child { border-top: 0; }
+  :is(#tabela, #tabelaDamas) td, :is(#tabela, #tabelaDamas) tr.linha-rei td { padding: 0; border: 0; }
+  :is(#tabela, #tabelaDamas) tr.linha-rei { padding-top: 22px; }
 
-  #tabela .pos { grid-area: pos; font-size: 22px; line-height: 34px; }
+  :is(#tabela, #tabelaDamas) .pos { grid-area: pos; font-size: 22px; line-height: 34px; }
   /* nome-cel e nome-linha somem como caixa: avatar, nome e selos se encaixam direto na grade da linha */
-  #tabela td.nome-cel, #tabela .nome-linha { display: contents; }
-  #tabela .nome-linha > :first-child { grid-area: av; width: 34px; height: 34px; }
-  #tabela .nome-linha .link-nome { grid-area: nome; align-self: center; justify-self: start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; line-height: 1.25; text-align: left; }
-  #tabela .nome-chips { grid-area: chips; display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-  #tabela .nome-chips:empty { display: none; }
-  #tabela .nome-chips > * { margin: 0; font-size: 10px; padding: 1px 6px; letter-spacing: .5px; }
-  #tabela .nome-chips .rei-tag { letter-spacing: 1px; }
-  #tabela .nome-melhor, #tabela .tag-nick, #tabela .chip-longo { display: none; }
+  :is(#tabela, #tabelaDamas) td.nome-cel, :is(#tabela, #tabelaDamas) .nome-linha { display: contents; }
+  :is(#tabela, #tabelaDamas) .nome-linha > :first-child { grid-area: av; width: 34px; height: 34px; }
+  :is(#tabela, #tabelaDamas) .nome-linha .link-nome { grid-area: nome; align-self: center; justify-self: start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; line-height: 1.25; text-align: left; }
+  :is(#tabela, #tabelaDamas) .nome-chips { grid-area: chips; display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  :is(#tabela, #tabelaDamas) .nome-chips:empty { display: none; }
+  :is(#tabela, #tabelaDamas) .nome-chips > * { margin: 0; font-size: 10px; padding: 1px 6px; letter-spacing: .5px; }
+  :is(#tabela, #tabelaDamas) .nome-chips .rei-tag { letter-spacing: 1px; }
+  :is(#tabela, #tabelaDamas) .nome-melhor, :is(#tabela, #tabelaDamas) .tag-nick, :is(#tabela, #tabelaDamas) .chip-longo { display: none; }
 
   /* o número do modo escolhido fica grande na direita; o resto desce pra faixa */
-  #tabela .c-cem, #tabela .c-qtd, #tabela .c-rec, #tabela .modo-massa .c-pts { display: none; }
-  #tabela .c-pts, #tabela .modo-massa .c-rec {
+  :is(#tabela, #tabelaDamas) .c-cem, :is(#tabela, #tabelaDamas) .c-qtd, :is(#tabela, #tabelaDamas) .c-rec, :is(#tabela, #tabelaDamas) .modo-massa .c-pts { display: none; }
+  :is(#tabela, #tabelaDamas) .c-pts, :is(#tabela, #tabelaDamas) .modo-massa .c-rec {
     display: block; grid-area: val; padding-top: 3px; text-align: right; color: var(--texto);
     font-family: var(--f-titulo); font-size: 28px; font-weight: 600; line-height: .9;
   }
-  #tabela tr.topo1 .c-pts, #tabela tr.topo1 .c-rec { color: var(--laranja); }
-  #tabela .modo-massa .c-rec { font-size: clamp(20px, 6.6vw, 26px); }
-  #tabela .c-pts::after, #tabela .c-rec::after {
+  :is(#tabela, #tabelaDamas) tr.topo1 .c-pts, :is(#tabela, #tabelaDamas) tr.topo1 .c-rec { color: var(--laranja); }
+  :is(#tabela, #tabelaDamas) .modo-massa .c-rec { font-size: clamp(20px, 6.6vw, 26px); }
+  :is(#tabela, #tabelaDamas) .c-pts::after, :is(#tabela, #tabelaDamas) .c-rec::after {
     content: attr(data-un); display: block; margin-top: 3px;
     font-family: var(--f-texto); font-size: 10px; font-weight: 600; letter-spacing: 1.5px; line-height: 1; color: var(--texto-3);
   }
 
-  #tabela .mob-est {
+  :is(#tabela, #tabelaDamas) .mob-est {
     grid-area: est; margin-top: 8px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
     border: 1px solid var(--linha); border-radius: 10px; background: rgba(0, 0, 0, .22); overflow: hidden;
   }
-  #tabela .mob-est > span { display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 0; padding: 4px 4px 3px; border-left: 1px solid var(--linha); }
-  #tabela .mob-est > span:first-child { border-left: 0; }
-  #tabela .mob-est small { font-size: 9px; font-weight: 600; letter-spacing: 1.2px; color: var(--texto-3); white-space: nowrap; }
-  #tabela .mob-est b { font-family: var(--f-titulo); font-size: 18px; font-weight: 600; line-height: 1; color: var(--texto); font-variant-numeric: tabular-nums; }
-  #tabela .mob-est .tem-cem b { color: var(--laranja); }
+  :is(#tabela, #tabelaDamas) .mob-est > span { display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 0; padding: 4px 4px 3px; border-left: 1px solid var(--linha); }
+  :is(#tabela, #tabelaDamas) .mob-est > span:first-child { border-left: 0; }
+  :is(#tabela, #tabelaDamas) .mob-est small { font-size: 9px; font-weight: 600; letter-spacing: 1.2px; color: var(--texto-3); white-space: nowrap; }
+  :is(#tabela, #tabelaDamas) .mob-est b { font-family: var(--f-titulo); font-size: 18px; font-weight: 600; line-height: 1; color: var(--texto); font-variant-numeric: tabular-nums; }
+  :is(#tabela, #tabelaDamas) .mob-est .tem-cem b { color: var(--laranja); }
 
-  #tabela tr.pulo { display: block; padding: 0; }
-  #tabela tr.pulo td { display: block; height: 22px; line-height: 22px; text-align: center; border-top: 1px dashed var(--linha-forte); }
-  #tabela td.vazio-cel { grid-column: 1 / -1; padding: 28px 16px; }
+  :is(#tabela, #tabelaDamas) tr.pulo { display: block; padding: 0; }
+  :is(#tabela, #tabelaDamas) tr.pulo td { display: block; height: 22px; line-height: 22px; text-align: center; border-top: 1px dashed var(--linha-forte); }
+  :is(#tabela, #tabelaDamas) td.vazio-cel { grid-column: 1 / -1; padding: 28px 16px; }
 
   .painel-topo h2 { font-size: clamp(22px, 7vw, 26px); white-space: nowrap; }
   .hero .stat-num { font-size: clamp(20px, 6.4vw, 28px); }
@@ -3214,7 +3214,7 @@ button.pd-membro:hover { border-color: var(--linha-forte); }
   .dlg-parede .avd-corpo { padding: 12px; }
   .par-palco { min-height: 150px; padding: 12px; }
   .par-grade { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  #tabela tr.linha-parede { background-image: linear-gradient(90deg, rgba(11, 8, 6, .62), rgba(11, 8, 6, .84)), var(--parede); background-size: cover; background-position: center; text-shadow: 0 1px 3px rgba(0, 0, 0, .9); }
+  :is(#tabela, #tabelaDamas) tr.linha-parede { background-image: linear-gradient(90deg, rgba(11, 8, 6, .62), rgba(11, 8, 6, .84)), var(--parede); background-size: cover; background-position: center; text-shadow: 0 1px 3px rgba(0, 0, 0, .9); }
   .com-parede .pp-miolo { padding: 12px; border-radius: 16px; }
 }
 
@@ -3331,7 +3331,8 @@ button.pd-membro:hover { border-color: var(--linha-forte); }
 .jg-mini i.es { background: radial-gradient(circle at 35% 30%, #4A4440, #1C1917); border: 1.5px solid var(--laranja); }
 .jg-relogio { margin-left: auto; flex: none; min-width: 72px; text-align: center; font-family: var(--f-titulo); font-size: 30px; line-height: 1.2; padding: 0 10px; border-radius: 10px; background: var(--fundo); border: 1px solid var(--linha); color: var(--texto-3); font-variant-numeric: tabular-nums; }
 .jg-relogio.corre { color: var(--laranja-claro); border-color: var(--laranja); }
-.jg-relogio.acaba { color: #fff; background: var(--perigo); border-color: var(--perigo); box-shadow: 0 0 0 4px rgba(255, 90, 78, .25), 0 0 22px rgba(255, 90, 78, .6); }
+.jg-relogio.acaba { color: #fff; background: var(--perigo); border-color: var(--perigo); box-shadow: 0 0 0 4px rgba(255, 90, 78, .25), 0 0 22px rgba(255, 90, 78, .6); animation: jg-relogio-pulsa 1s ease-in-out infinite; }
+@keyframes jg-relogio-pulsa { 50% { transform: scale(1.07); box-shadow: 0 0 0 6px rgba(255, 90, 78, .18), 0 0 30px rgba(255, 90, 78, .85); } }
 .jg-vez { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 4px 12px; border-radius: 12px; background: var(--laranja); color: var(--tinta-btn); font-family: var(--f-titulo); font-size: 28px; line-height: 1.15; letter-spacing: 2px; }
 .jg-vez small { font-family: var(--f-texto); font-size: 11px; font-weight: 700; letter-spacing: 1px; padding: 3px 8px; border-radius: 6px; background: rgba(26, 15, 6, .18); }
 .jg-vez.dele { background: var(--painel); color: var(--texto-2); border: 1px solid var(--linha-forte); }
