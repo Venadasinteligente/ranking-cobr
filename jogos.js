@@ -626,6 +626,9 @@
   }
 
   const PASSO = 420; // ms de cada pulo da peça na animação do lance (o dono pediu mais devagar)
+  const PARADA = 550; // captura de várias: a peça para em cada casa (a comida some) antes do próximo pulo
+  const inicioPulo = (k) => k * (PASSO + PARADA);            // quando começa o pulo k (0, 1, 2…)
+  const duracaoLance = (pulos) => pulos > 0 ? pulos * PASSO + (pulos - 1) * PARADA : 0;
   // sons (o botão de som da partida liga/desliga; fica salvo no aparelho)
   const SONS = {
     mover: [[330, 0.07]],
@@ -639,8 +642,8 @@
   function somLance(capturas, virou) {
     if (J.mudo) return;
     if (!capturas) { tocar(SONS[virou ? 'dama' : 'mover']); return; }
-    for (let k = 0; k < capturas; k++) setTimeout(() => tocar([[520 + 70 * k, 0.07], [390 + 70 * k, 0.11]]), k * PASSO + PASSO * 0.5);
-    if (virou) setTimeout(() => tocar(SONS.dama), capturas * PASSO + 60);
+    for (let k = 0; k < capturas; k++) setTimeout(() => tocar([[520 + 70 * k, 0.07], [390 + 70 * k, 0.11]]), inicioPulo(k) + PASSO * 0.5);
+    if (virou) setTimeout(() => tocar(SONS.dama), duracaoLance(capturas) + 60);
   }
   const calmo = () => !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
   function trocarMudo() {
@@ -710,7 +713,7 @@
     } else if (p.versao > v.versao) { J.ult = null; buscarUltimoLance(p); }
     if (minhaCor && p.status === 'andamento' && p.versao > v.versao && v.vez !== est.vez && est.vez === minhaCor) {
       if (navigator.vibrate) navigator.vibrate(80);
-      setTimeout(() => som('vez'), 260 + (J.anim ? (J.anim.caminho.length - 1) * PASSO : 0));
+      setTimeout(() => som('vez'), 260 + (J.anim ? duracaoLance(J.anim.caminho.length - 1) : 0));
     }
     if (v.status === 'andamento' && p.status === 'fim') {
       const meu = eu();
@@ -767,14 +770,14 @@
         && j.capturas.length === mov.capturas.length && mov.capturas.every((c) => j.capturas.includes(c))) || null;
     } catch (e) { return null; }
   }
-  // peça deslizando casa por casa (PASSO ms cada pulo); cada capturada encolhe quando a peça passa por ela;
+  // peça deslizando casa por casa (PASSO ms cada pulo, PARADA ms parada em cada casa da captura); cada capturada encolhe quando a peça cai do lado dela;
   // virou dama: brilho dourado no fim. Redesenhou no meio (ex.: o servidor confirmou): continua de onde estava.
   function animar(box) {
     if (J.anim) { J.animando = { ...J.anim, t0: performance.now() }; J.anim = null; }
     const a = J.animando;
     if (!a) return;
-    const pulos = a.caminho.length - 1, ja = performance.now() - a.t0;
-    if (a.id !== partidaDaUrl() || ja > pulos * PASSO + 900) { J.animando = null; return; }
+    const pulos = a.caminho.length - 1, ja = performance.now() - a.t0, total = duracaoLance(pulos);
+    if (a.id !== partidaDaUrl() || ja > total + 900) { J.animando = null; return; }
     if (calmo() || !box.animate) return;
     const cel = (i) => box.querySelector(`[data-casa="${i}"]`);
     const cPara = cel(ultima(a.caminho));
@@ -782,15 +785,18 @@
     const rodar = (alvo, quadros, o) => { const x = alvo.animate(quadros, { fill: 'both', ...o }); x.currentTime = ja; return x; };
     if (pc && a.caminho.every((i) => cel(i))) {
       const r2 = cPara.getBoundingClientRect();
-      const quadros = a.caminho.map((i) => {
-        const r = cel(i).getBoundingClientRect();
-        return { transform: `translate(${r.left - r2.left}px, ${r.top - r2.top}px)`, easing: 'cubic-bezier(.3, .1, .3, 1)' };
+      const quadros = [];
+      a.caminho.forEach((i, k) => {
+        const r = cel(i).getBoundingClientRect(), transform = `translate(${r.left - r2.left}px, ${r.top - r2.top}px)`;
+        const chega = k ? inicioPulo(k - 1) + PASSO : 0;
+        quadros.push({ transform, offset: total ? chega / total : 0, easing: k && k < pulos ? 'linear' : 'cubic-bezier(.3, .1, .3, 1)' });
+        if (k && k < pulos) quadros.push({ transform, offset: inicioPulo(k) / total, easing: 'cubic-bezier(.3, .1, .3, 1)' }); // parada na casa
       });
       pc.style.zIndex = '3';
-      rodar(pc, quadros, { duration: pulos * PASSO, fill: 'backwards' }).finished.then(() => { pc.style.zIndex = ''; }).catch(() => {});
+      rodar(pc, quadros, { duration: total, fill: 'backwards' }).finished.then(() => { pc.style.zIndex = ''; }).catch(() => {});
       if (a.virou) {
         rodar(pc, [{ scale: 1, filter: 'none' }, { scale: 1.28, filter: 'brightness(1.45) drop-shadow(0 0 12px #FFD84D)', offset: 0.35 }, { scale: 1, filter: 'none' }],
-          { duration: 700, delay: pulos * PASSO, easing: 'ease-out', fill: 'none' });
+          { duration: 700, delay: total, easing: 'ease-out', fill: 'none' });
       }
     }
     a.capturas.forEach((i, k) => {
@@ -799,7 +805,7 @@
       const f = peca(letra);
       f.classList.add('jg-some');
       c.append(f);
-      rodar(f, [{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(.15)', opacity: 0 }], { duration: 420, delay: k * PASSO + PASSO * 0.5, easing: 'ease-in' })
+      rodar(f, [{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(.15)', opacity: 0 }], { duration: 420, delay: inicioPulo(k) + PASSO * 0.5, easing: 'ease-in' })
         .finished.then(() => f.remove()).catch(() => {});
     });
   }
