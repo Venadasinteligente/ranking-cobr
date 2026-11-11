@@ -22,6 +22,8 @@
   const IC_OLHO = '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>';
   const IC_SOM = '<path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>';
   const IC_MUDO = '<path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9.5l5 5M22 9.5l-5 5"/>';
+  const IC_TELA = '<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/>';
+  const IC_TELA_SAIR = '<path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5"/>';
   const COROA = `<svg viewBox="0 0 24 24" stroke-width="1.2" stroke-linejoin="round">${C.ICONE_COROA}</svg>`;
 
   // ---------- estado ----------
@@ -795,12 +797,16 @@
     });
   }
   // tela baixa (iPhone SE, 360×780): o tabuleiro encolhe pra partida inteira caber sem rolar (mínimo 280px)
+  // tela deitada (PC, celular deitado): o tabuleiro vai ao lado dos jogadores e o CSS já usa a altura toda
+  const LARGO = '(orientation: landscape) and (min-width: 700px)';
   function ajustarTab() {
     const box = document.querySelector('#jogos .jg-partida'), t = box && box.querySelector('.jg-tab');
     if (!t) return;
     t.style.maxWidth = '';
+    if (matchMedia(LARGO).matches) return;
     const resto = box.lastElementChild.getBoundingClientRect().bottom + scrollY - t.offsetHeight;
-    const cabe = Math.floor(innerHeight - resto - 4);
+    const fundo = parseFloat(getComputedStyle(box.parentElement).paddingBottom) || 0;
+    const cabe = Math.floor(innerHeight - resto - Math.max(4, fundo));
     if (cabe < t.offsetWidth) t.style.maxWidth = `${Math.max(280, cabe)}px`;
   }
   function tremer() {
@@ -961,6 +967,32 @@
       rel);
   }
 
+  // ---- tela cheia de verdade (some a barra do navegador; Android e PC: o iPhone não deixa) ----
+  const telaCheiaPode = () => !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+  const emTelaCheia = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+  function trocarTelaCheia() {
+    try {
+      const r = document.documentElement;
+      const x = emTelaCheia()
+        ? (document.exitFullscreen || document.webkitExitFullscreen).call(document)
+        : (r.requestFullscreen || r.webkitRequestFullscreen).call(r, { navigationUI: 'hide' });
+      if (x && x.catch) x.catch(() => toast('Não deu pra abrir em tela cheia neste aparelho.', true));
+    } catch (e) { toast('Não deu pra abrir em tela cheia neste aparelho.', true); }
+  }
+  function sairTelaCheia() {
+    if (!emTelaCheia()) return;
+    try { const x = (document.exitFullscreen || document.webkitExitFullscreen).call(document); if (x && x.catch) x.catch(() => {}); } catch (e) {}
+  }
+  function botaoTela(b) {
+    const em = emTelaCheia();
+    b.replaceChildren(ico(em ? IC_TELA_SAIR : IC_TELA));
+    b.setAttribute('aria-label', em ? 'Sair da tela cheia' : 'Tela cheia');
+    b.setAttribute('aria-pressed', em ? 'true' : 'false');
+  }
+  for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) {
+    document.addEventListener(ev, () => { const b = document.getElementById('jgTela'); if (b) botaoTela(b); });
+  }
+
   // ---- a tela da partida ----
   function desenharPartida(id) {
     const sec = $('jogos');
@@ -1045,16 +1077,22 @@
         el('button', { type: 'button', class: 'btn btn-sec', text: 'Voltar pra sala', onclick: () => C.irPara('#jogos') }));
     }
 
+    const tela = el('button', { type: 'button', class: 'jg-ico', id: 'jgTela', hidden: !telaCheiaPode(), onclick: trocarTelaCheia });
+    botaoTela(tela);
+    const cima = barraJogador(p, emCima, est, vez === emCima), baixo = barraJogador(p, embaixo, est, vez === embaixo);
+    cima.classList.add('jg-cima');
+    baixo.classList.add('jg-baixo');
     trocar(sec, el('div', { class: 'jg-partida' },
       el('div', { class: 'jg-topo-partida' },
         el('button', { type: 'button', class: 'btn btn-sec', onclick: () => C.irPara('#jogos') }, ico(IC_VOLTAR, 16), 'Sala'),
         el('button', { type: 'button', class: 'jg-olhos', id: 'jgOlhos', hidden: true, 'aria-controls': 'jgQuem', 'aria-expanded': 'false', onclick: () => { J.verQuem = !verQuem(p); atualizarOlhos(); } }),
+        tela,
         el('button', { type: 'button', class: 'jg-ico', 'aria-label': J.mudo ? 'Ligar o som' : 'Desligar o som', 'aria-pressed': J.mudo ? 'true' : 'false', onclick: trocarMudo }, ico(J.mudo ? IC_MUDO : IC_SOM))),
       el('div', { class: 'jg-quem', id: 'jgQuem', hidden: true }),
-      barraJogador(p, emCima, est, vez === emCima),
+      cima,
       faixa,
       tab,
-      barraJogador(p, embaixo, est, vez === embaixo),
+      baixo,
       acoes,
       andando ? barraReacoes() : null));
     ajustarTab();
@@ -1366,7 +1404,11 @@
 
   // ---------- tudo ----------
   function desenhar() {
-    document.body.classList.toggle('jg-em-partida', !!partidaDaUrl());
+    // partida aberta = imersão: o site some (topo, menu, rodapé, barra de baixo) e fica só a damas
+    const imerso = J.ligado && !!partidaDaUrl();
+    if (imerso && !document.body.classList.contains('jg-em-partida')) scrollTo(0, 0);
+    document.body.classList.toggle('jg-em-partida', imerso);
+    if (!imerso) sairTelaCheia();
     desenharBadge();
     desenharPop();
     const minha = minhaPartida();
@@ -1421,6 +1463,7 @@
     fecharFim();
     if (J.pop) { J.pop.remove(); J.pop = null; J.popId = null; }
     document.body.classList.remove('jg-em-partida');
+    sairTelaCheia();
     desenharBadge();
   }
 

@@ -3425,6 +3425,43 @@ button.pd-membro:hover { border-color: var(--linha-forte); }
 /* durante a partida a barra de baixo some: o tabuleiro ganha a tela */
 body.jg-em-partida #barraBaixo { display: none; }
 body.jg-em-partida #jogos { padding-bottom: 16px; }
+/* imersão: com a partida aberta o site some (logo, menu, rodapé) e o tabuleiro ocupa a tela */
+body.jg-em-partida .topo, body.jg-em-partida .rodape { display: none; }
+body.jg-em-partida { padding-bottom: 0; }
+body.jg-em-partida #principal { min-height: 0; }
+body.jg-em-partida #jogos {
+  max-width: none;
+  padding: calc(8px + env(safe-area-inset-top, 0px)) max(8px, env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px));
+}
+body.jg-em-partida .jg-partida { max-width: 720px; min-height: calc(100dvh - 16px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
+/* sobrou altura no celular em pé: o "Sala" fica em cima e o jogo vai pro meio da tela */
+body.jg-em-partida .jg-topo-partida { margin-bottom: auto; }
+body.jg-em-partida .jg-partida > :last-child { margin-bottom: auto; }
+.jg-partida > .jg-tab { width: 100%; align-self: center; }
+.jg-topo-partida .jg-olhos:not([hidden]) ~ .jg-ico, .jg-topo-partida .jg-ico:not([hidden]) ~ .jg-ico { margin-left: 0; }
+/* tela deitada (PC, celular deitado): tabuleiro da altura da tela, jogadores e botões na coluna do lado */
+@media (orientation: landscape) and (min-width: 700px) {
+  body.jg-em-partida .jg-partida {
+    --alto: calc(100dvh - 16px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    --lado: clamp(300px, calc(100vw - var(--alto) - 56px), 400px);
+    --tab: max(280px, min(var(--alto), calc(100vw - var(--lado) - 64px)));
+    display: grid; width: fit-content; max-width: none; min-height: var(--alto);
+    grid-template-columns: var(--tab) var(--lado);
+    grid-template-rows: auto auto auto auto 1fr auto auto auto;
+    grid-template-areas: "tab topo" "tab quem" "tab cima" "tab vez" "tab ." "tab baixo" "tab acoes" "tab reac";
+    column-gap: clamp(14px, 2vw, 28px); row-gap: 0;
+  }
+  body.jg-em-partida .jg-partida > .jg-tab { grid-area: tab; width: var(--tab); align-self: center; }
+  body.jg-em-partida .jg-partida > :not(.jg-tab) { margin-bottom: 10px; }
+  body.jg-em-partida .jg-topo-partida { grid-area: topo; }
+  body.jg-em-partida .jg-quem { grid-area: quem; }
+  body.jg-em-partida .jg-cima { grid-area: cima; }
+  body.jg-em-partida .jg-partida > .jg-vez { grid-area: vez; }
+  body.jg-em-partida .jg-baixo { grid-area: baixo; }
+  body.jg-em-partida .jg-partida > .jg-acoes { grid-area: acoes; }
+  body.jg-em-partida .jg-partida > .jg-reacoes { grid-area: reac; margin-bottom: 0; }
+  body.jg-em-partida .jg-partida > :last-child { margin-bottom: 0; }
+}
 .perfil-stats.jg-pf-grade { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .jg-pf-grade .pstat { min-width: 0; padding-inline: 4px; }
 .jg-pf-grade .pstat-rot { font-size: 10px; letter-spacing: 1px; }
