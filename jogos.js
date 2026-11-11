@@ -625,7 +625,7 @@
     return true;
   }
 
-  const PASSO = 180; // ms de cada pulo da peça na animação do lance
+  const PASSO = 420; // ms de cada pulo da peça na animação do lance (o dono pediu mais devagar)
   // sons (o botão de som da partida liga/desliga; fica salvo no aparelho)
   const SONS = {
     mover: [[330, 0.07]],
@@ -799,7 +799,7 @@
       const f = peca(letra);
       f.classList.add('jg-some');
       c.append(f);
-      rodar(f, [{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(.15)', opacity: 0 }], { duration: 260, delay: k * PASSO + PASSO * 0.55, easing: 'ease-in' })
+      rodar(f, [{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(.15)', opacity: 0 }], { duration: 420, delay: k * PASSO + PASSO * 0.5, easing: 'ease-in' })
         .finished.then(() => f.remove()).catch(() => {});
     });
   }
