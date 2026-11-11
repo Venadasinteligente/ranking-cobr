@@ -89,7 +89,7 @@ async function jogar(amb, eu, b) {
 
   const [p, cfgBanco] = await Promise.all([lerPartida(amb, b.partida), rpc(amb, 'jogos_cfg')]);
   const cfg = Object.assign({}, PADRAO_CFG, cfgBanco || {});
-  if (p.status !== 'andamento') throw new Erro(409, 'A partida já acabou');
+  if (p.status !== 'andamento') throw new Erro(409, p.status === 'chamada' ? 'A partida ainda não começou' : 'A partida já acabou');
   if (eu.player !== p.brancas && eu.player !== p.pretas) throw new Erro(403, 'Você não está nessa partida');
   if (p.versao !== b.versao) throw new Erro(409, 'Desatualizado: o tabuleiro mudou');
   const minhaCor = eu.player === p.brancas ? 'b' : 'p';

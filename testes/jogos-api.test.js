@@ -167,6 +167,14 @@ test('fora da vez: 403', async () => {
   assert.match(r.corpo.erro, /vez/);
 });
 
+test('partida de torneio ainda chamando (ninguém tocou em "Estou pronto"): 409 e nada muda', async () => {
+  Object.assign(db.partidas[ID.partida], { status: 'chamada', estado: null, torneio: ID.outra, prontos: [] });
+  const r = await jogar('tokA', [21, 17]);
+  assert.equal(r.status, 409);
+  assert.match(r.corpo.erro, /ainda não começou/);
+  assert.equal(db.lances.length, 0);
+});
+
 test('quem não está na partida: 403', async () => {
   const r = await jogar('tokC', [21, 17]);
   assert.equal(r.status, 403);

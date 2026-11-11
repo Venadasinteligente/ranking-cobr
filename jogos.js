@@ -31,7 +31,7 @@
 
   // ---------- estado ----------
   const POR_PAGINA = 6;
-  const CAMPOS = 'id,jogo,status,convidou,convidado,brancas,pretas,estado,versao,prazo,empate_proposto_por,vencedor,motivo,revanche_de,criado_em,inicio,fim';
+  const CAMPOS = 'id,jogo,status,convidou,convidado,brancas,pretas,estado,versao,prazo,empate_proposto_por,vencedor,motivo,revanche_de,criado_em,inicio,fim,torneio,confronto,prontos';
   const J = {
     ligado: false, carregou: false, rt: null, conectou: false, tique: null,
     lista: new Map(),        // partidas vivas (convite e andamento): id -> linha
@@ -65,6 +65,7 @@
     cvAberta: false, cvEl: null, falouEm: 0,
     baloes: new Map(),       // player_id -> { texto, k, ate }: balão em cima da barra do jogador
     semConversa: (() => { try { return !!localStorage.getItem('cobr-jogos-sem-conversa'); } catch (e) { return false; } })(),
+    skins: null,             // pedras de cada cor da partida na tela: { b: 'ouro', p: 'classica' }
   };
   const agora = () => Date.now() + J.desvio;
   const ms = (iso) => (iso ? new Date(iso).getTime() : 0);
@@ -72,7 +73,7 @@
   const nick = (id) => { const r = id && C.jogador(id); return r ? r.nick : 'Alguém'; };
   const erroTxt = (e) => String((e && e.message) || 'Não deu certo. Tente de novo.');
   const mmss = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-  const naSala = () => C.pag === 'jogos' && !partidaDaUrl();
+  const naSala = () => C.pag === 'jogos' && !partidaDaUrl() && !copaDaUrl();
   function partidaDaUrl() {
     const m = /^#jogos\/([0-9a-f-]{36})$/i.exec(location.hash);
     return C.pag === 'jogos' && m ? m[1].toLowerCase() : null;
@@ -82,7 +83,7 @@
   const convitesRecebidos = () => [...J.lista.values()].filter((p) => p.status === 'convite' && p.convidado === eu() && vivo(p)).sort((a, b) => ms(b.criado_em) - ms(a.criado_em));
   const convitesEnviados = () => [...J.lista.values()].filter((p) => p.status === 'convite' && p.convidou === eu() && vivo(p)).sort((a, b) => ms(b.criado_em) - ms(a.criado_em));
   const emAndamento = () => [...J.lista.values()].filter((p) => p.status === 'andamento').sort((a, b) => ms(a.inicio) - ms(b.inicio));
-  const MOTIVO = { sem_pecas: 'sem peças', sem_jogadas: 'sem jogadas', desistencia: 'desistência', tempo: 'tempo esgotado', empate_acordo: 'empate combinado', empate_20: 'empate por 20 lances' };
+  const MOTIVO = { sem_pecas: 'sem peças', sem_jogadas: 'sem jogadas', desistencia: 'desistência', tempo: 'tempo esgotado', empate_acordo: 'empate combinado', empate_20: 'empate por 20 lances', wo: 'W.O.', desempate: 'desempate por peças' };
   function haPouco(iso) {
     const s = Math.max(0, (agora() - ms(iso)) / 1000);
     if (s < 60) return 'agora';
@@ -150,10 +151,11 @@
   async function carregar() {
     const sb = C.sb;
     const [vivas, ult, cfg, placar] = await Promise.all([
-      sb.from('jogos_partidas').select(CAMPOS).in('status', ['convite', 'andamento']),
+      sb.from('jogos_partidas').select(CAMPOS).in('status', ['convite', 'chamada', 'andamento']),
       sb.from('jogos_partidas').select(CAMPOS).eq('jogo', 'damas').eq('status', 'fim').order('fim', { ascending: false }).limit(POR_PAGINA),
       sb.rpc('jogos_cfg'),
       sb.rpc('jogos_placar', { p_jogo: 'damas' }),
+      carregarTorneios().catch((e) => console.warn('torneio:', e.message)),
     ]);
     if (vivas.error) throw vivas.error;
     J.lista = new Map(vivas.data.map((p) => [p.id, p]));
@@ -204,6 +206,11 @@
   function ligarAoVivo() {
     J.rt = C.sb.channel('jogos-ao-vivo')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'jogos_partidas' }, mudou)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'jogos_torneios' }, agendarTorneios)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'jogos_torneio_inscritos' }, agendarTorneios)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'jogos_torneio_confrontos' }, agendarTorneios)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'jogos_pedras' }, agendarTorneios)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'jogos_pedra_uso' }, agendarTorneios)
       .subscribe((st) => {
         if (st !== 'SUBSCRIBED') return;
         if (J.conectou) recarregar(); // voltou depois de cair: pega o que mudou nesse meio tempo
@@ -214,6 +221,7 @@
     if (ev.eventType === 'DELETE') { J.lista.delete(ev.old.id); desenhar(); return; }
     const n = ev.new;
     const antes = linhaDe(n.id);
+    if (n.torneio) TN.partidas.set(n.id, n);
     if (!guardar(n)) return;
     if (n.id === partidaDaUrl()) J.ultNoticia = Date.now();
     if (n.status === 'fim' && !J.ultimas.some((p) => p.id === n.id)) J.ultimas.unshift(n);
@@ -221,6 +229,11 @@
     const meu = eu();
     if (meu) {
       if (ev.eventType === 'INSERT' && n.status === 'convite' && n.convidado === meu) somConvite();
+      // torneio: minha partida chamando, começou, ou alguém não entrou a tempo
+      const souDela = n.brancas === meu || n.pretas === meu;
+      if (ev.eventType === 'INSERT' && n.status === 'chamada' && souDela) { somConvite(); toast('🏆 Sua partida do torneio está chamando! Toque em "Estou pronto".'); }
+      if (antes && antes.status === 'chamada' && n.status === 'andamento' && souDela && partidaDaUrl() !== n.id) { toast('🏆 Valendo! A partida do torneio começou.'); C.irPara('#jogos/' + n.id); }
+      if (antes && antes.status === 'chamada' && n.status === 'fim' && souDela) toast(n.vencedor === meu ? 'O outro não entrou a tempo: você venceu por W.O.' : 'Você não entrou a tempo: perdeu por W.O.', n.vencedor !== meu);
       if (antes && antes.status === 'convite' && n.convidou === meu) {
         if (n.status === 'andamento') { toast(`${nick(n.convidado)} aceitou! Bora jogar.`); C.irPara('#jogos/' + n.id); }
         else if (n.status === 'recusado') toast(`${nick(n.convidado)} recusou o convite.`);
@@ -338,10 +351,13 @@
     const minha = minhaPartida();
     const rec = convitesRecebidos(), env = convitesEnviados();
     const vivas = emAndamento();
+    const cham = minhaChamada();
     trocar(sec, cabecalho(),
+      cham ? cartaoChamada(cham) : null,
       minha ? cartaoMinha(minha) : null,
       rec.map((p) => cartaoConvite(p)),
       env.map((p) => cartaoConvite(p)),
+      secaoTorneios(),
       listaOnline(minha, rec, env),
       vivas.length ? [rotulo(el('span', { text: 'ACONTECENDO AGORA' }), rotVivo()), el('div', { class: 'jg-card' }, vivas.map(cartaoVivo))] : null,
       rankingDamas(),
@@ -366,14 +382,18 @@
       if (!r) continue;
       vistos.add(r.id);
       const jogo = emAndamento().find((p) => p.brancas === r.id || p.pretas === r.id);
+      const torneio = !jogo && [...J.lista.values()].find((p) => p.status === 'chamada' && (p.brancas === r.id || p.pretas === r.id));
       const chamou = rec.find((p) => p.convidou === r.id), chamei = env.find((p) => p.convidado === r.id);
       const k = C.chave(r.nick);
-      gente.push({ r, k, jogo, chamou, chamei, ordem: C.ehLider(k) ? 0 : chamou || chamei ? 1 : jogo ? 3 : 2 });
+      gente.push({ r, k, jogo, torneio, chamou, chamei, ordem: C.ehLider(k) ? 0 : chamou || chamei ? 1 : jogo || torneio ? 3 : 2 });
     }
     gente.sort((a, b) => a.ordem - b.ordem || C.ptsPat(b.k) - C.ptsPat(a.k) || a.r.nick.localeCompare(b.r.nick, 'pt-BR'));
-    const linhas = gente.map(({ r, k, jogo, chamou, chamei }) => {
+    const linhas = gente.map(({ r, k, jogo, torneio, chamou, chamei }) => {
       let sub, extra;
-      if (jogo) {
+      if (torneio) {
+        sub = 'entrando numa partida do torneio';
+        extra = el('span', { class: 'jg-st jogando', text: 'TORNEIO' });
+      } else if (jogo) {
         sub = `jogando damas com ${nick(jogo.brancas === r.id ? jogo.pretas : jogo.brancas)}`;
         extra = el('span', { class: 'jg-st jogando', text: 'JOGANDO' });
       } else if (chamou) {
@@ -405,7 +425,7 @@
   }
   function infoVivo(p) {
     const n = quemAssiste(p.id).length;
-    return `lance ${p.versao}${n ? ` · 👀 ${n} assistindo` : ''}`;
+    return `${p.torneio ? '🏆 torneio · ' : ''}lance ${p.versao}${n ? ` · 👀 ${n} assistindo` : ''}`;
   }
   function linhaUltima(p, quem = null) {
     const emp = !p.vencedor;
@@ -416,7 +436,7 @@
       : (emp ? [el('b', { text: nick(p.brancas) }), ' e ', el('b', { text: nick(p.pretas) }), ' empataram']
         : [el('b', { class: 'ganhou', text: nick(p.vencedor) }), ' venceu ', el('b', { text: nick(perdeu) })]);
     return el('li', null, C.avatarChat(nick(quem ? (quem === p.brancas ? p.pretas : p.brancas) : emp ? p.brancas : p.vencedor), 'av-p'),
-      el('div', { class: 'jg-ult-txt' }, txt, el('small', { text: `${MOTIVO[p.motivo] || 'fim'} · ${lancesTxt(p.versao)} · ${haPouco(p.fim)}` })),
+      el('div', { class: 'jg-ult-txt' }, txt, el('small', { text: `${p.torneio ? '🏆 torneio · ' : ''}${MOTIVO[p.motivo] || 'fim'} · ${lancesTxt(p.versao)} · ${haPouco(p.fim)}` })),
       emp ? el('span', { class: 'jg-ult-res emp', text: 'EMPATE' })
         : quem && p.vencedor !== quem ? el('span', { class: 'jg-ult-res perdeu', text: 'DERROTA' })
         : el('span', { class: 'jg-ult-res', text: 'VITÓRIA' }));
@@ -530,7 +550,7 @@
     carregandoPerfil.add(id);
     try {
       const [r, pl] = await Promise.all([
-        C.sb.from('jogos_partidas').select(CAMPOS).eq('jogo', 'damas').eq('status', 'fim').or(`brancas.eq.${id},pretas.eq.${id}`).order('fim', { ascending: false }).limit(5),
+        C.sb.from('jogos_partidas').select(CAMPOS).eq('jogo', 'damas').eq('status', 'fim').is('torneio', null).or(`brancas.eq.${id},pretas.eq.${id}`).order('fim', { ascending: false }).limit(5),
         J.placar ? null : C.sb.rpc('jogos_placar', { p_jogo: 'damas' }),
       ]);
       if (r.error) throw r.error;
@@ -564,6 +584,7 @@
       el('div', { class: 'jg-pf-barra', role: 'img', 'aria-label': `${x.vitorias} vitórias, ${x.empates} empates, ${x.derrotas} derrotas` },
         el('i', { style: larg(x.vitorias) }), el('i', { style: larg(x.empates) }), el('i', { style: larg(x.derrotas) })),
       el('div', { class: 'jg-pf-leg' }, el('span', { text: 'vitórias' }), el('span', { text: 'empates' }), el('span', { text: 'derrotas' })),
+      trofeusPerfil(id),
       lista.length ? [
         el('h2', { class: 'perfil-h3', text: lista.length > 1 ? `ÚLTIMAS ${lista.length}` : 'ÚLTIMA' }),
         el('div', { class: 'jg-forma', role: 'img', 'aria-label': 'Da mais recente pra mais antiga: ' + lista.map((p) => ({ v: 'vitória', d: 'derrota', e: 'empate' })[res(p)]).join(', ') },
@@ -612,7 +633,7 @@
   const comeca = (c, pre) => pre.every((x, k) => c[k] === x);
   function linhaDe(id) { return J.lista.get(id) || (J.aberta && J.aberta.id === id ? J.aberta : null); }
   function forcar(n) {
-    if (n.status === 'convite' || n.status === 'andamento') J.lista.set(n.id, n); else J.lista.delete(n.id);
+    if (n.status === 'convite' || n.status === 'chamada' || n.status === 'andamento') J.lista.set(n.id, n); else J.lista.delete(n.id);
     if (J.aberta && J.aberta.id === n.id) J.aberta = n;
     if (n.status === 'fim' && n.fim && C.damasFim) C.damasFim(n); // medalha "Campeão de damas"
   }
@@ -721,7 +742,9 @@
 
   // ---- tabuleiro ----
   function peca(letra) {
-    const s = el('span', { class: `jg-p ${letra.toLowerCase()}` });
+    // a pedra que cada jogador escolheu (prêmio de torneio) vale nas partidas dele
+    const sk = J.skins && J.skins[letra.toLowerCase()];
+    const s = el('span', { class: `jg-p ${letra.toLowerCase()}${sk && sk !== 'classica' ? ' sk-' + sk : ''}` });
     if (letra === 'B' || letra === 'P') s.innerHTML = COROA;
     return s;
   }
@@ -875,7 +898,7 @@
   async function jogar(p, j, feito = 0) {
     let novo;
     try { novo = R.aplicar(p.estado, j.caminho, opcoes()); } catch (e) { toast('Jogada inválida.', true); tremer(); return; }
-    const seg = Number(J.cfg.tempo_jogada) || 60;
+    const seg = tempoDe(p);
     const otim = { ...p, estado: novo, versao: p.versao + 1, prazo: new Date(agora() + seg * 1000).toISOString(), empate_proposto_por: null };
     const de = j.caminho[0], para = ultima(j.caminho);
     J.sel = null;
@@ -966,7 +989,7 @@
     const n = contar(est, cor), comeu = Math.max(0, 12 - contar(est, outra));
     const rel = el('span', { class: 'jg-relogio jg-tiq' });
     rel._tique = () => {
-      if (!vez || !p.prazo) { rel.className = 'jg-relogio jg-tiq'; rel.textContent = mmss(Number(J.cfg.tempo_jogada) || 60); return true; }
+      if (!vez || !p.prazo) { rel.className = 'jg-relogio jg-tiq'; rel.textContent = mmss(tempoDe(p)); return true; }
       const s = Math.max(0, Math.ceil((ms(p.prazo) - agora()) / 1000));
       rel.className = `jg-relogio jg-tiq ${s <= 10 ? 'acaba' : 'corre'}`;
       rel.textContent = mmss(s);
@@ -1023,7 +1046,7 @@
     }
     J.aberta = p;
     // convite (ainda não aceito ou recusado): a partida não existe, volta pra sala
-    if (p.status !== 'andamento' && p.status !== 'fim') { C.irPara('#jogos'); return; }
+    if (p.status !== 'andamento' && p.status !== 'fim') { C.irPara(p.torneio ? '#jogos/copa/' + p.torneio : '#jogos'); return; }
     if (!J.conversa || J.conversa.id !== p.id) buscarConversa(p.id);
     const meu = eu(), souB = !!meu && p.brancas === meu, souP = !!meu && p.pretas === meu, jogo = souB || souP;
     const minhaCor = souB ? 'b' : souP ? 'p' : null;
@@ -1032,6 +1055,8 @@
     const vez = andando ? est.vez : null;
     const embaixo = souP ? 'p' : 'b', emCima = embaixo === 'b' ? 'p' : 'b';
     const minhaVez = jogo && vez === minhaCor;
+    J.skins = { b: skinDe(p.brancas), p: skinDe(p.pretas) };
+    const tn = p.torneio ? torneioDe(p.torneio) : null, cf = p.torneio ? confrontoDaPartida(p) : null;
     notarMudanca(p, est, minhaCor);
 
     // jogadas possíveis e o que está selecionado
@@ -1045,7 +1070,7 @@
     const ult = J.ult && J.ult.id === p.id ? J.ult : null;
 
     const fogo = J.fogo && J.fogo.id === p.id && Date.now() < J.fogo.ate ? J.fogo.casa : -1;
-    const ass = JSON.stringify([p.id, p.versao, p.status, p.prazo, p.empate_proposto_por, p.vencedor, sel, J.enviando, ult, J.mudo, J.fimFechado.has(p.id), meu, fogo, J.semReacoes]);
+    const ass = JSON.stringify([p.id, p.versao, p.status, p.prazo, p.empate_proposto_por, p.vencedor, sel, J.enviando, ult, J.mudo, J.fimFechado.has(p.id), meu, fogo, J.semReacoes, J.skins, tn && tn.nome, cf && [cf.vit_a, cf.vit_b, cf.vencedor]]);
     if (ass === J.assin && sec.querySelector('.jg-partida')) { desenharFim(p); return; }
     J.assin = ass;
 
@@ -1083,7 +1108,10 @@
     if (jogo && andando) tab.addEventListener('click', (e) => { const c = e.target.closest('[data-casa]'); if (c) tocarCasa(Number(c.dataset.casa)); });
 
     let acoes = null;
-    if (jogo && andando) {
+    if (jogo && andando && p.torneio) {
+      // torneio não tem empate combinado: só dá pra desistir
+      acoes = el('div', { class: 'jg-acoes' }, el('button', { type: 'button', class: 'btn btn-perigo-sec', text: 'Desistir do torneio', onclick: () => desistir(p) }));
+    } else if (jogo && andando) {
       const pediu = p.empate_proposto_por;
       acoes = pediu && pediu !== meu
         ? el('div', { class: 'jg-acoes jg-empate-pedido' },
@@ -1095,7 +1123,8 @@
     } else if (!andando) {
       acoes = el('div', { class: 'jg-acoes' },
         el('button', { type: 'button', class: 'btn btn-sec', text: 'Ver resultado', onclick: () => { J.fimFechado.delete(p.id); J.assin = null; desenhar(); } }),
-        el('button', { type: 'button', class: 'btn btn-sec', text: 'Voltar pra sala', onclick: () => C.irPara('#jogos') }));
+        p.torneio ? el('button', { type: 'button', class: 'btn btn-sec', text: 'Ver a chave', onclick: () => C.irPara('#jogos/copa/' + p.torneio) })
+          : el('button', { type: 'button', class: 'btn btn-sec', text: 'Voltar pra sala', onclick: () => C.irPara('#jogos') }));
     }
 
     const tela = el('button', { type: 'button', class: 'jg-ico', id: 'jgTela', hidden: !telaCheiaPode(), onclick: trocarTelaCheia });
@@ -1105,7 +1134,9 @@
     baixo.classList.add('jg-baixo');
     trocar(sec, el('div', { class: 'jg-partida' },
       el('div', { class: 'jg-topo-partida' },
-        el('button', { type: 'button', class: 'btn btn-sec', onclick: () => C.irPara('#jogos') }, ico(IC_VOLTAR, 16), 'Sala'),
+        p.torneio ? el('button', { type: 'button', class: 'btn btn-sec', onclick: () => C.irPara('#jogos/copa/' + p.torneio) }, ico(IC_VOLTAR, 16), 'Chave')
+          : el('button', { type: 'button', class: 'btn btn-sec', onclick: () => C.irPara('#jogos') }, ico(IC_VOLTAR, 16), 'Sala'),
+        tn ? el('span', { class: 'jt-chip-partida', title: tn.nome }, '🏆 ', faseDe(tn, cf), cf && (cf.vit_a || cf.vit_b) && !cf.vencedor ? ` · ${serieTxt(p, cf)}` : '') : null,
         el('button', { type: 'button', class: 'jg-olhos', id: 'jgOlhos', hidden: true, 'aria-controls': 'jgQuem', 'aria-expanded': 'false', onclick: () => { J.verQuem = !verQuem(p); atualizarOlhos(); } }),
         botaoConversa('jg-ico'),
         tela,
@@ -1139,6 +1170,8 @@
       if (p && p.status === 'andamento') quer.set(id, eu() && (p.brancas === eu() || p.pretas === eu()) ? 'jogador' : 'espectador');
       else if (p && conversaViva(p)) quer.set(id, null); // acabou: o canal fica só pro "GG" da conversa chegar na hora
       if (naSala()) for (const x of emAndamento()) if (!quer.has(x.id)) quer.set(x.id, null);
+      const cp = copaDaUrl();
+      if (cp) for (const x of emAndamento()) if (x.torneio === cp && !quer.has(x.id)) quer.set(x.id, null);
     }
     for (const [id, c] of J.canais) if (!quer.has(id)) { if (C.sb) C.sb.removeChannel(c.ch); J.canais.delete(id); }
     for (const [id, papel] of quer) {
@@ -1533,6 +1566,8 @@
     if (p.motivo === 'sem_jogadas') return `${quem} ficou sem jogadas`;
     if (p.motivo === 'desistencia') return `${quem} desistiu`;
     if (p.motivo === 'tempo') return voce ? 'Seu tempo acabou' : `Acabou o tempo do ${quem}`;
+    if (p.motivo === 'wo') return voce ? 'Você não entrou a tempo (W.O.)' : `${quem} não entrou a tempo (W.O.)`;
+    if (p.motivo === 'desempate') return `Empatou: ${nick(p.vencedor)} venceu por ter mais peças`;
     return `${nick(p.vencedor)} venceu`;
   }
   // números da partida (lances do banco) e se o vencedor assumiu o 1º lugar do ranking de damas
@@ -1587,8 +1622,9 @@
     const info = J.fimInfo && J.fimInfo.id === p.id ? J.fimInfo : null;
     if (!info) carregarFimInfo(p);
     const meu = eu(), jogo = !!meu && (p.brancas === meu || p.pretas === meu);
-    const rev = jogo ? pedidoRevanche(p) : null;
-    const ass = JSON.stringify([p.id, p.vencedor, p.motivo, p.versao, !!info, rev && rev.id, rev && rev.convidou]);
+    const rev = jogo && !p.torneio ? pedidoRevanche(p) : null;
+    const cf = p.torneio ? confrontoDaPartida(p) : null, tn = p.torneio ? torneioDe(p.torneio) : null;
+    const ass = JSON.stringify([p.id, p.vencedor, p.motivo, p.versao, !!info, rev && rev.id, rev && rev.convidou, cf && [cf.vencedor, cf.vit_a, cf.vit_b], tn && tn.status]);
     if (J.fim && J.fimAss === ass) return;
     const tipo = !p.vencedor ? 'empate' : jogo && p.vencedor !== meu ? 'derrota' : 'vitoria';
     const outro = jogo ? (p.brancas === meu ? p.pretas : p.brancas) : null;
@@ -1600,7 +1636,10 @@
     const lado = (id) => el('div', { class: p.vencedor && id !== p.vencedor ? 'perdeu' : null }, C.avatarChat(nick(id), 'av-m'), nick(id));
     const stat = (rot, n) => el('div', null, el('small', { text: rot }), el('b', { text: n == null ? '–' : String(n) }));
     let btRev = null;
-    if (jogo) {
+    const ntn = tn ? notaTorneio(p, tn, cf, jogo) : null;
+    if (tn) {
+      btRev = el('button', { type: 'button', class: 'btn btn-pri btn-grande', text: 'VER A CHAVE', onclick: () => { J.fimFechado.add(p.id); C.irPara('#jogos/copa/' + tn.id); } });
+    } else if (jogo) {
       const pediuEle = rev && rev.convidou === outro, pediEu = rev && rev.convidou === meu;
       btRev = el('button', { type: 'button', class: 'btn btn-pri btn-grande', disabled: !!pediEu, onclick: (e) => revanche(p, e.currentTarget) },
         pediEu ? `ESPERANDO ${nick(outro).toUpperCase()}…` : pediuEle ? 'ACEITAR REVANCHE' : 'REVANCHE');
@@ -1608,11 +1647,12 @@
     const caixa = el('div', { class: `jg-fim ${tipo}`, role: 'dialog', 'aria-modal': 'true', 'aria-label': tipo === 'vitoria' ? 'Vitória' : tipo === 'derrota' ? 'Derrota' : 'Empate' },
       tipo === 'vitoria' ? el('div', { class: 'jg-fim-raios' }) : null,
       el('div', { class: 'jg-fim-taca-box' }),
-      el('h3', { text: tipo === 'vitoria' ? 'VITÓRIA!' : tipo === 'derrota' ? 'DERROTA' : 'EMPATE' }),
+      el('h3', { text: ntn && ntn.titulo ? ntn.titulo : tipo === 'vitoria' ? 'VITÓRIA!' : tipo === 'derrota' ? 'DERROTA' : 'EMPATE' }),
       el('p', { class: 'jg-fim-motivo', text: motivoFim(p) }),
       el('div', { class: 'jg-fim-duelo' }, lado(esq), el('span', { class: 'x', text: '×' }), lado(dir)),
       el('div', { class: 'jg-fim-stats' }, stat('LANCES', p.versao), stat('CAPTURAS', info ? soma(info.capturas) : null), stat('DAMAS', info ? soma(info.damas) : null)),
-      info && info.assumiu ? el('p', { class: 'jg-fim-sobe', text: '🏆 Você assumiu o 1º lugar do ranking de damas!' }) : null,
+      ntn ? el('p', { class: 'jg-fim-sobe', text: ntn.texto }) : null,
+      info && info.assumiu && !tn ? el('p', { class: 'jg-fim-sobe', text: '🏆 Você assumiu o 1º lugar do ranking de damas!' }) : null,
       rev && rev.convidou === outro ? el('p', { class: 'jg-fim-sobe', text: `🔁 ${nick(outro)} pediu revanche!` }) : null,
       btRev,
       jogo ? botaoConversa('btn btn-sec btn-grande') : null,
@@ -1636,12 +1676,14 @@
 
   // ---------- convite em qualquer página (imagem 06) ----------
   function desenharPop() {
-    const p = !naSala() && !partidaDaUrl() ? convitesRecebidos()[0] : null;
+    // partida do torneio chamando aparece em qualquer página (menos na sala e na chave, onde já está na tela)
+    const ch = !naSala() && !copaDaUrl() ? minhaChamada() : null;
+    const p = ch || (!naSala() && !partidaDaUrl() && !copaDaUrl() ? convitesRecebidos()[0] : null);
     if (!p) { if (J.pop) { J.pop.remove(); J.pop = null; J.popId = null; } return; }
-    if (J.pop && J.popId === p.id) return;
+    if (J.pop && J.popId === p.id + (p.prontos || []).join()) return;
     if (J.pop) J.pop.remove();
-    J.pop = cartaoConvite(p, true);
-    J.popId = p.id;
+    J.pop = p.status === 'chamada' ? cartaoChamada(p, true) : cartaoConvite(p, true);
+    J.popId = p.id + (p.prontos || []).join();
     document.body.append(J.pop);
     posicionarPop();
   }
@@ -1662,8 +1704,683 @@
   document.addEventListener('transitionend', (e) => { if (e.target.closest && e.target.closest('.topo')) posicionarPop(); });
 
   function desenharBadge() {
-    const n = J.ligado && !naSala() ? convitesRecebidos().length : 0; // na sala o convite já está na tela
+    const n = J.ligado && !naSala() ? convitesRecebidos().length + (minhaChamada() ? 1 : 0) : 0; // na sala o convite já está na tela
     document.querySelectorAll('[data-badge-jogos]').forEach((b) => { b.hidden = !n; b.textContent = String(n); });
+  }
+
+  // ---------- torneio de damas (chave mata-mata) ----------
+  // #jogos/copa/<id> abre a chave. Quem decide tudo é o banco (seção 11c do SQL): aqui só entra,
+  // sai, toca em "Estou pronto" e o admin abre ou cancela. A chave anda sozinha pelo tempo real:
+  // quem vence comemora e o avatar dele corre pelo fio até a próxima fase.
+  const PEDRAS = {
+    classica: { nome: 'Clássica', rar: 'PADRÃO', cls: 'comum' },
+    ouro: { nome: 'Coroa de Ouro', rar: 'LENDÁRIA', cls: 'lenda' },
+    prata: { nome: 'Prata Lunar', rar: 'ÉPICA', cls: 'epica' },
+    brasa: { nome: 'Brasa', rar: 'RARA', cls: 'rara' },
+    veneno: { nome: 'Veneno da Cobra', rar: 'ESPECIAL', cls: 'especial' },
+    gelo: { nome: 'Gelo Azul', rar: 'ESPECIAL', cls: 'especial' },
+  };
+  const PREMIO_ROT = { 1: 'CAMPEÃO', 2: 'VICE', 3: 'SEMIFINAL' };
+  const TN_CAMPOS = 'id,edicao,nome,jogo,vagas,tempo_jogada,final_md3,premios,status,campeao,criado_em,inicio,fim';
+  const CF_CAMPOS = 'id,torneio,rodada,pos,a,b,vit_a,vit_b,vencedor,partida';
+  const TN = {
+    ok: false,               // a seção 11c do SQL já rodou?
+    lista: [],               // torneios (os 30 mais novos)
+    insc: new Map(),         // torneio -> inscritos (ordem de entrada)
+    conf: new Map(),         // torneio -> confrontos da chave
+    partidas: new Map(),     // partidas de torneio (as que acabaram ficam aqui)
+    copas: new Set(),        // chaves que já buscaram as partidas
+    pedras: [], uso: new Map(), // pedras ganhas e a que cada um usa
+    vistos: new Map(),       // torneio -> (confronto -> vencedor) do último desenho (pra saber quem acabou de vencer)
+    voando: new Map(),       // vaga de destino -> { t, c, ini } (o avatar ainda está a caminho)
+    acesos: new Map(), ligados: new Set(), // fios já acesos (só o novo acende devagar)
+    campeao: new Set(),      // torneios que já mostraram a festa do campeão
+    assin: null, pedidoWo: new Map(),
+  };
+  function copaDaUrl() {
+    const m = /^#jogos\/copa\/([0-9a-f-]{36})$/i.exec(location.hash);
+    return C.pag === 'jogos' && m ? m[1].toLowerCase() : null;
+  }
+  const rodadas = (v) => (v === 4 ? 2 : v === 8 ? 3 : 4);
+  const FASE = { 16: 'OITAVAS', 8: 'QUARTAS', 4: 'SEMIFINAL', 2: 'FINAL' };
+  const FASE_CURTA = { 16: 'OITAVAS', 8: 'QUARTAS', 4: 'SEMI', 2: 'FINAL' };
+  const nomeFase = (vagas, r) => FASE[vagas >> (r - 1)] || 'FASE';
+  // "pras quartas" / "pra semifinal"; "nas quartas" / "na semifinal"
+  const pra = (f) => (/S$/.test(f) ? 'pras ' : 'pra ') + f.toLowerCase();
+  const na = (f) => (/S$/.test(f) ? 'nas ' : 'na ') + f.toLowerCase();
+  const torneioDe = (id) => TN.lista.find((t) => t.id === id) || null;
+  const confrontoDaPartida = (p) => (p && p.torneio && (TN.conf.get(p.torneio) || []).find((c) => c.id === p.confronto)) || null;
+  const faseDe = (tn, cf) => (cf ? nomeFase(tn.vagas, cf.rodada) : 'TORNEIO');
+  const serieTxt = (p, cf) => `série ${cf.vit_a}×${cf.vit_b}`;
+  const partidaDe = (id) => (id && (J.lista.get(id) || TN.partidas.get(id) || (J.aberta && J.aberta.id === id ? J.aberta : null))) || null;
+  const skinDe = (id) => { const s = id && TN.uso.get(id); return s && PEDRAS[s] ? s : 'classica'; };
+  function tempoDe(p) {
+    const t = p && p.torneio && torneioDe(p.torneio);
+    return (t && t.tempo_jogada) || Number(J.cfg.tempo_jogada) || 60;
+  }
+  const minhaChamada = () => [...J.lista.values()].find((p) => p.status === 'chamada' && souJogador(p) && ms(p.prazo) > agora() - 15000) || null;
+  const nomePedra = (sk, t) => (sk === 'ouro' && t && t.edicao ? `Coroa de Ouro #${t.edicao}` : (PEDRAS[sk] || PEDRAS.classica).nome);
+  function agrupar(linhas, k) {
+    const m = new Map();
+    for (const x of linhas || []) { if (!m.has(x[k])) m.set(x[k], []); m.get(x[k]).push(x); }
+    return m;
+  }
+
+  // ---- banco ----
+  async function carregarTorneios() {
+    const sb = C.sb;
+    const r = await sb.from('jogos_torneios').select(TN_CAMPOS).order('criado_em', { ascending: false }).limit(30);
+    if (r.error) { TN.ok = false; return; } // sem a seção 11c do SQL o torneio só não aparece
+    const lista = r.data || [];
+    // a chave aberta pode ser de um torneio mais velho que os 30
+    const aberta = copaDaUrl();
+    if (aberta && !lista.some((t) => t.id === aberta)) {
+      const x = await sb.from('jogos_torneios').select(TN_CAMPOS).eq('id', aberta).maybeSingle();
+      if (x.data) lista.push(x.data);
+    }
+    const ids = lista.map((t) => t.id);
+    const nada = Promise.resolve({ data: [] });
+    const [ins, cf, pd, us] = await Promise.all([
+      ids.length ? sb.from('jogos_torneio_inscritos').select('torneio,player,criado_em').in('torneio', ids).order('criado_em') : nada,
+      ids.length ? sb.from('jogos_torneio_confrontos').select(CF_CAMPOS).in('torneio', ids) : nada,
+      sb.from('jogos_pedras').select('player,pedra,torneio,colocacao,criado_em').order('criado_em'),
+      sb.from('jogos_pedra_uso').select('player,pedra'),
+    ]);
+    TN.ok = true;
+    TN.lista = lista;
+    if (!ins.error) TN.insc = agrupar(ins.data, 'torneio');
+    if (!cf.error) TN.conf = agrupar(cf.data, 'torneio');
+    if (!pd.error) TN.pedras = pd.data || [];
+    if (!us.error) TN.uso = new Map((us.data || []).map((x) => [x.player, x.pedra]));
+    if (aberta) await carregarPartidasCopa(aberta, true);
+  }
+  async function carregarPartidasCopa(id, forcarBusca = false) {
+    if (TN.copas.has(id) && !forcarBusca) return;
+    TN.copas.add(id);
+    const r = await C.sb.from('jogos_partidas').select(CAMPOS).eq('torneio', id);
+    if (r.error) { TN.copas.delete(id); return; }
+    for (const p of r.data || []) if (!J.lista.has(p.id) || p.status === 'fim') TN.partidas.set(p.id, p);
+  }
+  let esperaTn = null;
+  function agendarTorneios() {
+    clearTimeout(esperaTn);
+    esperaTn = setTimeout(() => {
+      if (!J.ligado) return;
+      carregarTorneios().then(desenhar).catch((e) => console.warn('torneio:', e.message));
+    }, 250);
+  }
+  function limparTorneios() {
+    clearTimeout(esperaTn);
+    Object.assign(TN, { ok: false, lista: [], insc: new Map(), conf: new Map(), partidas: new Map(), copas: new Set(), pedras: [], uso: new Map(), vistos: new Map(), voando: new Map(), acesos: new Map(), ligados: new Set(), assin: null });
+    document.querySelectorAll('.jt-voa, .jt-faisca, .jt-campeao-fundo').forEach((x) => x.remove());
+  }
+
+  // ---- ações ----
+  async function entrarTorneio(t, bt) {
+    if (!eu()) { toast('Só jogador do clã com login pode entrar.', true); return; }
+    bt.disabled = true;
+    try {
+      await rpc('jogos_torneio_entrar', { p_torneio: t.id });
+      const n = (TN.insc.get(t.id) || []).length + 1;
+      toast(n >= t.vagas ? 'Você pegou a última vaga! A chave vai ser sorteada.' : `Você está no ${t.nome}. Começa quando encher.`);
+      await carregarTorneios();
+      desenhar();
+    } catch (e) { toast(erroTxt(e), true); bt.disabled = false; }
+  }
+  async function sairTorneio(t, bt) {
+    bt.disabled = true;
+    try { await rpc('jogos_torneio_sair', { p_torneio: t.id }); toast('Você saiu do torneio.'); await carregarTorneios(); desenhar(); }
+    catch (e) { toast(erroTxt(e), true); bt.disabled = false; }
+  }
+  async function ficarPronto(p, bt) {
+    bt.disabled = true;
+    try {
+      const r = await rpc('jogos_torneio_pronto', { p_partida: p.id });
+      const x = await buscarPartida(p.id).catch(() => null);
+      if (x) guardar(x);
+      if (r === 'andamento') { C.irPara('#jogos/' + p.id); return; }
+      toast(`Pronto! Esperando ${nick(p.brancas === eu() ? p.pretas : p.brancas)} entrar.`);
+      desenhar();
+    } catch (e) { toast(erroTxt(e), true); bt.disabled = false; }
+  }
+  function cancelarTorneio(t) {
+    C.confirmar('CANCELAR O TORNEIO?', `${t.nome} sai da sala. As partidas que estão rolando terminam, mas ninguém avança nem ganha pedra.`, 'Cancelar torneio', async () => {
+      try { await rpc('jogos_torneio_cancelar', { p_torneio: t.id }); toast('Torneio cancelado.'); await carregarTorneios(); desenhar(); }
+      catch (e) { toast(erroTxt(e), true); }
+    });
+  }
+  async function usarPedra(k, d) {
+    const tem = k === 'classica' || TN.pedras.some((x) => x.player === eu() && x.pedra === k);
+    if (!tem) { toast('Essa você ainda não ganhou. Vença um torneio que dá ela de prêmio!', true); return; }
+    try {
+      await rpc('jogos_usar_pedra', { p_pedra: k });
+      TN.uso.set(eu(), k);
+      toast(`${PEDRAS[k].nome} em uso. Quem jogar com você vê ela no tabuleiro.`);
+      if (d) desenharPedras(d);
+      J.assin = null;
+      desenhar();
+    } catch (e) { toast(erroTxt(e), true); }
+  }
+  // os 3 minutos pra entrar acabaram: avisa o banco (ele confere a hora e dá o W.O.)
+  function conferirChamadas() {
+    if (!J.ligado || document.hidden) return;
+    const cp = copaDaUrl();
+    for (const p of J.lista.values()) {
+      if (p.status !== 'chamada' || agora() < ms(p.prazo) + 2500 || !(souJogador(p) || cp === p.torneio)) continue;
+      if (Date.now() - (TN.pedidoWo.get(p.id) || 0) < 5000) continue;
+      TN.pedidoWo.set(p.id, Date.now());
+      C.sb.rpc('jogos_tempo', { p_partida: p.id }).then(async (r) => {
+        if (r.error || !r.data) return;
+        const x = await buscarPartida(p.id).catch(() => null);
+        if (x) mudou({ eventType: 'UPDATE', new: x });
+      });
+    }
+  }
+
+  // ---- peças pequenas (vitrine dos prêmios) ----
+  function pedraIco(sk, letra = 'P', tam = null) {
+    const s = el('span', { class: `jg-p ${letra.toLowerCase()}${sk && sk !== 'classica' ? ' sk-' + sk : ''}` });
+    if (letra === 'B' || letra === 'P') s.innerHTML = COROA;
+    return el('span', { class: 'jt-pc', style: tam ? `--s:${tam}px` : null, 'aria-hidden': 'true' }, s);
+  }
+  const parPedras = (sk, tam) => el('span', { class: 'jt-par' }, pedraIco(sk, 'B', tam), pedraIco(sk, 'P', tam));
+  function premiosEl(t) {
+    const ks = ['1', '2', '3'].filter((k) => t.premios && t.premios[k]);
+    if (!ks.length) return null;
+    return el('div', { class: 'jt-premios' }, ks.map((k) => el('div', { class: `jt-premio p${k}` },
+      el('small', { text: k === '3' && rodadas(t.vagas) === 2 ? 'SEMIFINAL' : PREMIO_ROT[k] }),
+      parPedras(t.premios[k], 30),
+      el('b', { text: nomePedra(t.premios[k], t) }))));
+  }
+
+  // ---- cartões da sala ----
+  function chipsTorneio(t) {
+    const st = { inscricao: ['abre', 'INSCRIÇÕES ABERTAS'], andamento: ['rola', 'AO VIVO'], fim: ['', 'ENCERRADO'], cancelado: ['', 'CANCELADO'] }[t.status] || ['', ''];
+    return el('div', { class: 'jt-chips' },
+      el('span', { class: `jt-chip ${st[0]}`, text: st[1] }),
+      el('span', { class: 'jt-chip', text: `${t.vagas} VAGAS` }),
+      el('span', { class: 'jt-chip', text: `${t.tempo_jogada} S POR JOGADA` }),
+      t.final_md3 ? el('span', { class: 'jt-chip', text: 'FINAL MELHOR DE 3' }) : null);
+  }
+  function cadeiras(t) {
+    const ins = TN.insc.get(t.id) || [];
+    return el('div', { class: `jt-cadeiras v${t.vagas}` }, Array.from({ length: t.vagas }, (_, i) => {
+      const x = ins[i];
+      return x ? el('span', { class: 'jt-cadeira cheia' + (x.player === eu() ? ' eu' : ''), title: nick(x.player) }, C.avatarChat(nick(x.player), 'av-m'))
+        : el('span', { class: 'jt-cadeira', text: '?' });
+    }));
+  }
+  function botaoEntrar(t) {
+    const ins = TN.insc.get(t.id) || [];
+    const dentro = ins.some((x) => x.player === eu());
+    if (t.status !== 'inscricao') return null;
+    if (!eu()) return el('button', { type: 'button', class: 'btn btn-sec btn-grande', disabled: true, text: 'Só jogador do clã com login' });
+    return dentro ? el('button', { type: 'button', class: 'btn btn-sec btn-grande', text: 'Sair do torneio', onclick: (e) => sairTorneio(t, e.currentTarget) })
+      : el('button', { type: 'button', class: 'btn btn-pri btn-grande', text: 'Entrar no torneio', onclick: (e) => entrarTorneio(t, e.currentTarget) });
+  }
+  function cartaoTorneio(t) {
+    const ins = TN.insc.get(t.id) || [];
+    const vivas = emAndamento().filter((p) => p.torneio === t.id).length;
+    const fase = faseAtual(t);
+    return el('article', { class: 'jg-card jt-torneio' },
+      el('button', { type: 'button', class: 'jt-torneio-topo', onclick: () => C.irPara('#jogos/copa/' + t.id), 'aria-label': `Abrir a chave do ${t.nome}` },
+        el('span', { class: 'jt-taca-ico', 'aria-hidden': 'true' }, taca()),
+        el('span', { class: 'jt-torneio-tit' }, el('b', { text: t.nome }), chipsTorneio(t))),
+      t.status === 'inscricao' ? el('div', { class: 'jt-vagas' },
+        el('div', { class: 'jt-vagas-topo' }, el('span', { text: 'Inscritos · começa quando encher' }), el('span', null, el('b', { text: String(ins.length) }), ` / ${t.vagas}`)),
+        cadeiras(t)) : null,
+      t.status === 'andamento' ? el('p', { class: 'jt-fase' }, el('b', { text: fase }), vivas ? ` · ${vivas} ${vivas === 1 ? 'partida rolando' : 'partidas rolando'} agora` : ' · esperando os jogadores entrarem') : null,
+      premiosEl(t),
+      el('div', { class: 'jt-pe' }, botaoEntrar(t),
+        el('button', { type: 'button', class: 'btn ' + (t.status === 'andamento' ? 'btn-pri' : 'btn-sec') + ' btn-grande', onclick: () => C.irPara('#jogos/copa/' + t.id) }, t.status === 'andamento' ? [ico(IC_OLHO, 18), 'Ver a chave ao vivo'] : 'Ver a chave')));
+  }
+  function faseAtual(t) {
+    const cs = TN.conf.get(t.id) || [];
+    const vivas = cs.filter((c) => c.a && c.b && !c.vencedor);
+    if (!vivas.length) return 'FINAL';
+    return nomeFase(t.vagas, Math.min(...vivas.map((c) => c.rodada)));
+  }
+  function linhaCampeao(t) {
+    const camp = t.campeao;
+    return el('li', { class: 'jt-camp-li', onclick: () => C.irPara('#jogos/copa/' + t.id) },
+      camp ? C.avatarChat(nick(camp), 'av-p') : el('span', { class: 'av av-p', text: '?' }),
+      el('div', { class: 'jg-ult-txt' }, el('b', { class: 'ganhou', text: camp ? `🏆 ${nick(camp)}` : t.nome }), ' campeão do ', el('b', { text: t.nome }),
+        el('small', { text: `${t.vagas} jogadores · ${haPouco(t.fim)}` })),
+      t.premios && t.premios['1'] ? pedraIco(t.premios['1'], 'P', 30) : null);
+  }
+  function secaoTorneios() {
+    if (!TN.ok) return null;
+    const abertos = TN.lista.filter((t) => t.status === 'inscricao' || t.status === 'andamento')
+      .sort((a, b) => (a.status === 'andamento' ? 0 : 1) - (b.status === 'andamento' ? 0 : 1) || ms(a.criado_em) - ms(b.criado_em));
+    const fins = TN.lista.filter((t) => t.status === 'fim').sort((a, b) => ms(b.fim) - ms(a.fim)).slice(0, 3);
+    const admin = !!C.ehAdmin;
+    if (!abertos.length && !fins.length && !admin && !eu()) return null;
+    return [
+      rotulo(el('span', { text: 'TORNEIOS DE DAMAS' }), el('span', { class: 'jt-rot-acoes' },
+        eu() ? el('button', { type: 'button', class: 'jt-link', onclick: abrirPedras }, parPedras(skinDe(eu()), 18), 'Minhas pedras') : null,
+        admin ? el('button', { type: 'button', class: 'jt-link forte', onclick: abrirCriarTorneio, text: '+ Criar torneio' }) : null)),
+      abertos.map(cartaoTorneio),
+      !abertos.length ? el('div', { class: 'jg-card' }, el('p', { class: 'jg-vazio', text: admin ? 'Nenhum torneio aberto. Toque em "+ Criar torneio".' : 'Nenhum torneio aberto agora. Quando o admin abrir, chega um aviso.' })) : null,
+      fins.length ? el('ul', { class: 'jg-ult jt-campeoes' }, fins.map(linhaCampeao)) : null,
+    ].flat(); // a sala achata só um nível
+  }
+  // partida do torneio chamando: 3 minutos pra tocar em "Estou pronto"
+  function cartaoChamada(p, pop = false) {
+    const t = torneioDe(p.torneio), cf = confrontoDaPartida(p);
+    const outro = p.brancas === eu() ? p.pretas : p.brancas;
+    const prontos = p.prontos || [];
+    const ja = prontos.includes(eu()), ele = prontos.includes(outro);
+    const total = Math.max(1000, ms(p.prazo) - ms(p.criado_em));
+    const anel = el('span', { class: 'jg-conta' });
+    anel.innerHTML = `<svg viewBox="0 0 50 50" aria-hidden="true"><circle cx="25" cy="25" r="22" fill="none" stroke="#3A2312" stroke-width="4"/><circle cx="25" cy="25" r="22" fill="none" stroke="#F5C542" stroke-width="4" stroke-linecap="round" stroke-dasharray="${CIRC.toFixed(1)} 200"/></svg>`;
+    const arco = anel.querySelectorAll('circle')[1];
+    const num = document.createTextNode('');
+    anel.append(num);
+    const leg = el('small');
+    const fase = t && cf ? nomeFase(t.vagas, cf.rodada) : 'TORNEIO';
+    const caixa = el('div', { class: (pop ? 'jg-pop' : 'jg-card') + ' jg-convite jt-chamada', role: pop ? 'alertdialog' : null, 'aria-label': pop ? `Sua partida do torneio contra ${nick(outro)}` : null },
+      el('div', { class: 'jg-convite-top' }, C.avatarChat(nick(outro), 'av-m'),
+        el('div', { class: 'jg-convite-txt' }, '🏆 ', el('b', { text: fase }), t ? [' do ', el('b', { text: t.nome })] : null, ': você contra ', el('b', { text: nick(outro) }), leg),
+        anel),
+      el('div', { class: 'jg-convite-btns' },
+        ja ? el('button', { type: 'button', class: 'btn btn-sec', disabled: true, text: `Esperando ${nick(outro)}…` })
+          : el('button', { type: 'button', class: 'btn btn-pri', text: 'Estou pronto', onclick: (e) => ficarPronto(p, e.currentTarget) }),
+        el('button', { type: 'button', class: 'btn btn-sec', text: 'Ver a chave', onclick: () => C.irPara('#jogos/copa/' + p.torneio) })));
+    caixa.classList.add('jg-tiq');
+    caixa._tique = () => {
+      const resta = Math.max(0, ms(p.prazo) - agora());
+      const s = Math.ceil(resta / 1000);
+      arco.setAttribute('stroke-dasharray', `${(CIRC * Math.min(1, resta / total)).toFixed(1)} 200`);
+      num.textContent = s > 99 ? mmss(s) : String(s);
+      leg.textContent = !resta ? 'CONFERINDO QUEM ENTROU…'
+        : ja ? `VOCÊ ESTÁ PRONTO · ESPERANDO ${nick(outro).toUpperCase()} · ${mmss(s)}`
+        : `ENTRE EM ${mmss(s)} · ${ele ? `${nick(outro).toUpperCase()} JÁ ENTROU` : 'QUEM NÃO ENTRAR PERDE'}`;
+      return resta > -15000;
+    };
+    caixa._tique();
+    return caixa;
+  }
+
+  // ---- título e pedras no perfil ----
+  function trofeusPerfil(id) {
+    const ps = TN.pedras.filter((x) => x.player === id);
+    if (!ps.length) return null;
+    const titulos = ps.filter((x) => x.colocacao === 1).length;
+    const tipos = [...new Set(ps.map((x) => x.pedra))];
+    return el('div', { class: 'jt-pf' },
+      el('span', { class: 'jt-pf-txt' }, titulos ? el('b', { text: `🏆 ${titulos} ${titulos === 1 ? 'título' : 'títulos'}` }) : el('b', { text: '🏆 Torneios' }),
+        ` · ${ps.length} ${ps.length === 1 ? 'pedra ganha' : 'pedras ganhas'}`),
+      el('span', { class: 'jt-pf-pedras' }, tipos.map((k) => el('span', { title: PEDRAS[k] ? PEDRAS[k].nome : k }, pedraIco(k, 'P', 26)))));
+  }
+  // o que a janela do fim diz numa partida de torneio
+  function notaTorneio(p, tn, cf, jogo) {
+    const meu = eu();
+    if (!cf) return { titulo: null, texto: `🏆 ${tn.nome}` };
+    const fase = nomeFase(tn.vagas, cf.rodada), final = cf.rodada === rodadas(tn.vagas);
+    if (!cf.vencedor) {
+      if (!p.vencedor) return { titulo: null, texto: '🏆 Empatou com as mesmas peças: vem outra partida com as cores trocadas' };
+      if (final && tn.final_md3) return { titulo: null, texto: '🏆 Final em melhor de 3: a próxima partida já vai chamar' };
+      return { titulo: null, texto: `🏆 ${tn.nome} · ${fase.toLowerCase()}` };
+    }
+    const w = cf.vencedor;
+    if (final) return { titulo: jogo ? (w === meu ? 'CAMPEÃO!' : 'VICE') : null, texto: `🏆 ${w === meu ? 'Você é' : `${nick(w)} é`} o campeão do ${tn.nome}!` };
+    const prox = nomeFase(tn.vagas, cf.rodada + 1);
+    if (jogo) return w === meu ? { titulo: null, texto: `🏆 Você avançou ${pra(prox)}!` } : { titulo: 'ELIMINADO', texto: `Você caiu ${na(fase)} do ${tn.nome}` };
+    return { titulo: null, texto: `🏆 ${nick(w)} avançou ${pra(prox)}` };
+  }
+
+  // ---- a chave (#jogos/copa/<id>) ----
+  const chaveSlot = (r, pos, lado) => `${r}-${pos}-${lado}`;
+  function destinoDe(t, c) {
+    if (c.rodada === rodadas(t.vagas)) return 'copa';
+    return chaveSlot(c.rodada + 1, c.pos >> 1, c.pos % 2 ? 'b' : 'a');
+  }
+  function taca(cls = '') {
+    const w = document.createElement('span');
+    w.innerHTML = TACA.replace('class="jg-fim-taca"', `class="jt-taca ${cls}"`).replace(/jgOuro/g, 'jtOuro' + Math.random().toString(36).slice(2, 7));
+    return w.firstChild;
+  }
+  function chaveCopa(t) {
+    const R = rodadas(t.vagas);
+    const porRP = new Map((TN.conf.get(t.id) || []).map((c) => [c.rodada + '-' + c.pos, c]));
+    const ins = TN.insc.get(t.id) || [];
+    // inscrição: quem entra vai ocupando a 1ª fase (a chave de verdade é sorteada quando enche)
+    const quem = (c, r, pos, lado) => {
+      if (t.status === 'inscricao') return r === 1 ? (ins[pos * 2 + (lado === 'a' ? 0 : 1)] || {}).player || null : null;
+      const id = c && (lado === 'a' ? c.a : c.b);
+      return id && !TN.voando.has(chaveSlot(r, pos, lado)) ? id : null; // ainda voando pra cá
+    };
+    const vaga = (id, c, p, slot) => {
+      let cls = '';
+      if (id && c && c.vencedor) cls = c.vencedor === id ? 'ganhou' : 'perdeu';
+      else if (id && p && p.status === 'andamento') cls = 'joga';
+      else if (id && p && p.status === 'chamada') cls = (p.prontos || []).includes(id) ? 'pronto' : 'chamando';
+      return el('div', { class: `jt-vaga ${cls}${id ? ' cheia' : ''}${id && id === eu() ? ' eu' : ''}`, 'data-slot': slot },
+        el('div', { class: 'jt-disco' }, id ? C.avatarChat(nick(id), 'av-m') : '?'),
+        el('div', { class: 'jt-nome', text: id ? nick(id) : 'vaga' }),
+        cls === 'pronto' ? el('span', { class: 'jt-ok', 'aria-label': 'pronto', text: '✓' }) : null);
+    };
+    const jogo = (r, pos) => {
+      const c = porRP.get(r + '-' + pos) || null;
+      const p = c && c.partida ? partidaDe(c.partida) : null;
+      const a = quem(c, r, pos, 'a'), b = quem(c, r, pos, 'b');
+      const final = r === R;
+      const info = el('div', { class: 'jt-info jg-tiq' });
+      info._tique = () => {
+        const x = c && c.partida ? partidaDe(c.partida) : null;
+        let txt = '', cls = '';
+        if (c && c.vencedor) {
+          cls = 'fim';
+          txt = final && t.final_md3 ? `${c.vit_a} × ${c.vit_b}` : x && x.motivo === 'wo' ? 'W.O.' : x && x.motivo === 'desempate' ? 'desempate' : x && x.status === 'fim' ? lancesTxt(x.versao) : '';
+        } else if (x && x.status === 'andamento') {
+          cls = 'vivo';
+          const est = x.estado || {};
+          txt = `⏱ ${mmss(Math.max(0, Math.floor((agora() - ms(x.inicio)) / 1000)))} · ${contar(est, 'b')}×${contar(est, 'p')}`;
+          if (final && t.final_md3) txt += ` · ${c.vit_a}×${c.vit_b}`;
+        } else if (x && x.status === 'chamada') {
+          cls = 'chama';
+          txt = `ENTRANDO · ${mmss(Math.max(0, Math.ceil((ms(x.prazo) - agora()) / 1000)))}`;
+        }
+        if (info.textContent !== txt) info.textContent = txt;
+        info.className = `jt-info jg-tiq ${cls}`;
+        return true;
+      };
+      info._tique();
+      const vivo = p && p.status === 'andamento';
+      const box = el('div', { class: `jt-jogo${final ? ' final' : ''}${vivo ? ' vivo' : ''}`, role: 'button', tabindex: '0', 'data-r': String(r), 'data-pos': String(pos),
+        'aria-label': a && b ? `${nick(a)} contra ${nick(b)}${vivo ? ', ao vivo: assistir' : ''}` : 'Partida da chave' },
+        final ? el('div', { class: 'jt-final-tit', text: 'FINAL' }) : null,
+        vaga(a, c, p, chaveSlot(r, pos, 'a')),
+        final ? el('div', { class: 'jt-trofeu' }, taca(), t.premios && t.premios['1'] ? pedraIco(t.premios['1'], 'P', 30) : null,
+          t.premios && t.premios['1'] ? el('small', { text: nomePedra(t.premios['1'], t).toUpperCase() }) : null) : null,
+        vaga(b, c, p, chaveSlot(r, pos, 'b')),
+        info,
+        vivo ? el('span', { class: 'jt-assistir', text: souJogador(p) ? '● VOLTAR' : '● ASSISTIR' }) : null);
+      const abre = () => {
+        const x = c && c.partida ? partidaDe(c.partida) : null;
+        if (x && (x.status === 'andamento' || x.status === 'fim')) C.irPara('#jogos/' + x.id);
+        else if (x && x.status === 'chamada') toast(`Esperando ${nick(x.brancas)} e ${nick(x.pretas)} entrarem.`);
+        else toast(t.status === 'inscricao' ? 'A chave é sorteada quando todas as vagas enchem.' : 'Essa partida ainda espera os vencedores da fase anterior.');
+      };
+      box.addEventListener('click', abre);
+      box.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abre(); } });
+      return box;
+    };
+    const coluna = (r, lado) => {
+      const n = t.vagas >> r; // confrontos da fase
+      const poss = r === R ? [0] : lado === 'e' ? Array.from({ length: n / 2 }, (_, i) => i) : Array.from({ length: n / 2 }, (_, i) => n / 2 + i);
+      return el('div', { class: 'jt-col' + (r === R ? ' meio' : '') },
+        el('div', { class: 'jt-col-tit', text: r === R ? '' : FASE_CURTA[t.vagas >> (r - 1)] }),
+        el('div', { class: 'jt-col-jogos' }, poss.map((pos) => jogo(r, pos))));
+    };
+    const cols = [];
+    for (let r = 1; r < R; r++) cols.push(coluna(r, 'e'));
+    cols.push(coluna(R, 'm'));
+    for (let r = R - 1; r >= 1; r--) cols.push(coluna(r, 'd'));
+    const svgFios = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svgFios.setAttribute('class', 'jt-fios');
+    svgFios.setAttribute('aria-hidden', 'true');
+    return el('div', { class: 'jt-chave-box' }, el('div', { class: `jt-chave r${R}`, style: `--cols:${cols.length}`, 'data-torneio': t.id }, svgFios, cols));
+  }
+  // fios: de cada vaga até a vaga da fase seguinte; o do vencedor acende (o novo acende devagar)
+  function desenharFios() {
+    const ch = document.querySelector('#jogos .jt-chave');
+    if (!ch) return;
+    const t = torneioDe(ch.dataset.torneio);
+    if (!t) return;
+    const svgF = ch.querySelector('.jt-fios');
+    const R0 = ch.getBoundingClientRect();
+    if (!R0.width) return;
+    svgF.setAttribute('viewBox', `0 0 ${R0.width} ${R0.height}`);
+    const acesos = TN.acesos.get(t.id) || new Set();
+    const primeira = !TN.ligados.has(t.id);
+    const centro = (n) => { const r = n.getBoundingClientRect(); return { x: r.left - R0.left + r.width / 2, y: r.top - R0.top + r.height / 2, w: r.width / 2 }; };
+    const R = rodadas(t.vagas), d = [];
+    ch.querySelectorAll('.jt-jogo').forEach((jg) => {
+      const r = +jg.dataset.r, pos = +jg.dataset.pos;
+      if (r === R) return;
+      const alvo = ch.querySelector(`.jt-vaga[data-slot="${chaveSlot(r + 1, pos >> 1, pos % 2 ? 'b' : 'a')}"] .jt-disco`);
+      if (!alvo) return;
+      const b = centro(alvo), dir = pos < (t.vagas >> r) / 2 ? 1 : -1;
+      jg.querySelectorAll(':scope > .jt-vaga').forEach((v) => {
+        const a = centro(v.querySelector('.jt-disco'));
+        const x0 = a.x + dir * a.w, x1 = b.x - dir * b.w, xm = (x0 + x1) / 2;
+        const on = v.classList.contains('ganhou');
+        const novo = on && !primeira && !acesos.has(v.dataset.slot);
+        if (on) acesos.add(v.dataset.slot);
+        d.push(`<path pathLength="1" class="${on ? 'on' : ''}${novo ? ' novo' : ''}" d="M${x0.toFixed(1)} ${a.y.toFixed(1)}H${xm.toFixed(1)}V${b.y.toFixed(1)}H${x1.toFixed(1)}"/>`);
+      });
+    });
+    svgF.innerHTML = d.join('');
+    TN.acesos.set(t.id, acesos);
+    TN.ligados.add(t.id);
+  }
+  // quem acabou de vencer: comemora, e o avatar corre pelo fio até a vaga da próxima fase
+  function rodarVoos(t) {
+    for (const [slot, v] of TN.voando) {
+      if (v.t !== t.id || v.ini) continue;
+      v.ini = true;
+      const c = v.c, de = chaveSlot(c.rodada, c.pos, c.vencedor === c.a ? 'a' : 'b');
+      const fim = () => {
+        TN.voando.delete(slot);
+        TN.assin = null;
+        desenhar();
+        if (slot === 'copa') mostrarCampeao(torneioDe(t.id) || t);
+      };
+      const src = document.querySelector(`#jogos .jt-vaga[data-slot="${de}"]`);
+      if (!src || calmo()) { fim(); continue; }
+      src.classList.add('comemora');
+      src.append(el('span', { class: 'jt-venceu', text: c.rodada === rodadas(t.vagas) ? 'CAMPEÃO!' : 'VENCEU!' }));
+      faiscas(src.querySelector('.jt-disco'));
+      setTimeout(() => {
+        const s = document.querySelector(`#jogos .jt-vaga[data-slot="${de}"] .jt-disco`);
+        const alvo = slot === 'copa' ? document.querySelector('#jogos .jt-trofeu .jt-taca') : document.querySelector(`#jogos .jt-vaga[data-slot="${slot}"] .jt-disco`);
+        if (!s || !alvo || copaDaUrl() !== t.id) { fim(); return; }
+        const pt = (n) => { const r = n.getBoundingClientRect(); return [r.left + scrollX + r.width / 2, r.top + scrollY + r.height / 2]; };
+        const a = pt(s), b = pt(alvo), xm = (a[0] + b[0]) / 2;
+        const pts = [a, [xm, a[1]], [xm, b[1]], b];
+        const seg = pts.slice(1).map((q, i) => Math.hypot(q[0] - pts[i][0], q[1] - pts[i][1]));
+        const tot = seg.reduce((x, y) => x + y, 0) || 1;
+        let acc = 0;
+        const quadros = pts.map((q, i) => { if (i) acc += seg[i - 1]; return { transform: `translate(${q[0] - 26}px, ${q[1] - 26}px) scale(${i === 1 || i === 2 ? 1.2 : 1})`, offset: acc / tot }; });
+        const voa = el('div', { class: 'jt-voa', 'aria-hidden': 'true' }, C.avatarChat(nick(c.vencedor), 'av-m'));
+        if (!voa.animate) { fim(); return; }
+        document.body.append(voa);
+        const an = voa.animate(quadros, { duration: 1200, easing: 'cubic-bezier(.45, .05, .35, 1)', fill: 'forwards' });
+        an.onfinish = () => { voa.remove(); fim(); };
+        an.oncancel = () => { voa.remove(); fim(); };
+      }, 850);
+    }
+  }
+  function faiscas(alvo) {
+    if (!alvo || !alvo.animate) return;
+    const r = alvo.getBoundingClientRect();
+    const x = r.left + scrollX + r.width / 2, y = r.top + scrollY + r.height / 2;
+    for (let i = 0; i < 14; i++) {
+      const f = el('span', { class: 'jt-faisca', style: `left:${x}px;top:${y}px` });
+      document.body.append(f);
+      const ang = (i / 14) * Math.PI * 2, dist = 30 + Math.random() * 24;
+      f.animate([{ transform: 'translate(-50%, -50%) scale(1)', opacity: 1 }, { transform: `translate(calc(-50% + ${(Math.cos(ang) * dist).toFixed(1)}px), calc(-50% + ${(Math.sin(ang) * dist).toFixed(1)}px)) scale(.2)`, opacity: 0 }],
+        { duration: 700, easing: 'ease-out' }).onfinish = () => f.remove();
+    }
+  }
+  function mostrarCampeao(t) {
+    if (TN.campeao.has(t.id) || copaDaUrl() !== t.id || !t.campeao) return;
+    TN.campeao.add(t.id);
+    const sk = t.premios && t.premios['1'];
+    const meu = t.campeao === eu();
+    const fundo = el('div', { class: 'jt-campeao-fundo' });
+    const fechar = () => fundo.remove();
+    const box = el('div', { class: 'jt-campeao', role: 'dialog', 'aria-modal': 'true', 'aria-label': `Campeão do ${t.nome}` },
+      el('small', { text: `CAMPEÃO DO ${t.nome.toUpperCase()}` }),
+      C.avatarChat(nick(t.campeao), 'av-g'),
+      el('h3', { text: nick(t.campeao) }),
+      sk ? el('div', { class: 'jt-ganho' }, parPedras(sk, 44), el('div', null, el('b', { text: nomePedra(sk, t) }), el('span', { text: `Pedra ${PEDRAS[sk].rar.toLowerCase()} liberada pra usar em todas as partidas` }))) : null,
+      meu && sk ? el('button', { type: 'button', class: 'btn btn-pri btn-grande', text: 'Usar minha pedra nova', onclick: () => { fechar(); usarPedra(sk); } }) : null,
+      el('button', { type: 'button', class: 'btn btn-sec btn-grande', text: 'Fechar', onclick: fechar }));
+    fundo.append(...confete(), box);
+    fundo.addEventListener('click', (e) => { if (e.target === fundo) fechar(); });
+    document.body.append(fundo);
+    som('vitoria');
+  }
+  function desenharCopa(id) {
+    const sec = $('jogos');
+    const t = torneioDe(id);
+    if (!t) {
+      TN.assin = null;
+      trocar(sec, cabecalho(), el('p', { class: 'jg-vazio', text: J.carregou && TN.ok ? 'Torneio não encontrado.' : 'Carregando o torneio…' }));
+      if (J.carregou && TN.ok && !TN.copas.has('?' + id)) { TN.copas.add('?' + id); carregarTorneios().then(desenhar).catch(() => {}); }
+      return;
+    }
+    if (!TN.copas.has(id)) carregarPartidasCopa(id).then(() => { TN.assin = null; desenhar(); });
+    // quem venceu desde o último desenho (com a página na frente): o avatar vai voar
+    const confs = TN.conf.get(id) || [];
+    const visto = TN.vistos.get(id);
+    if (visto && !document.hidden) {
+      for (const c of confs) if (c.vencedor && !visto.get(c.id)) TN.voando.set(destinoDe(t, c), { t: id, c, ini: false });
+    }
+    TN.vistos.set(id, new Map(confs.map((c) => [c.id, c.vencedor])));
+    if (!visto && t.status === 'fim') TN.campeao.add(id); // já tinha acabado quando abriu: sem festa
+
+    const cham = minhaChamada();
+    const meus = (p) => p && [p.status, p.prontos, p.vencedor, p.motivo];
+    const ass = JSON.stringify([id, t.status, t.campeao, eu(), !!C.ehAdmin, (TN.insc.get(id) || []).map((x) => x.player),
+      confs.map((c) => [c.id, c.a, c.b, c.vit_a, c.vit_b, c.vencedor, c.partida, meus(partidaDe(c.partida))]),
+      [...TN.voando.keys()], cham && [cham.id, cham.prontos], TN.ok]);
+    if (ass === TN.assin && sec.querySelector('.jt-copa')) return;
+    TN.assin = ass;
+
+    const ins = TN.insc.get(id) || [];
+    const faltam = t.vagas - ins.length;
+    const campeaoBanner = t.status === 'fim' && t.campeao && !TN.voando.has('copa')
+      ? el('div', { class: 'jt-banner' }, C.avatarChat(nick(t.campeao), 'av-m'),
+        el('div', null, el('small', { text: 'CAMPEÃO' }), el('b', { text: nick(t.campeao) })),
+        t.premios && t.premios['1'] ? pedraIco(t.premios['1'], 'P', 40) : taca()) : null;
+    const vivas = emAndamento().filter((p) => p.torneio === id);
+    trocar(sec, el('div', { class: 'jt-copa' },
+      el('div', { class: 'jt-copa-topo' },
+        el('button', { type: 'button', class: 'btn btn-sec', onclick: () => C.irPara('#jogos') }, ico(IC_VOLTAR, 16), 'Sala'),
+        vivas.length ? el('span', { class: 'vivo', text: 'AO VIVO' }) : null),
+      el('div', { class: 'jt-copa-cab' },
+        el('h2', { text: t.nome }),
+        chipsTorneio(t),
+        el('p', { class: 'jt-copa-sub', text: t.status === 'inscricao' ? (faltam > 0 ? `Faltam ${faltam} ${faltam === 1 ? 'jogador' : 'jogadores'}: começa sozinho quando encher` : 'Sorteando a chave…')
+          : t.status === 'andamento' ? `${faseAtual(t)} · toque numa partida pra assistir`
+          : t.status === 'fim' ? `Encerrado ${haPouco(t.fim)}` : 'Torneio cancelado' })),
+      cham && cham.torneio === id ? cartaoChamada(cham) : null,
+      campeaoBanner,
+      t.status === 'inscricao' ? el('div', { class: 'jg-card jt-insc' }, cadeiras(t), botaoEntrar(t)) : null,
+      chaveCopa(t),
+      t.status === 'inscricao' ? el('p', { class: 'jt-nota', text: 'A ordem da chave é sorteada na hora que encher. Cada partida chama os dois jogadores: quem não tocar em "Estou pronto" em 3 minutos perde por W.O.' }) : null,
+      premiosEl(t) ? [rotulo('PRÊMIOS'), premiosEl(t)] : null,
+      rotulo('COMO FUNCIONA'),
+      el('ul', { class: 'jt-regras' },
+        el('li', null, el('b', { text: 'Mata-mata: ' }), 'quem vence avança, quem perde sai.'),
+        el('li', null, el('b', { text: 'Chamada: ' }), '3 minutos pra entrar; quem não entrar perde por W.O.'),
+        el('li', null, el('b', { text: 'Empate: ' }), 'vence quem tiver mais peças. Se for igual, joga de novo com as cores trocadas.'),
+        el('li', null, el('b', { text: 'Final: ' }), t.final_md3 ? 'melhor de 3 (quem fizer 2 vitórias).' : 'partida única.'),
+        el('li', null, el('b', { text: 'Ranking: ' }), 'partida de torneio não conta no ranking de damas.')),
+      eu() ? el('button', { type: 'button', class: 'btn btn-sec btn-grande jt-largo', onclick: abrirPedras }, parPedras(skinDe(eu()), 20), 'Minhas pedras') : null,
+      C.ehAdmin && (t.status === 'inscricao' || t.status === 'andamento') ? el('button', { type: 'button', class: 'btn btn-perigo-sec btn-grande jt-largo', text: 'Cancelar torneio (admin)', onclick: () => cancelarTorneio(t) }) : null));
+    requestAnimationFrame(() => { desenharFios(); rodarVoos(t); });
+  }
+  addEventListener('resize', () => { if (copaDaUrl()) desenharFios(); });
+
+  // ---- minhas pedras ----
+  function abrirPedras() {
+    let d = document.getElementById('dlgPedras');
+    if (!d) {
+      d = el('dialog', { class: 'dlg jt-dlg', id: 'dlgPedras', 'aria-labelledby': 'jtPedrasT' });
+      d.addEventListener('click', (e) => { if (e.target === d) d.close(); });
+      document.body.append(d);
+    }
+    desenharPedras(d);
+    if (!d.open) d.showModal();
+  }
+  function miniTabuleiro(sk) {
+    const pos = { 1: 'P', 3: 'p', 5: 'p', 8: 'p', 10: 'p', 19: 'p', 13: 'b', 24: 'b', 26: 'b', 30: 'B', 33: 'b', 35: 'b' };
+    return el('div', { class: 'jt-mini-tab', 'aria-hidden': 'true' }, Array.from({ length: 36 }, (_, i) => {
+      const c = el('span', { class: ((i / 6 | 0) + (i % 6)) % 2 ? 'es' : 'cl' });
+      const l = pos[i];
+      if (l) { const s = el('span', { class: `jg-p ${l.toLowerCase()}${sk !== 'classica' ? ' sk-' + sk : ''}` }); if (l === 'B' || l === 'P') s.innerHTML = COROA; c.append(s); }
+      return c;
+    }));
+  }
+  function desenharPedras(d) {
+    const meu = eu(), uso = skinDe(meu);
+    const minhas = TN.pedras.filter((x) => x.player === meu);
+    const tem = (k) => k === 'classica' || minhas.some((x) => x.pedra === k);
+    const origem = (x) => { const t = torneioDe(x.torneio); return `${(PREMIO_ROT[x.colocacao] || 'prêmio').toLowerCase()} · ${t ? t.nome : 'torneio'}`; };
+    trocar(d, el('div', { class: 'jt-dlg-corpo' },
+      el('div', { class: 'jt-dlg-topo' }, el('h2', { id: 'jtPedrasT', text: 'MINHAS PEDRAS' }), el('button', { type: 'button', class: 'tn-x', 'aria-label': 'Fechar', text: '×', onclick: () => d.close() })),
+      el('p', { class: 'jt-dlg-txt', text: 'A pedra que você escolher aparece em todas as suas partidas, pra você, pro adversário e pra quem assiste. As outras se ganham nos torneios.' }),
+      miniTabuleiro(uso),
+      el('div', { class: 'jt-minhas' }, Object.keys(PEDRAS).map((k) => {
+        const ganhas = minhas.filter((x) => x.pedra === k);
+        const sub = k === 'classica' ? 'Já vem com a conta' : ganhas.length ? ganhas.map(origem).join(' · ') : '🔒 Prêmio de torneio';
+        return el('button', { type: 'button', class: 'jt-minha' + (tem(k) ? '' : ' trancada'), 'aria-pressed': String(uso === k), disabled: !meu, onclick: () => usarPedra(k, d) },
+          pedraIco(k, 'P', 38),
+          el('div', null, el('b', { text: PEDRAS[k].nome }), el('span', { class: `jt-rar ${PEDRAS[k].cls}`, text: PEDRAS[k].rar }), el('small', { text: sub })),
+          el('span', { class: 'jt-tag-eq', text: uso === k ? 'EM USO' : tem(k) ? 'USAR' : '' }));
+      }))));
+  }
+
+  // ---- admin: novo torneio ----
+  function abrirCriarTorneio() {
+    let d = document.getElementById('dlgCriarTn');
+    if (!d) {
+      d = el('dialog', { class: 'dlg jt-dlg', id: 'dlgCriarTn', 'aria-labelledby': 'jtCriarT' });
+      d.addEventListener('click', (e) => { if (e.target === d) d.close(); });
+      document.body.append(d);
+    }
+    const prox = Math.max(0, ...TN.lista.map((t) => t.edicao || 0)) + 1;
+    const st = { vagas: 8, premios: { 1: 'ouro', 2: 'prata', 3: 'brasa' } };
+    const nome = el('input', { id: 'jtNome', type: 'text', maxlength: '40', autocomplete: 'off', required: true, value: `Copa COBR #${prox}` });
+    const radio = (rot, ops, atual, mudar) => {
+      const g = el('div', { class: 'jt-seg', role: 'radiogroup', 'aria-label': rot });
+      ops.forEach(([v, txt]) => g.append(el('button', { type: 'button', role: 'radio', 'aria-checked': String(v === atual), onclick: (e) => {
+        mudar(v); g.querySelectorAll('button').forEach((b) => b.setAttribute('aria-checked', String(b === e.currentTarget)));
+      } }, txt)));
+      return g;
+    };
+    const seg = Number(J.cfg.tempo_jogada) || 60;
+    const tempo = el('select', { id: 'jtTempo' }, [30, 45, 60, 90, 120].map((s) => el('option', { value: String(s), selected: s === seg, text: s % 60 ? `${s} segundos` : `${s / 60} ${s === 60 ? 'minuto' : 'minutos'}` })));
+    const finalSel = el('select', { id: 'jtFinal' }, el('option', { value: '0', text: 'Partida única' }), el('option', { value: '1', text: 'Melhor de 3' }));
+    const escolher = (k, rot) => el('div', { class: 'campo' }, el('span', { class: 'jt-lbl', text: rot }),
+      el('div', { class: 'jt-pick', role: 'radiogroup', 'aria-label': rot }, ['', ...Object.keys(PEDRAS).filter((x) => x !== 'classica')].map((sk) => el('button', {
+        type: 'button', role: 'radio', 'aria-checked': String((st.premios[k] || '') === sk),
+        onclick: (e) => { st.premios[k] = sk; e.currentTarget.parentElement.querySelectorAll('button').forEach((b) => b.setAttribute('aria-checked', String(b === e.currentTarget))); },
+      }, sk ? pedraIco(sk, 'P', 30) : el('span', { class: 'jt-pc nenhuma', text: '—' }), sk ? PEDRAS[sk].nome : 'Nenhuma'))));
+    const erro = el('p', { class: 'erro', hidden: true });
+    const btCriar = el('button', { type: 'submit', class: 'btn btn-pri btn-grande', text: 'Abrir inscrições' });
+    const form = el('form', { class: 'form-admin jt-form', novalidate: true },
+      el('div', { class: 'jt-dlg-topo' }, el('h2', { id: 'jtCriarT', class: 'laranja', text: 'NOVO TORNEIO' }), el('button', { type: 'button', class: 'tn-x', 'aria-label': 'Fechar', text: '×', onclick: () => d.close() })),
+      el('p', { text: 'Começa sozinho quando todas as vagas enchem. Todo mundo do clã recebe o aviso.' }),
+      el('div', { class: 'campo' }, el('label', { for: 'jtNome', text: 'NOME' }), nome),
+      el('div', { class: 'campo' }, el('span', { class: 'jt-lbl', text: 'VAGAS' }), radio('Vagas', [[4, '4'], [8, '8'], [16, '16']], st.vagas, (v) => { st.vagas = v; })),
+      el('div', { class: 'jt-dois' },
+        el('div', { class: 'campo' }, el('label', { for: 'jtTempo', text: 'TEMPO POR JOGADA' }), tempo),
+        el('div', { class: 'campo' }, el('label', { for: 'jtFinal', text: 'FINAL' }), finalSel)),
+      escolher(1, 'PEDRA DO CAMPEÃO'), escolher(2, 'PEDRA DO VICE'), escolher(3, 'PEDRA DOS SEMIFINALISTAS'),
+      erro, btCriar);
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      erro.hidden = true;
+      btCriar.disabled = true;
+      try {
+        const premios = {};
+        for (const k of ['1', '2', '3']) if (st.premios[k]) premios[k] = st.premios[k];
+        const id = await rpc('jogos_torneio_criar', { p_nome: nome.value, p_vagas: st.vagas, p_tempo: Number(tempo.value), p_final_md3: finalSel.value === '1', p_premios: premios });
+        d.close();
+        toast('Torneio aberto! O clã recebeu o aviso.');
+        await carregarTorneios();
+        C.irPara('#jogos/copa/' + id);
+      } catch (x) { erro.textContent = erroTxt(x); erro.hidden = false; btCriar.disabled = false; }
+    });
+    trocar(d, form);
+    d.showModal();
+    nome.focus();
+    nome.select();
   }
 
   // ---------- tudo ----------
@@ -1679,11 +2396,13 @@
     C.marcarJogando(minha ? minha.id : null);
     const id = partidaDaUrl();
     if (!id) { fecharFim(); J.assin = null; J.sel = null; limparVoos(); }
+    if (!copaDaUrl()) { TN.assin = null; TN.vistos.clear(); TN.voando.clear(); }
     if (!id || (J.conversa && J.conversa.id !== id)) { if (J.cvAberta) fecharConversa(); J.conversa = null; J.baloes.clear(); }
     sincronizarCanais();
     if (C.pag !== 'jogos') return;
     if (!J.ligado) { desenharDemo(); return; }
-    if (id) desenharPartida(id); else desenharSala();
+    const copa = copaDaUrl();
+    if (id) desenharPartida(id); else if (copa) desenharCopa(copa); else desenharSala();
   }
   function desenharDemo() {
     trocar($('jogos'), cabecalho(), el('div', { class: 'jg-card jg-aviso', text: C.DEMO ? 'Sala de jogos disponível só com o site ligado' : 'Carregando…' }));
@@ -1694,6 +2413,7 @@
     document.querySelectorAll('.jg-tiq').forEach((n) => { if (n._tique && n._tique() === false) { n._tique = null; venceu = true; } });
     if (venceu) desenhar();
     conferirRelogio();
+    conferirChamadas();
     posVoos();
     // o tempo real pode cair sem avisar: com a partida aberta, confere no banco de vez em quando
     const id = J.ligado && partidaDaUrl();
@@ -1730,6 +2450,7 @@
     if (J.cvAberta) fecharConversa(); J.conversa = null; J.baloes.clear();
     limparVoos();
     fecharFim();
+    limparTorneios();
     if (J.pop) { J.pop.remove(); J.pop = null; J.popId = null; }
     document.body.classList.remove('jg-em-partida');
     sairTelaCheia();
@@ -1776,7 +2497,19 @@
       C.tituloRegra('RANKING'),
       el('ul', { class: 'rg-lista' },
         C.linhaRegra('Ordem', 'mais vitórias, depois o aproveitamento'),
-        C.linhaRegra('Aproveitamento', 'vitórias ÷ partidas')),
+        C.linhaRegra('Aproveitamento', 'vitórias ÷ partidas'),
+        C.linhaRegra('Torneio', 'não conta no ranking')),
+      C.tituloRegra('TORNEIO'),
+      el('ul', { class: 'rg-lista' },
+        C.linhaRegra('Quem abre', 'o admin: 4, 8 ou 16 vagas'),
+        C.linhaRegra('Começa', 'quando todas as vagas enchem'),
+        C.linhaRegra('Chave', 'sorteada na hora; mata-mata'),
+        C.linhaRegra('Chamada', '3 minutos pra tocar em "Estou pronto"'),
+        C.linhaRegra('Não entrou', 'perde por W.O. (ninguém entrou: sorteio)'),
+        C.linhaRegra('Empate', 'vence quem tem mais peças; igual, joga de novo'),
+        C.linhaRegra('Final', 'partida única ou melhor de 3'),
+        C.linhaRegra('Prêmios', 'pedras personalizadas pro 1º, 2º e semifinal'),
+        C.linhaRegra('Pedra', 'escolha em "Minhas pedras": vale em todas as partidas')),
     ];
   };
 

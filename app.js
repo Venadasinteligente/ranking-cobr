@@ -2966,7 +2966,8 @@ ${frente}
   }
   // o jogos.js avisa quando uma partida de damas termina com o site aberto
   function damasFim(p) {
-    if (!p || !p.id || !p.fim || (p.jogo && p.jogo !== 'damas') || damasFins.some((x) => x.id === p.id)) return;
+    // partida de torneio não entra no ranking normal (nem na medalha)
+    if (!p || !p.id || !p.fim || p.torneio || (p.jogo && p.jogo !== 'damas') || damasFins.some((x) => x.id === p.id)) return;
     damasFins.push({ id: p.id, brancas: p.brancas, pretas: p.pretas, vencedor: p.vencedor || null, fim: p.fim });
     damasFins.sort((a, b) => Date.parse(a.fim) - Date.parse(b.fim) || (a.id < b.id ? -1 : 1));
     cacheRaras = null;
@@ -6455,7 +6456,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       lerTudo(() => sb.from('players').select('id, nick, cargo, ativo, avatar, vitrine, parede, created_at').order('nick').order('id')),
       lerTudo(() => sb.from('torneios').select('*').order('inicio', { ascending: false }).order('id')),
       lerTudo(() => sb.from('torneio_lancamentos').select('id, torneio_id, player_id, valor, nota, print_path, created_at').order('created_at', { ascending: false }).order('id')),
-      lerTudo(() => sb.from('jogos_partidas').select('id, brancas, pretas, vencedor, fim').eq('jogo', 'damas').eq('status', 'fim').order('fim').order('id')),
+      lerTudo(() => sb.from('jogos_partidas').select('id, brancas, pretas, vencedor, fim').eq('jogo', 'damas').eq('status', 'fim').is('torneio', null).order('fim').order('id')),
     ]);
     if (r.error) throw new Error(r.error.message);
     partidas = r.data || [];
@@ -9576,6 +9577,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     marcarJogando, damasFim,
     get sb() { return sb; },
     get euId() { return euId; },
+    get ehAdmin() { return !!admin; }, // admin abre e cancela torneio de damas
     get pag() { return perfilAtual || torneioAtual ? null : pagAtual; },
     jogador: (id) => jogPorId.get(id) || null,
     online: () => chat.online,

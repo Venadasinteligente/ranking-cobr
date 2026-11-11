@@ -3588,3 +3588,223 @@ button.jg-olhos { font-family: inherit; cursor: pointer; }
   @keyframes jg-cv-lado { from { translate: 40% 0; opacity: 0; } }
 }
 @media (prefers-reduced-motion: reduce) { .jg-balao, .jg-cv, .jg-cv-n:not([hidden]) { animation: none; } }
+/* ---------- torneio de damas (jogos.js: chave, chamada e pedras de prêmio) ---------- */
+/* pedras de prêmio: valem em todas as partidas de quem escolheu (b = claras, p = escuras) */
+.jg-p.sk-ouro { overflow: hidden; }
+.jg-p.sk-ouro.b { background: radial-gradient(circle at 35% 28%, #FFFBE0, #F5C542 45%, #9C6A08 100%); box-shadow: inset 0 -3px 0 rgba(110, 70, 0, .55), inset 0 2px 0 rgba(255, 255, 255, .7), 0 4px 8px rgba(0, 0, 0, .6), 0 0 12px rgba(245, 197, 66, .45); }
+.jg-p.sk-ouro.b::after { border-color: rgba(140, 90, 0, .5); }
+.jg-p.sk-ouro.b svg { fill: #8A5A00; stroke: #5E3C00; }
+.jg-p.sk-ouro.p { background: radial-gradient(circle at 35% 28%, #5A4612, #241A05 55%, #0D0902); border-color: #F5C542; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .55), 0 4px 8px rgba(0, 0, 0, .7), 0 0 12px rgba(245, 197, 66, .5); }
+.jg-p.sk-ouro.p::after { border-color: rgba(245, 197, 66, .55); }
+.jg-p.sk-ouro.p svg { fill: #F5C542; stroke: #FFF1B0; filter: drop-shadow(0 0 3px rgba(245, 197, 66, .8)); }
+.jg-p.sk-ouro:not(.vitima)::before { content: ""; position: absolute; inset: -40%; z-index: 2; pointer-events: none; background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, .5) 50%, transparent 60%); animation: jt-brilho 3.4s ease-in-out infinite; }
+@keyframes jt-brilho { 0%, 55% { transform: translateX(-70%); } 100% { transform: translateX(70%); } }
+
+.jg-p.sk-prata.b { background: radial-gradient(circle at 35% 28%, #FFFFFF, #CFD6DE 50%, #6F7A87 100%); box-shadow: inset 0 -3px 0 rgba(40, 50, 60, .45), inset 0 2px 0 rgba(255, 255, 255, .8), 0 4px 8px rgba(0, 0, 0, .6), 0 0 10px rgba(207, 214, 222, .3); }
+.jg-p.sk-prata.b::after { border-color: rgba(80, 92, 106, .45); }
+.jg-p.sk-prata.b svg { fill: #4F5A66; stroke: #2E3640; }
+.jg-p.sk-prata.p { background: radial-gradient(circle at 35% 28%, #4A5160, #1B1F27 55%, #0A0C10); border-color: #CFD6DE; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .55), 0 4px 8px rgba(0, 0, 0, .7), 0 0 10px rgba(207, 214, 222, .35); }
+.jg-p.sk-prata.p::after { border-color: rgba(207, 214, 222, .45); }
+.jg-p.sk-prata.p svg { fill: #E6EBF0; stroke: #FFFFFF; filter: drop-shadow(0 0 3px rgba(230, 235, 240, .7)); }
+
+.jg-p.sk-brasa.b { background: radial-gradient(circle at 35% 28%, #FFF0DC, #FF9A4A 50%, #B23C00 100%); box-shadow: inset 0 -3px 0 rgba(90, 25, 0, .5), inset 0 2px 0 rgba(255, 255, 255, .55), 0 4px 8px rgba(0, 0, 0, .6); }
+.jg-p.sk-brasa.b::after { border-color: rgba(120, 35, 0, .45); }
+.jg-p.sk-brasa.b svg { fill: #7A2200; stroke: #4A1400; }
+.jg-p.sk-brasa.p { background: radial-gradient(circle at 50% 120%, rgba(255, 90, 20, .55), transparent 60%), radial-gradient(circle at 35% 28%, #4A2A1A, #1C0E08 60%, #0A0403); border-color: #FF5A1A; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .5), 0 4px 8px rgba(0, 0, 0, .7), 0 0 12px rgba(255, 90, 26, .5); }
+.jg-p.sk-brasa.p::after { border-color: rgba(255, 90, 26, .55); animation: jt-brasa 2.4s ease-in-out infinite; }
+.jg-p.sk-brasa.p svg { fill: #FF7A1A; stroke: #FFD58A; filter: drop-shadow(0 0 4px rgba(255, 122, 26, .9)); }
+@keyframes jt-brasa { 0%, 100% { box-shadow: 0 0 4px rgba(255, 90, 26, .3), inset 0 0 4px rgba(255, 90, 26, .3); } 50% { box-shadow: 0 0 12px rgba(255, 120, 40, .85), inset 0 0 8px rgba(255, 120, 40, .6); } }
+
+.jg-p.sk-veneno.b { background: radial-gradient(circle at 35% 28%, rgba(255, 255, 255, .7), transparent 40%), repeating-radial-gradient(circle at 50% 110%, #C4A3FF 0 4px, #9A6BE8 4px 8px), #B98BFF; box-shadow: inset 0 -3px 0 rgba(50, 20, 90, .5), 0 4px 8px rgba(0, 0, 0, .6), 0 0 10px rgba(185, 139, 255, .35); }
+.jg-p.sk-veneno.b::after { border-color: rgba(60, 25, 110, .45); }
+.jg-p.sk-veneno.b svg { fill: #3E1A78; stroke: #24104A; }
+.jg-p.sk-veneno.p { background: radial-gradient(circle at 35% 28%, rgba(185, 139, 255, .35), transparent 45%), repeating-radial-gradient(circle at 50% 110%, #24143A 0 4px, #170C26 4px 8px); border-color: #B98BFF; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .55), 0 4px 8px rgba(0, 0, 0, .7), 0 0 12px rgba(185, 139, 255, .45); }
+.jg-p.sk-veneno.p::after { border-color: rgba(185, 139, 255, .5); }
+.jg-p.sk-veneno.p svg { fill: #C4A3FF; stroke: #F0E6FF; filter: drop-shadow(0 0 3px rgba(196, 163, 255, .8)); }
+
+.jg-p.sk-gelo.b { background: radial-gradient(circle at 35% 28%, #FFFFFF, #BFE2FF 40%, #3B8BD9 100%); box-shadow: inset 0 -3px 0 rgba(15, 60, 110, .45), inset 0 2px 0 rgba(255, 255, 255, .8), 0 4px 8px rgba(0, 0, 0, .6), 0 0 10px rgba(59, 164, 255, .35); }
+.jg-p.sk-gelo.b::after { border-color: rgba(20, 80, 140, .4); }
+.jg-p.sk-gelo.b svg { fill: #154C85; stroke: #0B2E52; }
+.jg-p.sk-gelo.p { background: conic-gradient(from 30deg at 50% 50%, #0F2236, #1C3E60, #0F2236, #16314D, #0F2236); border-color: #3BA4FF; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .55), 0 4px 8px rgba(0, 0, 0, .7), 0 0 12px rgba(59, 164, 255, .45); }
+.jg-p.sk-gelo.p::after { border-color: rgba(127, 192, 255, .5); }
+.jg-p.sk-gelo.p svg { fill: #7FC0FF; stroke: #E6F4FF; filter: drop-shadow(0 0 3px rgba(127, 192, 255, .8)); }
+/* peça tocada / que tem que jogar continua marcada por cima da pedra de prêmio */
+.jg-tab .jg-p.sel { box-shadow: 0 0 0 3px var(--laranja-claro), 0 0 18px 2px var(--laranja), 0 4px 7px rgba(0, 0, 0, .65); }
+.jg-tab .jg-p.deve { box-shadow: 0 0 0 3px rgba(255, 122, 26, .95), 0 0 14px rgba(255, 122, 26, .7), 0 4px 7px rgba(0, 0, 0, .65); }
+
+/* pedra pequena (vitrine) */
+.jt-pc { --s: 32px; position: relative; display: inline-block; width: var(--s); height: var(--s); flex: none; vertical-align: middle; }
+.jt-pc > .jg-p { inset: 3%; }
+.jt-pc.nenhuma { display: inline-grid; place-items: center; border-radius: 50%; border: 2px dashed var(--linha-forte); color: var(--texto-3); font-size: 14px; }
+.jt-par { display: inline-flex; gap: 4px; align-items: center; }
+
+/* sala: cartão do torneio */
+.jt-rot-acoes { display: inline-flex; align-items: center; gap: 4px; letter-spacing: 0; }
+.jt-link { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 10px; border: 1px solid var(--linha-forte); border-radius: 999px; background: var(--painel); color: var(--texto-2); font: 600 12px var(--f-texto); cursor: pointer; }
+.jt-link.forte { border-color: var(--laranja); color: var(--laranja-claro); }
+.jt-link:hover { color: var(--texto); }
+.jt-torneio { padding: 0; overflow: hidden; border-color: var(--linha-forte); background: radial-gradient(ellipse at 90% -10%, rgba(255, 122, 26, .2), transparent 55%), var(--painel-2); }
+.jt-torneio + .jt-torneio { margin-top: 10px; }
+.jt-torneio-topo { display: flex; align-items: center; gap: 14px; width: 100%; padding: 16px 16px 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.jt-taca-ico { width: 60px; height: 60px; flex: none; border-radius: 16px; display: grid; place-items: center; background: linear-gradient(160deg, #3A2312, #1A0F08); border: 1px solid var(--linha-forte); }
+.jt-taca-ico .jt-taca { width: 42px; height: 42px; }
+.jt-torneio-tit { min-width: 0; }
+.jt-torneio-tit b { display: block; font-family: var(--f-titulo); font-size: 32px; font-weight: 600; line-height: .9; letter-spacing: .5px; }
+.jt-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.jt-chip { padding: 2px 9px; border-radius: 999px; border: 1px solid var(--linha-forte); font-size: 11px; font-weight: 700; letter-spacing: 1px; color: var(--texto-2); }
+.jt-chip.abre { border-color: var(--verde); color: var(--verde); }
+.jt-chip.rola { border-color: var(--perigo); color: var(--perigo); }
+.jt-vagas { padding: 14px 16px 0; }
+.jt-vagas-topo { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; font-size: 13px; color: var(--texto-2); }
+.jt-vagas-topo b { font-family: var(--f-titulo); font-size: 24px; font-weight: 600; line-height: 1; color: var(--texto); }
+.jt-cadeiras { display: grid; grid-template-columns: repeat(var(--n, 8), minmax(0, 1fr)); gap: 6px; justify-items: center; }
+.jt-cadeiras.v4 { --n: 4; max-width: 240px; }
+.jt-cadeira { width: 100%; max-width: 52px; aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center; border: 2px dashed var(--linha-forte); color: var(--texto-3); font-size: 13px; }
+.jt-cadeira.cheia { border: 0; }
+.jt-cadeira .av { width: 100%; height: 100%; font-size: clamp(13px, 3.5vw, 24px); }
+.jt-cadeira.eu .av { box-shadow: 0 0 0 2px var(--laranja-claro); border-radius: 50%; }
+.jt-fase { margin: 12px 16px 0; font-size: 14px; color: var(--texto-2); }
+.jt-fase b { color: var(--laranja-claro); letter-spacing: 1px; }
+.jt-premios { display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 8px; padding: 14px 16px 0; }
+.jt-copa > .jt-premios { padding: 0; }
+.jt-premio { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 6px; border-radius: 12px; background: var(--painel); border: 1px solid var(--linha); text-align: center; }
+.jt-premio small { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: var(--texto-3); }
+.jt-premio b { font-size: 12px; line-height: 1.2; }
+.jt-premio.p1 { border-color: rgba(245, 197, 66, .5); background: radial-gradient(circle at 50% 0%, rgba(245, 197, 66, .14), transparent 70%), var(--painel); }
+.jt-premio.p1 small { color: #F5C542; }
+.jt-pe { display: flex; flex-wrap: wrap; gap: 8px; padding: 14px 16px 16px; }
+.jt-pe .btn { flex: 1 1 180px; }
+.jt-campeoes { margin-top: 10px; }
+.jt-camp-li { cursor: pointer; }
+.jt-camp-li .jt-pc { margin-left: auto; }
+
+/* chamada da partida do torneio */
+.jt-chamada { border-color: rgba(245, 197, 66, .6); background: radial-gradient(circle at 0% 0%, rgba(245, 197, 66, .16), transparent 55%), var(--painel-2); }
+.jg-pop.jt-chamada { background: linear-gradient(135deg, #2E2108, #140E0A 70%); border-color: #F5C542; box-shadow: 0 12px 40px rgba(0, 0, 0, .7), 0 0 28px rgba(245, 197, 66, .3); }
+.jg-card.jt-chamada + .jg-card { margin-top: 10px; }
+
+/* página da chave */
+.jt-copa { display: flex; flex-direction: column; gap: 12px; }
+.jt-copa > .jg-rot { margin: 10px 0 -2px; }
+.jt-copa-topo { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.jt-copa-topo .vivo { display: inline-flex; align-items: center; gap: 6px; color: var(--perigo); font-size: 12px; font-weight: 700; letter-spacing: 1.5px; }
+.jt-copa-topo .vivo::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--perigo); box-shadow: 0 0 10px var(--perigo); animation: jt-pisca 1.2s infinite; }
+@keyframes jt-pisca { 50% { opacity: .3; } }
+.jt-copa-cab h2 { margin: 0; font-family: var(--f-titulo); font-size: clamp(38px, 8vw, 54px); font-weight: 700; line-height: .85; letter-spacing: 1px; }
+.jt-copa-sub { margin: 8px 0 0; font-size: 13px; color: var(--texto-3); }
+.jt-insc { display: flex; flex-direction: column; gap: 12px; }
+.jt-nota { margin: -4px 2px 0; font-size: 12px; color: var(--texto-3); }
+.jt-regras { margin: 0; padding: 0 0 0 18px; display: grid; gap: 6px; font-size: 14px; color: var(--texto-2); }
+.jt-regras b { color: var(--texto); }
+.jt-largo { width: 100%; }
+.jt-banner { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 16px; border: 1px solid rgba(245, 197, 66, .55); background: radial-gradient(circle at 0% 50%, rgba(245, 197, 66, .2), transparent 60%), var(--painel-2); }
+.jt-banner > div { flex: 1; min-width: 0; }
+.jt-banner small { display: block; font-size: 11px; font-weight: 700; letter-spacing: 2px; color: #F5C542; }
+.jt-banner b { font-family: var(--f-titulo); font-size: 34px; line-height: .9; }
+.jt-banner .jt-taca { width: 48px; height: 48px; }
+
+/* a chave (simétrica, a final no meio com a taça) */
+.jt-chave-box { overflow-x: auto; border-radius: 18px; border: 1px solid var(--linha-forte); background: radial-gradient(circle at 50% 50%, rgba(255, 122, 26, .16), transparent 45%), repeating-linear-gradient(45deg, rgba(255, 255, 255, .015) 0 12px, transparent 12px 24px), #0E0906; }
+.jt-chave { position: relative; display: flex; min-width: calc(var(--cols) * 68px + 40px); min-height: 360px; padding: 26px 6px 14px; }
+.jt-chave.r3 { min-height: 480px; }
+.jt-chave.r4 { min-height: 800px; }
+.jt-fios { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.jt-fios path { fill: none; stroke: var(--linha-forte); stroke-width: 2; }
+.jt-fios path.on { stroke: var(--laranja); filter: drop-shadow(0 0 4px rgba(255, 122, 26, .7)); }
+.jt-fios path.novo { stroke-dasharray: 1; stroke-dashoffset: 1; animation: jt-acende 1.4s .8s cubic-bezier(.45, .05, .35, 1) forwards; }
+@keyframes jt-acende { to { stroke-dashoffset: 0; } }
+.jt-col { position: relative; z-index: 1; flex: 1 1 0; min-width: 66px; display: flex; flex-direction: column; }
+.jt-col.meio { flex-grow: 1.4; min-width: 100px; }
+.jt-col-tit { position: absolute; top: -20px; left: 0; right: 0; text-align: center; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: var(--texto-3); }
+.jt-col-jogos { flex: 1; display: flex; flex-direction: column; justify-content: space-around; align-items: center; }
+.jt-jogo { position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 6px 2px; border-radius: 14px; cursor: pointer; transition: background .2s; -webkit-tap-highlight-color: transparent; }
+.jt-jogo:hover, .jt-jogo:focus-visible { background: rgba(255, 122, 26, .08); }
+.jt-jogo.final { gap: 4px; }
+.jt-final-tit { font-family: var(--f-titulo); font-size: 24px; line-height: 1; letter-spacing: 1.5px; color: var(--laranja-claro); }
+.jt-vaga { position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px; width: 64px; }
+.jt-disco { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; border: 2px dashed var(--linha-forte); background: #0B0806; color: var(--texto-3); font-family: var(--f-titulo); font-size: 22px; transition: box-shadow .3s, filter .3s, opacity .3s; }
+.jt-vaga.cheia .jt-disco { border: 0; background: none; }
+.jt-nome { max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 600; color: var(--texto-2); }
+.jt-vaga.eu .jt-nome { color: var(--laranja-claro); }
+.jt-vaga.joga .jt-disco { animation: jt-anel 1.1s ease-in-out infinite; }
+@keyframes jt-anel { 0%, 100% { box-shadow: 0 0 0 2px rgba(255, 122, 26, .9); } 50% { box-shadow: 0 0 0 5px rgba(255, 122, 26, .3), 0 0 18px rgba(255, 122, 26, .7); } }
+.jt-vaga.ganhou .jt-disco { box-shadow: 0 0 0 3px var(--laranja), 0 0 14px rgba(255, 122, 26, .6); }
+.jt-vaga.perdeu .jt-disco { filter: grayscale(1) brightness(.5); }
+.jt-vaga.perdeu .jt-nome { color: var(--texto-3); text-decoration: line-through; text-decoration-color: rgba(168, 153, 139, .5); }
+.jt-vaga.chamando .jt-disco { opacity: .6; }
+.jt-vaga.pronto .jt-disco { box-shadow: 0 0 0 3px var(--verde); }
+.jt-ok { position: absolute; top: -3px; right: 2px; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; background: var(--verde); color: #04140A; font-size: 12px; font-weight: 700; border: 2px solid #0E0906; }
+.jt-info { min-height: 18px; padding: 1px 8px; border-radius: 999px; font-size: 10px; font-weight: 700; white-space: nowrap; color: var(--texto-3); font-variant-numeric: tabular-nums; }
+.jt-info:empty { visibility: hidden; }
+.jt-info.vivo { background: rgba(255, 90, 78, .14); border: 1px solid rgba(255, 90, 78, .5); color: #FFC2BC; }
+.jt-info.chama { background: rgba(245, 197, 66, .12); border: 1px solid rgba(245, 197, 66, .45); color: #F5D37A; }
+.jt-assistir { margin-top: -6px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--perigo); background: rgba(255, 90, 78, .12); color: #FFB0A8; font-size: 10px; font-weight: 700; letter-spacing: 1px; }
+.jt-jogo .jt-trofeu { display: flex; flex-direction: column; align-items: center; gap: 2px; margin: 4px 0; }
+.jt-jogo .jt-trofeu .jt-taca { width: 70px; height: 70px; filter: drop-shadow(0 0 16px rgba(245, 197, 66, .45)); }
+.jt-jogo .jt-trofeu .jt-pc { margin-top: -8px; }
+.jt-jogo .jt-trofeu small { max-width: 96px; font-size: 9px; font-weight: 700; letter-spacing: 1.2px; color: #F5C542; text-align: center; line-height: 1.3; }
+/* quem venceu comemora e corre pelo fio */
+.jt-vaga.comemora .jt-disco { animation: jt-festa .8s cubic-bezier(.2, 1.6, .4, 1); box-shadow: 0 0 0 4px rgba(255, 179, 71, .45), 0 0 22px rgba(255, 122, 26, .9); }
+@keyframes jt-festa { 40% { transform: scale(1.3) rotate(-6deg); } 70% { transform: scale(.95) rotate(3deg); } }
+.jt-venceu { position: absolute; top: -18px; left: 50%; z-index: 3; padding: 1px 7px; border-radius: 6px; background: var(--laranja); color: var(--tinta-btn); font-size: 10px; font-weight: 700; letter-spacing: 1px; white-space: nowrap; transform: translateX(-50%); animation: jt-sobe .9s ease-out both; }
+@keyframes jt-sobe { from { opacity: 0; transform: translate(-50%, 8px) scale(.6); } 30% { opacity: 1; transform: translate(-50%, 0) scale(1.1); } to { transform: translate(-50%, -4px); } }
+.jt-voa { position: absolute; left: 0; top: 0; z-index: 60; width: 52px; height: 52px; border-radius: 50%; pointer-events: none; box-shadow: 0 0 0 3px var(--laranja), 0 0 26px rgba(255, 122, 26, .9); }
+.jt-faisca { position: absolute; z-index: 61; width: 6px; height: 6px; border-radius: 50%; background: var(--laranja-claro); box-shadow: 0 0 6px var(--laranja); pointer-events: none; }
+
+/* festa do campeão */
+.jt-campeao-fundo { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; overflow: hidden; padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); background: rgba(6, 4, 3, .86); backdrop-filter: blur(4px); animation: jt-surge .3s ease-out; }
+@keyframes jt-surge { from { opacity: 0; } }
+.jt-campeao { position: relative; z-index: 42; width: min(380px, 100%); display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 26px 18px 18px; border-radius: 22px; text-align: center; border: 1px solid rgba(245, 197, 66, .6); background: radial-gradient(circle at 50% 0%, rgba(245, 197, 66, .25), transparent 60%), var(--painel); box-shadow: 0 0 60px rgba(245, 197, 66, .25); animation: jt-pula .5s cubic-bezier(.2, 1.4, .4, 1); }
+@keyframes jt-pula { from { transform: scale(.6); opacity: 0; } }
+.jt-campeao > small { font-size: 12px; font-weight: 700; letter-spacing: 2.5px; color: #F5C542; }
+.jt-campeao h3 { margin: 0; font-family: var(--f-titulo); font-size: 54px; line-height: .9; }
+.jt-campeao .btn { width: 100%; }
+.jt-ganho { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px; border-radius: 14px; background: var(--painel-2); border: 1px solid var(--linha); text-align: left; }
+.jt-ganho b { display: block; }
+.jt-ganho span { font-size: 12px; color: var(--texto-3); }
+
+/* partida do torneio: selo em cima */
+.jt-chip-partida { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(245, 197, 66, .5); background: rgba(245, 197, 66, .1); color: #F5D37A; font-size: 12px; font-weight: 700; letter-spacing: 1px; }
+
+/* janelas: minhas pedras e novo torneio */
+.jt-dlg { max-width: min(94vw, 520px); max-height: 92vh; overflow: auto; }
+.jt-dlg-corpo { display: flex; flex-direction: column; gap: 14px; padding: 20px; }
+.jt-dlg-topo { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.jt-dlg-topo h2 { margin: 0; font-family: var(--f-titulo); font-size: 34px; font-weight: 600; line-height: 1; }
+.jt-dlg-txt { margin: 0; font-size: 14px; color: var(--texto-2); }
+.jt-mini-tab { display: grid; grid-template-columns: repeat(6, 1fr); width: min(100%, 240px); aspect-ratio: 1; margin: 0 auto; border-radius: 12px; overflow: hidden; border: 2px solid var(--linha-forte); }
+.jt-mini-tab > span { position: relative; }
+.jt-mini-tab .cl { background: linear-gradient(145deg, #3E2C1F, #33241A); }
+.jt-mini-tab .es { background: #120C08; }
+.jt-minhas { display: grid; gap: 8px; }
+.jt-minha { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--linha); background: var(--painel-2); color: var(--texto); font: inherit; text-align: left; cursor: pointer; }
+.jt-minha > div { flex: 1; min-width: 0; }
+.jt-minha b { margin-right: 6px; }
+.jt-minha small { display: block; font-size: 11px; color: var(--texto-3); }
+.jt-minha[aria-pressed="true"] { border-color: var(--laranja); background: var(--laranja-fundo); }
+.jt-minha.trancada { opacity: .55; }
+.jt-tag-eq { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: var(--texto-3); }
+.jt-minha[aria-pressed="true"] .jt-tag-eq { color: var(--laranja-claro); }
+.jt-rar { display: inline-block; padding: 1px 6px; border-radius: 5px; font-size: 9px; font-weight: 700; letter-spacing: 1.2px; vertical-align: 2px; }
+.jt-rar.lenda { background: rgba(245, 197, 66, .15); color: #F5C542; }
+.jt-rar.epica { background: rgba(207, 214, 222, .12); color: #CFD6DE; }
+.jt-rar.rara { background: rgba(255, 122, 26, .14); color: var(--laranja-claro); }
+.jt-rar.especial { background: rgba(185, 139, 255, .14); color: var(--roxo-claro); }
+.jt-rar.comum { background: rgba(168, 153, 139, .12); color: var(--texto-3); }
+.jt-form { gap: 14px; }
+.jt-lbl { font-size: 13px; font-weight: 600; letter-spacing: 1px; color: var(--texto-2); }
+.jt-dois { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 480px) { .jt-dois { grid-template-columns: 1fr; } }
+.jt-seg { display: flex; gap: 4px; padding: 4px; border-radius: 10px; background: var(--painel-2); border: 1px solid var(--linha-forte); }
+.jt-seg button { flex: 1; min-height: 38px; border: 0; border-radius: 7px; background: transparent; color: var(--texto-2); font: 700 15px var(--f-texto); cursor: pointer; }
+.jt-seg button[aria-checked="true"] { background: var(--laranja); color: var(--tinta-btn); }
+.jt-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 6px; }
+.jt-pick button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px; border-radius: 10px; border: 1px solid var(--linha); background: var(--painel-2); color: var(--texto-2); font: 600 10px var(--f-texto); line-height: 1.2; cursor: pointer; }
+.jt-pick button .jt-pc { --s: 30px; }
+.jt-pick button[aria-checked="true"] { border-color: var(--laranja); background: var(--laranja-fundo); color: var(--texto); }
+
+/* perfil: títulos e pedras ganhas */
+.jt-pf { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 12px; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(245, 197, 66, .35); background: radial-gradient(circle at 0% 50%, rgba(245, 197, 66, .1), transparent 60%), var(--painel-2); font-size: 13px; color: var(--texto-2); }
+.jt-pf-txt b { color: #F5D37A; }
+.jt-pf-pedras { display: inline-flex; gap: 6px; }
+@media (prefers-reduced-motion: reduce) { .jg-p.sk-ouro::before, .jg-p.sk-brasa.p::after, .jt-vaga.joga .jt-disco { animation: none; } }

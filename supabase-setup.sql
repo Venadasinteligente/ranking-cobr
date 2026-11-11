@@ -2410,6 +2410,19 @@ create table if not exists public.jogos_partidas (
 create index if not exists jogos_partidas_status_idx on public.jogos_partidas (status);
 create index if not exists jogos_partidas_convidado_idx on public.jogos_partidas (convidado, status);
 create index if not exists jogos_partidas_fim_idx on public.jogos_partidas (fim);
+-- partidas de torneio (seção 11c): de qual torneio e confronto da chave; prontos = quem já
+-- tocou em "Estou pronto" enquanto a partida chama (status 'chamada', 3 minutos pra entrar)
+alter table public.jogos_partidas add column if not exists torneio uuid;
+alter table public.jogos_partidas add column if not exists confronto uuid;
+alter table public.jogos_partidas add column if not exists prontos uuid[] not null default '{}';
+create index if not exists jogos_partidas_torneio_idx on public.jogos_partidas (torneio);
+alter table public.jogos_partidas drop constraint if exists jogos_partidas_status_check;
+alter table public.jogos_partidas add constraint jogos_partidas_status_check
+  check (status in ('convite', 'recusado', 'expirado', 'cancelado', 'chamada', 'andamento', 'fim'));
+-- wo = não entrou a tempo; desempate = empatou e o torneio decidiu por quem tinha mais peças
+alter table public.jogos_partidas drop constraint if exists jogos_partidas_motivo_check;
+alter table public.jogos_partidas add constraint jogos_partidas_motivo_check
+  check (motivo in ('sem_pecas', 'sem_jogadas', 'desistencia', 'tempo', 'empate_acordo', 'empate_20', 'wo', 'desempate'));
 
 create table if not exists public.jogos_lances (
   id          bigint generated always as identity primary key,
@@ -2449,6 +2462,18 @@ language sql stable security definer set search_path = public
 as $$
   select '{"tempo_jogada": 60, "ao_acabar_tempo": "perde_partida", "maioria_obrigatoria": true, "convite_expira": 60}'::jsonb
          || coalesce((select valor from config_site where chave = 'jogos'), '{}'::jsonb);
+$$;
+
+-- segundos por jogada de uma partida: a do torneio dela ou a da configuração
+create or replace function public.jogos_tempo_de(p_partida uuid)
+returns integer
+language plpgsql stable security definer set search_path = public
+as $$
+declare v integer;
+begin
+  select t.tempo_jogada into v from jogos_partidas p join jogos_torneios t on t.id = p.torneio where p.id = p_partida;
+  return coalesce(v, (jogos_cfg() ->> 'tempo_jogada')::int);
+end;
 $$;
 
 -- o Dono (ou admin) muda a configuração
@@ -2492,22 +2517,42 @@ as $$
   select coalesce((select nick from players where id = p_player), 'Alguém');
 $$;
 
--- a partida em andamento de um jogador (null se está livre)
+-- a partida em andamento de um jogador (null se está livre). A do torneio chamando também conta.
 create or replace function public.jogos_partida_de(p_player uuid)
 returns uuid
 language sql stable security definer set search_path = public
 as $$
-  select id from jogos_partidas where status = 'andamento' and p_player in (brancas, pretas) limit 1;
+  select id from jogos_partidas where status in ('andamento', 'chamada') and p_player in (brancas, pretas) limit 1;
 $$;
 
--- fecha a partida (vencedor null = empate)
+-- fecha a partida (vencedor null = empate). Torneio não tem empate: ganha quem tem mais peças
+-- no tabuleiro; se for igual, fica empate e o torneio chama outra partida com as cores trocadas.
 create or replace function public.jogos_fechar(p_partida uuid, p_vencedor uuid, p_motivo text)
 returns void
-language sql security definer set search_path = public
+language plpgsql security definer set search_path = public
 as $$
-  update jogos_partidas set status = 'fim', vencedor = p_vencedor, motivo = p_motivo, fim = now(), prazo = null,
+declare
+  p jogos_partidas;
+  v_venc uuid := p_vencedor;
+  v_motivo text := p_motivo;
+  nb integer;
+  np integer;
+begin
+  if p_vencedor is null then
+    select * into p from jogos_partidas where id = p_partida;
+    if p.torneio is not null and p.estado ? 'tab' then
+      nb := length(regexp_replace(p.estado ->> 'tab', '[^bB]', '', 'g'));
+      np := length(regexp_replace(p.estado ->> 'tab', '[^pP]', '', 'g'));
+      if nb <> np then
+        v_venc := case when nb > np then p.brancas else p.pretas end;
+        v_motivo := 'desempate';
+      end if;
+    end if;
+  end if;
+  update jogos_partidas set status = 'fim', vencedor = v_venc, motivo = v_motivo, fim = now(), prazo = null,
                             empate_proposto_por = null
   where id = p_partida and status = 'andamento';
+end;
 $$;
 
 -- convite (também usado pela revanche). Devolve o id da partida.
@@ -2642,6 +2687,7 @@ begin
   select * into p from jogos_partidas where id = p_partida for update;
   if p.id is null or v_eu not in (p.brancas, p.pretas) then raise exception 'Partida não encontrada'; end if;
   if p.status <> 'andamento' then raise exception 'A partida já acabou'; end if;
+  if p.torneio is not null then raise exception 'No torneio não tem empate combinado'; end if;
   if p.empate_proposto_por is not null and p.empate_proposto_por <> v_eu then
     -- o outro já tinha proposto: proposta dos dois = empate
     perform jogos_fechar(p_partida, null, 'empate_acordo');
@@ -2685,6 +2731,7 @@ begin
   select * into p from jogos_partidas where id = p_partida;
   if p.id is null or v_eu not in (p.brancas, p.pretas) then raise exception 'Partida não encontrada'; end if;
   if p.status <> 'fim' then raise exception 'A partida ainda não acabou'; end if;
+  if p.torneio is not null then raise exception 'Partida de torneio não tem revanche'; end if;
   v_outro := case when v_eu = p.brancas then p.pretas else p.brancas end;
   select id into v_id from jogos_partidas
   where revanche_de = p_partida and status = 'convite' and prazo > now() and convidou = v_outro and convidado = v_eu;
@@ -2723,7 +2770,7 @@ begin
           array(select jsonb_array_elements_text(coalesce(p_lance -> 'capturas', '[]'::jsonb))::int),
           coalesce((p_lance ->> 'virou_dama')::boolean, false));
 
-  v_prazo := now() + make_interval(secs => (jogos_cfg() ->> 'tempo_jogada')::int);
+  v_prazo := now() + make_interval(secs => jogos_tempo_de(p_partida));
   update jogos_partidas set estado = p_novo_estado, versao = versao + 1, prazo = v_prazo,
     empate_proposto_por = null, tempos_estourados = tempos_estourados - v_quem::text
   where id = p_partida;
@@ -2750,6 +2797,10 @@ declare
   v_outro uuid;
   v_n integer;
 begin
+  -- partida de torneio chamando e ninguém (ou só um) entrou a tempo: W.O.
+  if exists (select 1 from jogos_partidas where id = p_partida and status = 'chamada' and prazo < now() - p_folga) then
+    return jogos_torneio_wo(p_partida);
+  end if;
   select * into p from jogos_partidas where id = p_partida and status = 'andamento' and prazo < now() - p_folga for update;
   if p.id is null then return false; end if;
   v_quem := case when p.estado ->> 'vez' = 'b' then p.brancas else p.pretas end;
@@ -2761,7 +2812,7 @@ begin
       estado = jsonb_set(estado, '{vez}', to_jsonb(case when estado ->> 'vez' = 'b' then 'p' else 'b' end)),
       versao = versao + 1, empate_proposto_por = null,
       tempos_estourados = tempos_estourados || jsonb_build_object(v_quem::text, v_n),
-      prazo = now() + make_interval(secs => (cfg ->> 'tempo_jogada')::int)
+      prazo = now() + make_interval(secs => jogos_tempo_de(p_partida))
     where id = p_partida;
   else
     perform jogos_fechar(p_partida, v_outro, 'tempo');
@@ -2788,7 +2839,7 @@ language plpgsql security definer set search_path = public
 as $$
 declare v uuid;
 begin
-  for v in select id from jogos_partidas where status = 'andamento' and prazo < now() - interval '5 seconds' loop
+  for v in select id from jogos_partidas where status in ('andamento', 'chamada') and prazo < now() - interval '5 seconds' loop
     perform jogos_aplicar_tempo(v, interval '5 seconds');
   end loop;
   update jogos_partidas set status = 'expirado', prazo = null where status = 'convite' and prazo < now();
@@ -2804,7 +2855,8 @@ returns table (player_id uuid, nick text, partidas integer, vitorias integer, de
 language sql stable security definer set search_path = public
 as $$
   with fim as (
-    select * from jogos_partidas where jogo = p_jogo and status = 'fim' and is_membro()
+    -- partida de torneio não entra no ranking normal
+    select * from jogos_partidas where jogo = p_jogo and status = 'fim' and torneio is null and is_membro()
   ), r as (
     select brancas as jogador, id, fim as quando,
            case when vencedor is null then 'E' when vencedor = brancas then 'V' else 'D' end as res from fim
@@ -2836,37 +2888,53 @@ as $$
   order by t.vitorias desc, t.vitorias::numeric / t.partidas desc, t.partidas desc, lower(pl.nick);
 $$;
 
--- convite novo: notificação no celular do convidado ("convites de jogos" ligado, o padrão)
-create or replace function public.jogos_avisar_push()
-returns trigger
+-- notificação de jogos no celular ("convites de jogos" ligado, o padrão).
+-- p_players null = todo mundo do clã com login. Nunca dá erro: notificação não atrapalha o jogo.
+create or replace function public.jogos_push(p_players uuid[], p_titulo text, p_corpo text, p_url text, p_tag text)
+returns void
 language plpgsql security definer set search_path = public, extensions
 as $$
 declare
   cfg push_config;
   v_envios jsonb;
-  v_nick text;
 begin
-  if new.status <> 'convite' then return new; end if;
   select * into cfg from push_config where id = 1;
-  if cfg.url is null or cfg.vapid_privada is null then return new; end if;
-  v_nick := jogos_nick(new.convidou);
-  select jsonb_agg(jsonb_build_object('endpoint', i.endpoint, 'p256dh', i.p256dh, 'auth', i.auth, 'payload', jsonb_build_object(
-      'title', '🎮 ' || v_nick || ' te chamou pra jogar ' || new.jogo,
-      'body', 'Toque pra aceitar ou recusar',
-      'tag', 'jogos-convite',
-      'url', '/#jogos')))
+  if cfg.url is null or cfg.vapid_privada is null then return; end if;
+  select jsonb_agg(jsonb_build_object('endpoint', i.endpoint, 'p256dh', i.p256dh, 'auth', i.auth, 'payload',
+      jsonb_build_object('title', p_titulo, 'body', p_corpo, 'tag', p_tag, 'url', p_url)))
   into v_envios
   from player_contas c
   join push_inscricoes i on i.user_id = c.user_id
   left join push_prefs pf on pf.user_id = c.user_id
-  where c.player_id = new.convidado and coalesce(pf.jogos, true);
-  if v_envios is null then return new; end if;
+  where (p_players is null or c.player_id = any (p_players)) and coalesce(pf.jogos, true);
+  if v_envios is null then return; end if;
   perform net.http_post(
     url := cfg.url,
     body := jsonb_build_object('segredo', cfg.segredo, 'sujeito', cfg.sujeito, 'publica', cfg.vapid_publica, 'privada', cfg.vapid_privada,
                                'sb', cfg.sb_url, 'chave', cfg.sb_chave, 'envios', v_envios),
     headers := '{"Content-Type": "application/json"}'::jsonb,
     timeout_milliseconds := 8000);
+exception when others then
+  return;
+end;
+$$;
+
+-- convite novo: avisa o convidado. Partida de torneio chamando: avisa os dois.
+create or replace function public.jogos_avisar_push()
+returns trigger
+language plpgsql security definer set search_path = public, extensions
+as $$
+begin
+  if new.status = 'convite' then
+    perform jogos_push(array[new.convidado], '🎮 ' || jogos_nick(new.convidou) || ' te chamou pra jogar ' || new.jogo,
+                       'Toque pra aceitar ou recusar', '/#jogos', 'jogos-convite');
+  elsif new.status = 'chamada' then
+    perform jogos_push(array[new.brancas, new.pretas],
+                       '🏆 Sua partida do torneio começou!',
+                       coalesce((select nome from jogos_torneios where id = new.torneio), 'Torneio') || ': '
+                         || jogos_nick(new.brancas) || ' × ' || jogos_nick(new.pretas) || '. Toque pra entrar (3 minutos)',
+                       '/#jogos', 'jogos-chamada');
+  end if;
   return new;
 exception when others then
   -- notificação nunca atrapalha o convite
@@ -2895,9 +2963,9 @@ declare f text;
 begin
   -- só por dentro (outras funções, pg_cron, gatilho) ou pela service_role
   foreach f in array array[
-    'jogos_nick(uuid)', 'jogos_partida_de(uuid)', 'jogos_fechar(uuid, uuid, text)',
+    'jogos_nick(uuid)', 'jogos_partida_de(uuid)', 'jogos_fechar(uuid, uuid, text)', 'jogos_tempo_de(uuid)',
     'jogos_criar_convite(uuid, text, uuid, uuid)', 'jogos_aplicar_tempo(uuid, interval)', 'jogos_vencer_prazos()',
-    'jogos_avisar_push()', 'jogos_gravar_lance(uuid, integer, jsonb, jsonb, jsonb)'] loop
+    'jogos_push(uuid[], text, text, text, text)', 'jogos_avisar_push()', 'jogos_gravar_lance(uuid, integer, jsonb, jsonb, jsonb)'] loop
     execute format('revoke all on function public.%s from public, anon, authenticated', f);
   end loop;
   -- membro logado
@@ -2977,6 +3045,418 @@ revoke all on function public.jogos_falar(uuid, text) from public, anon;
 grant execute on function public.jogos_falar(uuid, text) to authenticated;
 
 select cron.schedule('jogos-conversa-faxina', '17 * * * *', $$delete from public.jogos_mensagens where criado_em < now() - interval '30 days'$$);
+
+-- 11c) Torneio de damas (chave mata-mata, igual sinuca de celular).
+--      O admin abre o torneio (4, 8 ou 16 vagas, tempo por jogada, final em 1 ou melhor de 3 e as
+--      pedras de prêmio). Os membros entram; quando enche, a chave é sorteada e começa sozinha.
+--      Cada confronto chama os dois (status 'chamada'): têm 3 minutos pra tocar em "Estou pronto".
+--      Só um entrou = W.O. pra ele; nenhum = sorteio. Empate: ganha quem tem mais peças; peças iguais,
+--      joga de novo com as cores trocadas. Quem vence avança sozinho na chave.
+--      Prêmios: pedras personalizadas (1º, 2º e semifinalistas) que ficam no perfil pra sempre;
+--      cada um escolhe qual pedra usar nas partidas. Partida de torneio não conta no ranking normal.
+create table if not exists public.jogos_torneios (
+  id            uuid primary key default gen_random_uuid(),
+  edicao        integer generated by default as identity,   -- o "#3" da Coroa de Ouro
+  nome          text not null check (char_length(nome) between 2 and 40),
+  jogo          text not null default 'damas' check (jogo in ('damas')),
+  vagas         integer not null check (vagas in (4, 8, 16)),
+  tempo_jogada  integer not null default 60 check (tempo_jogada between 15 and 600),
+  final_md3     boolean not null default false,               -- final em melhor de 3
+  premios       jsonb not null default '{}'::jsonb,           -- {"1": "ouro", "2": "prata", "3": "brasa"} (3 = semifinal)
+  status        text not null default 'inscricao' check (status in ('inscricao', 'andamento', 'fim', 'cancelado')),
+  campeao       uuid references public.players (id),
+  criado_por    uuid,
+  criado_em     timestamptz not null default now(),
+  inicio        timestamptz,
+  fim           timestamptz
+);
+create index if not exists jogos_torneios_status_idx on public.jogos_torneios (status);
+
+create table if not exists public.jogos_torneio_inscritos (
+  torneio    uuid not null references public.jogos_torneios (id) on delete cascade,
+  player     uuid not null references public.players (id) on delete cascade,
+  criado_em  timestamptz not null default now(),
+  primary key (torneio, player)
+);
+
+-- a chave: rodada 1 = primeira fase; pos = posição de cima pra baixo. Quem vence o (r, pos)
+-- vai pro (r + 1, pos / 2): lado a se pos é par, lado b se é ímpar.
+create table if not exists public.jogos_torneio_confrontos (
+  id        uuid primary key default gen_random_uuid(),
+  torneio   uuid not null references public.jogos_torneios (id) on delete cascade,
+  rodada    integer not null,
+  pos       integer not null,
+  a         uuid references public.players (id),
+  b         uuid references public.players (id),
+  vit_a     integer not null default 0,   -- vitórias na série (final melhor de 3)
+  vit_b     integer not null default 0,
+  vencedor  uuid references public.players (id),
+  partida   uuid,                         -- a partida atual (ou a última) desse confronto
+  unique (torneio, rodada, pos)
+);
+
+-- pedras ganhas (uma linha por prêmio) e a que cada um escolheu usar
+create table if not exists public.jogos_pedras (
+  id         bigint generated always as identity primary key,
+  player     uuid not null references public.players (id) on delete cascade,
+  pedra      text not null check (pedra in ('ouro', 'prata', 'brasa', 'veneno', 'gelo')),
+  torneio    uuid references public.jogos_torneios (id) on delete set null,
+  colocacao  integer,                     -- 1 campeão, 2 vice, 3 semifinal
+  criado_em  timestamptz not null default now(),
+  unique (player, pedra, torneio)
+);
+create table if not exists public.jogos_pedra_uso (
+  player         uuid primary key references public.players (id) on delete cascade,
+  pedra          text not null default 'classica' check (pedra in ('classica', 'ouro', 'prata', 'brasa', 'veneno', 'gelo')),
+  atualizado_em  timestamptz not null default now()
+);
+
+do $$
+declare t text;
+begin
+  foreach t in array array['jogos_torneios', 'jogos_torneio_inscritos', 'jogos_torneio_confrontos', 'jogos_pedras', 'jogos_pedra_uso'] loop
+    execute format('alter table public.%I enable row level security', t);
+    execute format('revoke all on public.%I from anon, authenticated', t);
+    execute format('grant select on public.%I to authenticated', t);
+    execute format('drop policy if exists "membros veem" on public.%I', t);
+    execute format('create policy "membros veem" on public.%I for select to authenticated using ((select public.is_membro()))', t);
+    if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
+      execute format('alter publication supabase_realtime add table public.%I', t);
+    end if;
+  end loop;
+end;
+$$;
+
+-- quantas fases: 4 vagas = 2 (semi e final), 8 = 3, 16 = 4
+create or replace function public.jogos_torneio_rodadas(p_vagas integer)
+returns integer
+language sql immutable
+as $$
+  select case p_vagas when 4 then 2 when 8 then 3 else 4 end;
+$$;
+
+-- o torneio em que o jogador ainda está (inscrito esperando ou vivo na chave)
+create or replace function public.jogos_torneio_vivo_de(p_player uuid)
+returns uuid
+language sql stable security definer set search_path = public
+as $$
+  select t.id from jogos_torneios t
+  join jogos_torneio_inscritos i on i.torneio = t.id and i.player = p_player
+  where t.status = 'inscricao'
+     or (t.status = 'andamento' and not exists (
+           select 1 from jogos_torneio_confrontos c
+           where c.torneio = t.id and c.vencedor is not null and p_player in (c.a, c.b) and c.vencedor <> p_player))
+  limit 1;
+$$;
+
+-- admin abre um torneio. p_premios: {"1": "ouro", "2": "prata", "3": "brasa"} (pode faltar algum)
+create or replace function public.jogos_torneio_criar(p_nome text, p_vagas integer, p_tempo integer, p_final_md3 boolean, p_premios jsonb)
+returns uuid
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_nome text := btrim(regexp_replace(coalesce(p_nome, ''), '\s+', ' ', 'g'));
+  v_prem jsonb := '{}'::jsonb;
+  k text;
+  v_id uuid;
+begin
+  perform exigir_admin('torneio_damas_criar', jsonb_build_object('nome', v_nome, 'vagas', p_vagas, 'premios', p_premios));
+  if char_length(v_nome) not between 2 and 40 then raise exception 'Dê um nome de 2 a 40 letras'; end if;
+  if p_vagas is null or p_vagas not in (4, 8, 16) then raise exception 'Vagas: 4, 8 ou 16'; end if;
+  if p_tempo is null or p_tempo not between 15 and 600 then raise exception 'Tempo por jogada: de 15 a 600 segundos'; end if;
+  foreach k in array array['1', '2', '3'] loop
+    if nullif(p_premios ->> k, '') is not null then
+      if p_premios ->> k not in ('ouro', 'prata', 'brasa', 'veneno', 'gelo') then raise exception 'Pedra de prêmio desconhecida'; end if;
+      v_prem := v_prem || jsonb_build_object(k, p_premios ->> k);
+    end if;
+  end loop;
+  if (select count(*) from jogos_torneios where status = 'inscricao') >= 3 then
+    raise exception 'Já tem 3 torneios com inscrição aberta';
+  end if;
+  insert into jogos_torneios (nome, vagas, tempo_jogada, final_md3, premios, criado_por)
+  values (v_nome, p_vagas, p_tempo, coalesce(p_final_md3, false), v_prem, auth.uid())
+  returning id into v_id;
+  perform jogos_push(null, '🏆 Torneio de damas: ' || v_nome, p_vagas || ' vagas. Toque pra entrar na chave',
+                     '/#jogos/copa/' || v_id, 'jogos-torneio');
+  return v_id;
+end;
+$$;
+
+-- admin cancela (as partidas que ainda chamavam saem; as que estão rolando terminam normais)
+create or replace function public.jogos_torneio_cancelar(p_torneio uuid)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  perform exigir_admin('torneio_damas_cancelar', jsonb_build_object('torneio', p_torneio));
+  update jogos_torneios set status = 'cancelado', fim = now() where id = p_torneio and status in ('inscricao', 'andamento');
+  if not found then raise exception 'Esse torneio já acabou'; end if;
+  update jogos_partidas set status = 'cancelado', prazo = null where torneio = p_torneio and status = 'chamada';
+end;
+$$;
+
+-- chama a próxima partida de um confronto (a primeira com cores sorteadas; as outras, trocadas)
+create or replace function public.jogos_torneio_chamar(p_confronto uuid)
+returns uuid
+language plpgsql security definer set search_path = public
+as $$
+declare
+  c jogos_torneio_confrontos;
+  t jogos_torneios;
+  v_ult jogos_partidas;
+  v_b uuid;
+  v_p uuid;
+  v_id uuid;
+begin
+  select * into c from jogos_torneio_confrontos where id = p_confronto;
+  if c.a is null or c.b is null or c.vencedor is not null then return null; end if;
+  select * into t from jogos_torneios where id = c.torneio;
+  if t.status <> 'andamento' then return null; end if;
+  select * into v_ult from jogos_partidas where confronto = p_confronto order by criado_em desc limit 1;
+  if v_ult.id is not null then
+    v_b := v_ult.pretas; v_p := v_ult.brancas;
+  elsif random() < 0.5 then
+    v_b := c.a; v_p := c.b;
+  else
+    v_b := c.b; v_p := c.a;
+  end if;
+  insert into jogos_partidas (jogo, status, convidou, convidado, brancas, pretas, prazo, torneio, confronto)
+  values (t.jogo, 'chamada', v_b, v_p, v_b, v_p, now() + interval '3 minutes', t.id, p_confronto)
+  returning id into v_id;
+  update jogos_torneio_confrontos set partida = v_id where id = p_confronto;
+  return v_id;
+end;
+$$;
+
+-- encheu: sorteia a chave, monta todas as fases e chama a primeira
+create or replace function public.jogos_torneio_comecar(p_torneio uuid)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  t jogos_torneios;
+  v_r integer;
+  r integer;
+  i integer;
+  v_jog uuid[];
+  v_c uuid;
+begin
+  select * into t from jogos_torneios where id = p_torneio for update;
+  if t.status <> 'inscricao' then return; end if;
+  v_r := jogos_torneio_rodadas(t.vagas);
+  update jogos_torneios set status = 'andamento', inicio = now() where id = p_torneio;
+  for r in 1..v_r loop
+    for i in 0..(t.vagas >> r) - 1 loop
+      insert into jogos_torneio_confrontos (torneio, rodada, pos) values (p_torneio, r, i) on conflict do nothing;
+    end loop;
+  end loop;
+  select array_agg(player order by random()) into v_jog from jogos_torneio_inscritos where torneio = p_torneio;
+  for i in 0..(t.vagas / 2) - 1 loop
+    update jogos_torneio_confrontos set a = v_jog[2 * i + 1], b = v_jog[2 * i + 2]
+    where torneio = p_torneio and rodada = 1 and pos = i;
+  end loop;
+  for v_c in select id from jogos_torneio_confrontos where torneio = p_torneio and rodada = 1 order by pos loop
+    perform jogos_torneio_chamar(v_c);
+  end loop;
+end;
+$$;
+
+-- membro entra na chave; a última vaga já começa o torneio
+create or replace function public.jogos_torneio_entrar(p_torneio uuid)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_eu uuid := jogos_eu();
+  t jogos_torneios;
+  v_n integer;
+begin
+  perform pg_advisory_xact_lock(hashtext('jogos-torneio'));
+  select * into t from jogos_torneios where id = p_torneio for update;
+  if t.id is null then raise exception 'Torneio não encontrado'; end if;
+  if t.status <> 'inscricao' then raise exception 'As inscrições desse torneio fecharam'; end if;
+  if exists (select 1 from jogos_torneio_inscritos where torneio = p_torneio and player = v_eu) then return; end if;
+  if jogos_torneio_vivo_de(v_eu) is not null then raise exception 'Você já está em outro torneio'; end if;
+  select count(*) into v_n from jogos_torneio_inscritos where torneio = p_torneio;
+  if v_n >= t.vagas then raise exception 'Não tem mais vaga'; end if;
+  insert into jogos_torneio_inscritos (torneio, player) values (p_torneio, v_eu);
+  if v_n + 1 = t.vagas then perform jogos_torneio_comecar(p_torneio); end if;
+end;
+$$;
+
+create or replace function public.jogos_torneio_sair(p_torneio uuid)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare v_eu uuid := jogos_eu();
+begin
+  perform pg_advisory_xact_lock(hashtext('jogos-torneio'));
+  if not exists (select 1 from jogos_torneios where id = p_torneio and status = 'inscricao') then
+    raise exception 'As inscrições desse torneio já fecharam';
+  end if;
+  delete from jogos_torneio_inscritos where torneio = p_torneio and player = v_eu;
+end;
+$$;
+
+-- "Estou pronto": quando os dois tocam, a partida começa. Devolve 'esperando' ou 'andamento'.
+create or replace function public.jogos_torneio_pronto(p_partida uuid)
+returns text
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_eu uuid := jogos_eu();
+  p jogos_partidas;
+begin
+  perform pg_advisory_xact_lock(hashtext('jogos'));
+  select * into p from jogos_partidas where id = p_partida for update;
+  if p.id is null or v_eu not in (p.brancas, p.pretas) then raise exception 'Partida não encontrada'; end if;
+  if p.status = 'andamento' then return 'andamento'; end if;
+  if p.status <> 'chamada' then raise exception 'Essa partida não está mais esperando'; end if;
+  if p.prazo <= now() then raise exception 'O tempo pra entrar acabou'; end if;
+  if exists (select 1 from jogos_partidas where status = 'andamento' and v_eu in (brancas, pretas)) then
+    raise exception 'Termine sua outra partida primeiro';
+  end if;
+  if not (v_eu = any (p.prontos)) then p.prontos := p.prontos || v_eu; end if;
+  if cardinality(p.prontos) < 2 then
+    update jogos_partidas set prontos = p.prontos where id = p_partida;
+    return 'esperando';
+  end if;
+  update jogos_partidas set prontos = p.prontos, status = 'andamento',
+    estado = '{"tab": "pppppppppppp........bbbbbbbbbbbb", "vez": "b", "semProgresso": 0}'::jsonb,
+    versao = 0, inicio = now(), prazo = now() + make_interval(secs => jogos_tempo_de(p_partida))
+  where id = p_partida;
+  -- os convites dos dois saem da sala
+  update jogos_partidas set status = 'cancelado', prazo = null
+  where status = 'convite' and (convidou in (p.brancas, p.pretas) or convidado in (p.brancas, p.pretas));
+  return 'andamento';
+end;
+$$;
+
+-- os 3 minutos pra entrar acabaram: só um entrou = vitória dele; nenhum = sorteio
+create or replace function public.jogos_torneio_wo(p_partida uuid)
+returns boolean
+language plpgsql security definer set search_path = public
+as $$
+declare
+  p jogos_partidas;
+  v_venc uuid;
+begin
+  select * into p from jogos_partidas where id = p_partida and status = 'chamada' for update;
+  if p.id is null or p.prazo > now() then return false; end if;
+  v_venc := case when cardinality(p.prontos) = 1 then p.prontos[1]
+                 when random() < 0.5 then p.brancas else p.pretas end;
+  update jogos_partidas set status = 'fim', vencedor = v_venc, motivo = 'wo', fim = now(), prazo = null where id = p_partida;
+  return true;
+end;
+$$;
+
+-- partida de torneio acabou: conta na série, quem venceu avança; a final fecha o torneio e dá as pedras
+create or replace function public.jogos_torneio_avancar(p_partida uuid)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  p jogos_partidas;
+  c jogos_torneio_confrontos;
+  t jogos_torneios;
+  n jogos_torneio_confrontos;
+  v_r integer;
+  v_precisa integer;
+  v_perdeu uuid;
+begin
+  select * into p from jogos_partidas where id = p_partida;
+  select * into c from jogos_torneio_confrontos where id = p.confronto for update;
+  if c.id is null or c.vencedor is not null then return; end if;
+  select * into t from jogos_torneios where id = c.torneio for update;
+  if t.status <> 'andamento' then return; end if;
+  -- empate com as mesmas peças: joga de novo
+  if p.vencedor is null then perform jogos_torneio_chamar(c.id); return; end if;
+  if p.vencedor = c.a then c.vit_a := c.vit_a + 1; else c.vit_b := c.vit_b + 1; end if;
+  v_r := jogos_torneio_rodadas(t.vagas);
+  v_precisa := case when c.rodada = v_r and t.final_md3 then 2 else 1 end;
+  if greatest(c.vit_a, c.vit_b) < v_precisa then
+    update jogos_torneio_confrontos set vit_a = c.vit_a, vit_b = c.vit_b where id = c.id;
+    perform jogos_torneio_chamar(c.id);
+    return;
+  end if;
+  update jogos_torneio_confrontos set vit_a = c.vit_a, vit_b = c.vit_b, vencedor = p.vencedor where id = c.id;
+  v_perdeu := case when p.vencedor = c.a then c.b else c.a end;
+
+  if c.rodada = v_r then
+    update jogos_torneios set status = 'fim', campeao = p.vencedor, fim = now() where id = t.id;
+    if t.premios ? '1' then
+      insert into jogos_pedras (player, pedra, torneio, colocacao) values (p.vencedor, t.premios ->> '1', t.id, 1) on conflict do nothing;
+    end if;
+    if t.premios ? '2' then
+      insert into jogos_pedras (player, pedra, torneio, colocacao) values (v_perdeu, t.premios ->> '2', t.id, 2) on conflict do nothing;
+    end if;
+    if t.premios ? '3' then
+      insert into jogos_pedras (player, pedra, torneio, colocacao)
+      select case when x.vencedor = x.a then x.b else x.a end, t.premios ->> '3', t.id, 3
+      from jogos_torneio_confrontos x
+      where x.torneio = t.id and x.rodada = v_r - 1 and x.vencedor is not null
+      on conflict do nothing;
+    end if;
+    perform jogos_push((select array_agg(player) from jogos_torneio_inscritos where torneio = t.id),
+                       '🏆 ' || jogos_nick(p.vencedor) || ' é o campeão!',
+                       t.nome || ': venceu ' || jogos_nick(v_perdeu) || ' na final',
+                       '/#jogos/copa/' || t.id, 'jogos-torneio');
+    return;
+  end if;
+
+  select * into n from jogos_torneio_confrontos where torneio = t.id and rodada = c.rodada + 1 and pos = c.pos / 2 for update;
+  if c.pos % 2 = 0 then n.a := p.vencedor; else n.b := p.vencedor; end if;
+  update jogos_torneio_confrontos set a = n.a, b = n.b where id = n.id;
+  if n.a is not null and n.b is not null then perform jogos_torneio_chamar(n.id); end if;
+end;
+$$;
+
+create or replace function public.jogos_torneio_apos_partida()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+begin
+  perform jogos_torneio_avancar(new.id);
+  return new;
+end;
+$$;
+drop trigger if exists jogos_torneio_avancar on public.jogos_partidas;
+create trigger jogos_torneio_avancar after update of status on public.jogos_partidas
+  for each row when (new.status = 'fim' and old.status <> 'fim' and new.confronto is not null)
+  execute function public.jogos_torneio_apos_partida();
+
+-- escolhe a pedra que aparece nas suas partidas (a clássica todo mundo tem)
+create or replace function public.jogos_usar_pedra(p_pedra text)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare v_eu uuid := jogos_eu();
+begin
+  if p_pedra is null or p_pedra not in ('classica', 'ouro', 'prata', 'brasa', 'veneno', 'gelo') then raise exception 'Pedra desconhecida'; end if;
+  if p_pedra <> 'classica' and not exists (select 1 from jogos_pedras where player = v_eu and pedra = p_pedra) then
+    raise exception 'Você ainda não ganhou essa pedra';
+  end if;
+  insert into jogos_pedra_uso (player, pedra) values (v_eu, p_pedra)
+  on conflict (player) do update set pedra = excluded.pedra, atualizado_em = now();
+end;
+$$;
+
+do $$
+declare f text;
+begin
+  foreach f in array array[
+    'jogos_torneio_vivo_de(uuid)', 'jogos_torneio_chamar(uuid)', 'jogos_torneio_comecar(uuid)',
+    'jogos_torneio_wo(uuid)', 'jogos_torneio_avancar(uuid)', 'jogos_torneio_apos_partida()'] loop
+    execute format('revoke all on function public.%s from public, anon, authenticated', f);
+  end loop;
+  foreach f in array array[
+    'jogos_torneio_criar(text, integer, integer, boolean, jsonb)', 'jogos_torneio_cancelar(uuid)',
+    'jogos_torneio_entrar(uuid)', 'jogos_torneio_sair(uuid)', 'jogos_torneio_pronto(uuid)', 'jogos_usar_pedra(text)'] loop
+    execute format('revoke all on function public.%s from public, anon', f);
+    execute format('grant execute on function public.%s to authenticated', f);
+  end loop;
+end;
+$$;
 
 -- Pronto! Se apareceu "Success. No rows returned", deu certo.
 --
