@@ -159,6 +159,7 @@ SUPABASE_KEY: "eyJhbGciOiJIUzI1NiIs...",</pre></div>
         <li>Ache o <code>ranking-cobr</code> na lista e clique em <span class="btn-nome">Import</span>. Se ele não aparecer, clique em <b>Adjust GitHub App Permissions</b> e libere o repositório.</li>
         <li>Não mude nada e clique em <span class="btn-nome">Deploy</span>.</li>
         <li>Em menos de um minuto aparece a tela de parabéns. Clique em <span class="btn-nome">Continue to Dashboard</span>. O link do site fica em <b>Domains</b>, algo como <code>ranking-cobr.vercel.app</code>.</li>
+        <li><b>Sala de jogos (damas):</b> as jogadas são conferidas no servidor, que precisa de uma chave secreta. No Supabase, abra <b>Project Settings → API Keys</b> e copie a chave <b>service_role</b> (secret). Na Vercel, abra o projeto, vá em <b>Settings → Environment Variables</b>, crie <code>SUPABASE_SERVICE_ROLE_KEY</code> com essa chave (marque Production e Preview) e clique em <span class="btn-nome">Save</span>. Depois, em <b>Deployments</b>, clique nos 3 pontinhos do último e em <b>Redeploy</b>. Essa chave fica só na Vercel: <b>nunca</b> coloque no <code>config.js</code>.</li>
       </ol>
       <div class="pronto">PRONTO! AGORA É SÓ AVISAR O DONO 👇</div>
     </div>
@@ -217,7 +218,7 @@ Dica: no navegador, toca nos 3 pontinhos e em "Adicionar à tela inicial". Vira 
     <ol>
       <li>No Supabase, abra o <b>SQL Editor</b>, cole o <code>supabase-setup.sql</code> novo inteiro e clique em <b>Run</b>. Não apaga partidas nem jogadores. O PIN antigo deixa de existir.</li>
       <li>Crie a conta de admin (passo 3, a parte “Agora crie a conta de admin”).</li>
-      <li>No GitHub, clique em <b>Add file → Upload files</b> e suba só <code>index.html</code>, <code>app.js</code> e <code>style.css</code>. Clique em <span class="btn-nome">Commit changes</span>.</li>
+      <li>No GitHub, clique em <b>Add file → Upload files</b> e suba os arquivos que mudaram (normalmente <code>index.html</code>, <code>app.js</code>, <code>style.css</code>, <code>jogos.js</code>, <code>damas-regras.js</code>, <code>sw.js</code> e a pasta <code>api</code>). Clique em <span class="btn-nome">Commit changes</span>.</li>
     </ol>
     <div class="alerta"><b>Não suba o <code>config.js</code> desta pasta.</b> O do GitHub já tem os seus códigos do Supabase; o desta pasta está em branco e deixaria o site em modo demonstração.</div>
     <h2 style="margin-top:36px">SE DER PROBLEMA</h2>
@@ -228,6 +229,8 @@ Dica: no navegador, toca nos 3 pontinhos e em "Adicionar à tela inicial". Vira 
       <li><b>"Essa conta não tem acesso de admin":</b> a conta existe, mas falta a linha do <code>insert into public.admins</code> do passo 3.</li>
       <li><b>"Muitas tentativas":</b> o Supabase bloqueia por alguns minutos quem erra a senha muitas vezes. É proteção, espere e tente de novo.</li>
       <li><b>A seção de torneios não aparece, ou o admin vê "Os torneios ainda não foram ligados no banco":</b> rode o <code>supabase-setup.sql</code> inteiro de novo no SQL Editor. Ele cria as tabelas dos torneios sem apagar nada.</li>
+      <li><b>Sala de jogos: a jogada não vai, ou aparece "Servidor sem a chave SUPABASE_SERVICE_ROLE_KEY":</b> falta a chave <code>SUPABASE_SERVICE_ROLE_KEY</code> na Vercel (passo 6, item "Sala de jogos"). Depois de salvar, faça o <b>Redeploy</b>.</li>
+      <li><b>Sala de jogos não abre ou a conversa da partida dá erro:</b> rode o <code>supabase-setup.sql</code> inteiro de novo (seções 11 e 11b criam as tabelas dos jogos sem apagar nada).</li>
       <li><b>Erro ao enviar com print:</b> rode de novo o <code>supabase-setup.sql</code> inteiro. Pode rodar quantas vezes quiser, ele não apaga nada.</li>
       <li><b>O site parou depois de muitos dias sem uso:</b> no plano grátis, o Supabase pausa o banco depois de uma semana sem nenhum acesso. Entre no Supabase e clique em <span class="btn-nome">Restore project</span>. Com o clã usando, isso não acontece.</li>
     </ul>
