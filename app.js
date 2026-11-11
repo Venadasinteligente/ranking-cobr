@@ -9523,6 +9523,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     perfilDamas: null, // o jogos.js põe aqui a seção DAMAS do perfil (antes das medalhas)
     redesenharPerfil: () => { if (perfilAtual) renderPerfil(); },
     membroLinha: (x, o) => membroChat(x, o),
+    euChat: () => euChat(), meuNick: () => meuNick(), // quem assiste uma partida (jogos.js)
     marcarJogando,
     get sb() { return sb; },
     get euId() { return euId; },

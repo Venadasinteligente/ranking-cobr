@@ -48,6 +48,13 @@
     ultNoticia: 0,           // última notícia da partida aberta (tempo real ou conferida)
     fim: null, fimAss: null, fimTipo: null, fimInfo: null, fimCarregando: null, fimFechado: new Set(),
     mudo: (() => { try { return !!localStorage.getItem('cobr-jogos-mudo'); } catch (e) { return false; } })(),
+    // quem assiste e reações (canal partida:<id> de cada partida que está na tela)
+    canais: new Map(),       // id -> { ch, ok, papel, marcado, desde }
+    verQuem: null,           // faixa de quem assiste aberta? (null = o padrão: aberta pra quem assiste)
+    semReacoes: (() => { try { return !!localStorage.getItem('cobr-jogos-sem-reacoes'); } catch (e) { return false; } })(),
+    reagiuEm: 0, recebidas: new Map(),
+    voos: null,              // camada por cima do tabuleiro (emojis voando e o aviso de dama)
+    fogo: null,              // anel de fogo na peça que virou dama: { id, casa, ate }
   };
   const agora = () => Date.now() + J.desvio;
   const ms = (iso) => (iso ? new Date(iso).getTime() : 0);
@@ -364,9 +371,13 @@
     return el('div', { class: 'jg-vivo' }, lado(p.brancas),
       el('div', { class: 'jg-vivo-meio' },
         el('div', { class: 'jg-vivo-x', text: '×' }),
-        el('div', { class: 'jg-vivo-info', text: `lance ${p.versao}` }),
+        el('div', { class: 'jg-vivo-info', 'data-olhos': p.id, text: infoVivo(p) }),
         el('button', { type: 'button', class: 'btn btn-pri', onclick: () => C.irPara('#jogos/' + p.id) }, minha ? 'Voltar' : [ico(IC_OLHO, 16), 'Assistir'])),
       lado(p.pretas));
+  }
+  function infoVivo(p) {
+    const n = quemAssiste(p.id).length;
+    return `lance ${p.versao}${n ? ` · 👀 ${n} assistindo` : ''}`;
   }
   function linhaUltima(p, quem = null) {
     const emp = !p.vencedor;
@@ -642,7 +653,7 @@
   function notarMudanca(p, est, minhaCor) {
     const v = J.visto;
     J.visto = { id: p.id, versao: p.versao, tab: est.tab, vez: est.vez, status: p.status };
-    if (!v || v.id !== p.id) { J.ult = null; J.anim = null; J.sel = null; buscarUltimoLance(p); return; }
+    if (!v || v.id !== p.id) { J.ult = null; J.anim = null; J.sel = null; J.verQuem = null; J.fogo = null; limparVoos(); buscarUltimoLance(p); return; }
     if (p.versao === v.versao + 1 && est.tab !== v.tab) {
       if (!J.anim) { // lance do outro (o meu já foi animado na hora)
         const mov = diferenca(v.tab, est.tab, v.vez);
@@ -650,6 +661,7 @@
           J.ult = { id: p.id, versao: p.versao, de: mov.de, para: mov.para };
           J.anim = { ...mov, tabAntes: v.tab };
           const virou = v.tab[mov.de] !== est.tab[mov.para];
+          if (virou) fezDama(p, v.vez, mov.para, minhaCor);
           som(virou ? 'dama' : mov.capturas.length ? 'capturar' : 'mover');
         } else J.ult = null;
       }
@@ -691,6 +703,7 @@
       if (c === 0) cel.append(el('span', { class: 'crd n', text: String(8 - lin) }));
       if (r === 7) cel.append(el('span', { class: 'crd l', text: 'abcdefgh'[col] }));
       if (i >= 0 && est.tab[i] !== '.') {
+        if (m && m.fogo === i) cel.append(el('span', { class: 'jg-dama-fogo', 'aria-hidden': 'true' }));
         const pc = peca(est.tab[i]);
         if (m) {
           if (m.sel === i) pc.classList.add('sel');
@@ -800,6 +813,7 @@
     J.anim = { de, para, capturas: j.capturas, tabAntes: p.estado.tab };
     J.ult = { id: p.id, versao: otim.versao, de, para };
     som(j.viraDama ? 'dama' : j.capturas.length ? 'capturar' : 'mover');
+    if (j.viraDama) fezDama(p, p.estado.vez, para, p.estado.vez);
     forcar(otim);
     desenhar();
     try {
@@ -905,7 +919,7 @@
         if (partidaDaUrl() !== id) return;
         if (!x) { toast('Partida não encontrada.', true); C.irPara('#jogos'); return; }
         J.aberta = x;
-        desenharPartida(id);
+        desenhar(); // abre também o canal de quem assiste
       }).catch(() => toast('Não consegui abrir a partida.', true));
       return;
     }
@@ -931,12 +945,13 @@
     J.sel = sel;
     const ult = J.ult && J.ult.id === p.id ? J.ult : null;
 
-    const ass = JSON.stringify([p.id, p.versao, p.status, p.prazo, p.empate_proposto_por, p.vencedor, sel, J.enviando, ult, J.mudo, J.fimFechado.has(p.id), meu]);
+    const fogo = J.fogo && J.fogo.id === p.id && Date.now() < J.fogo.ate ? J.fogo.casa : -1;
+    const ass = JSON.stringify([p.id, p.versao, p.status, p.prazo, p.empate_proposto_por, p.vencedor, sel, J.enviando, ult, J.mudo, J.fimFechado.has(p.id), meu, fogo, J.semReacoes]);
     if (ass === J.assin && sec.querySelector('.jg-partida')) { desenharFim(p); return; }
     J.assin = ass;
 
     const cands = sel ? jogaveis.filter((j) => comeca(j.caminho, sel.pre)) : [];
-    const m = { jogavel: jogaveis.length > 0, ult, sel: sel ? sel.pre[0] : -1, deve: captura ? origens : new Set(), alvos: new Set(), meios: new Set(sel ? sel.pre.slice(1) : []), vitimas: new Set(), caminhos: [] };
+    const m = { jogavel: jogaveis.length > 0, ult, fogo, sel: sel ? sel.pre[0] : -1, deve: captura ? origens : new Set(), alvos: new Set(), meios: new Set(sel ? sel.pre.slice(1) : []), vitimas: new Set(), caminhos: [] };
     for (const j of cands) {
       if (j.caminho.length === sel.pre.length) m.alvos.add(ultima(sel.pre));
       else m.alvos.add(ultima(j.caminho));
@@ -980,14 +995,172 @@
     trocar(sec, el('div', { class: 'jg-partida' },
       el('div', { class: 'jg-topo-partida' },
         el('button', { type: 'button', class: 'btn btn-sec', onclick: () => C.irPara('#jogos') }, ico(IC_VOLTAR, 16), 'Sala'),
-        el('button', { type: 'button', class: 'jg-ico', style: 'margin-left:auto', 'aria-label': J.mudo ? 'Ligar o som' : 'Desligar o som', 'aria-pressed': J.mudo ? 'true' : 'false', onclick: trocarMudo }, ico(J.mudo ? IC_MUDO : IC_SOM))),
+        el('button', { type: 'button', class: 'jg-olhos', id: 'jgOlhos', hidden: true, 'aria-controls': 'jgQuem', 'aria-expanded': 'false', onclick: () => { J.verQuem = !verQuem(p); atualizarOlhos(); } }),
+        el('button', { type: 'button', class: 'jg-ico', 'aria-label': J.mudo ? 'Ligar o som' : 'Desligar o som', 'aria-pressed': J.mudo ? 'true' : 'false', onclick: trocarMudo }, ico(J.mudo ? IC_MUDO : IC_SOM))),
+      el('div', { class: 'jg-quem', id: 'jgQuem', hidden: true }),
       barraJogador(p, emCima, est, vez === emCima),
       faixa,
       tab,
       barraJogador(p, embaixo, est, vez === embaixo),
-      acoes));
+      acoes,
+      andando ? barraReacoes() : null));
     animar(tab);
+    atualizarOlhos();
     desenharFim(p);
+  }
+
+  // ---------- quem assiste e reações (imagem 03) ----------
+  // cada partida na tela tem o canal partida:<id>: a presença diz quem está jogando e quem está
+  // assistindo; o broadcast "reacao" leva os emojis. Na sala só escuta (pro "👀 N assistindo").
+  const EMOJIS = ['😂', '🔥', '😱', '👏', '💀'];
+  const SESSAO = 'v-' + Math.random().toString(36).slice(2);
+  const minhaChave = () => (C.euChat && C.euChat()) || (eu() ? 'p-' + eu() : SESSAO);
+  const meuNome = () => { const r = eu() && C.jogador(eu()); return r ? r.nick : (C.meuNick && C.meuNick()) || 'Alguém'; };
+  function sincronizarCanais() {
+    const quer = new Map();
+    if (J.ligado && C.sb) {
+      const id = partidaDaUrl(), p = id && linhaDe(id);
+      if (p && p.status === 'andamento') quer.set(id, eu() && (p.brancas === eu() || p.pretas === eu()) ? 'jogador' : 'espectador');
+      if (naSala()) for (const x of emAndamento()) if (!quer.has(x.id)) quer.set(x.id, null);
+    }
+    for (const [id, c] of J.canais) if (!quer.has(id)) { if (C.sb) C.sb.removeChannel(c.ch); J.canais.delete(id); }
+    for (const [id, papel] of quer) {
+      const c = J.canais.get(id) || abrirCanal(id);
+      if (c.papel !== papel) { c.papel = papel; marcarPresenca(c); }
+    }
+  }
+  function abrirCanal(id) {
+    const c = { ch: null, ok: false, papel: null, marcado: false, desde: Date.now() };
+    J.canais.set(id, c);
+    c.ch = C.sb.channel('partida:' + id, { config: { presence: { key: minhaChave() }, broadcast: { self: false } } })
+      .on('presence', { event: 'sync' }, () => { if (J.canais.get(id) === c) atualizarOlhos(); })
+      .on('broadcast', { event: 'reacao' }, ({ payload }) => receberReacao(id, payload))
+      .subscribe((st) => {
+        c.ok = st === 'SUBSCRIBED';
+        if (c.ok) { c.marcado = false; marcarPresenca(c); } // (re)conectou: marca de novo
+      });
+    return c;
+  }
+  function marcarPresenca(c) {
+    if (!c.ok) return;
+    if (c.papel) { c.marcado = true; Promise.resolve(c.ch.track({ player_id: eu() || null, nome: meuNome(), papel: c.papel, desde: c.desde })).catch(() => {}); }
+    else if (c.marcado) { c.marcado = false; Promise.resolve(c.ch.untrack()).catch(() => {}); }
+  }
+  // quem está assistindo (sem os dois jogadores), eu primeiro e depois por ordem de chegada
+  function quemAssiste(id) {
+    const c = J.canais.get(id);
+    if (!c) return [];
+    let st = {};
+    try { st = c.ch.presenceState() || {}; } catch (e) {}
+    const p = linhaDe(id), vistos = new Set(), lista = [];
+    for (const [k, metas] of Object.entries(st)) {
+      const m = metas && metas[0];
+      if (!m || m.papel !== 'espectador') continue;
+      const pid = m.player_id || null;
+      if (p && pid && (pid === p.brancas || pid === p.pretas)) continue;
+      const chave = pid || k;
+      if (vistos.has(chave)) continue;
+      vistos.add(chave);
+      const r = pid && C.jogador(pid);
+      lista.push({ k, pid, nome: r ? r.nick : String(m.nome || 'Alguém').slice(0, 24), desde: Number(m.desde) || 0, eu: k === minhaChave() || (!!pid && pid === eu()) });
+    }
+    return lista.sort((a, b) => b.eu - a.eu || a.desde - b.desde);
+  }
+  function fraseQuem(l) {
+    const n = l.map((x) => x.nome);
+    if (n.length === 1) return `${n[0]} está assistindo`;
+    if (n.length <= 4) return `${n.slice(0, -1).join(', ')} e ${n[n.length - 1]} estão assistindo`;
+    return `${n.slice(0, 3).join(', ')} e mais ${n.length - 3} estão assistindo`;
+  }
+  const verQuem = (p) => (J.verQuem != null ? J.verQuem : !(eu() && (p.brancas === eu() || p.pretas === eu())));
+  // chip "👀 N assistindo" + faixa com os avatares (partida) e "lance 31 · 👀 4 assistindo" (sala)
+  function atualizarOlhos() {
+    document.querySelectorAll('#jogos [data-olhos]').forEach((d) => { const p = linhaDe(d.dataset.olhos); if (p) d.textContent = infoVivo(p); });
+    const chip = document.getElementById('jgOlhos'), faixa = document.getElementById('jgQuem');
+    const id = partidaDaUrl(), p = id && linhaDe(id);
+    if (!chip || !faixa || !p) return;
+    const l = p.status === 'andamento' ? quemAssiste(id) : [];
+    chip.hidden = !l.length;
+    trocar(chip, '👀 ', el('b', { text: String(l.length) }), ' assistindo');
+    const aberta = l.length > 0 && verQuem(p);
+    chip.setAttribute('aria-expanded', aberta ? 'true' : 'false');
+    faixa.hidden = !aberta;
+    if (aberta) trocar(faixa, l.slice(0, 6).map((x) => C.avatarChat(x.nome)), el('span', { text: fraseQuem(l) }));
+    posVoos();
+  }
+
+  // camada por cima do tabuleiro: fica fora do #jogos, assim os emojis não somem quando o tabuleiro redesenha
+  function camada() {
+    const t = document.querySelector('#jogos .jg-tab');
+    if (!t) return null;
+    if (!J.voos) { J.voos = el('div', { class: 'jg-voos', 'aria-hidden': 'true' }); document.body.append(J.voos); }
+    posVoos();
+    return J.voos;
+  }
+  function posVoos() {
+    const t = J.voos && document.querySelector('#jogos .jg-tab');
+    if (!t) return;
+    const r = t.getBoundingClientRect();
+    J.voos.style.cssText = `left:${r.left + scrollX}px;top:${r.top + scrollY}px;width:${r.width}px;height:${r.height}px`;
+  }
+  function limparVoos(soEmojis = false) {
+    if (!J.voos) return;
+    if (soEmojis) J.voos.querySelectorAll('.jg-voa').forEach((v) => v.remove());
+    else { J.voos.remove(); J.voos = null; }
+  }
+  function voar(emoji, nome) {
+    const L = camada();
+    if (!L) return;
+    const vs = L.querySelectorAll('.jg-voa');
+    if (vs.length >= 12) vs[0].remove();
+    const v = el('div', { class: 'jg-voa', style: `left:${(3 + Math.random() * 66).toFixed(1)}%;top:${(12 + Math.random() * 54).toFixed(1)}%` }, el('span', { text: emoji }), el('small', { text: nome }));
+    L.append(v);
+    setTimeout(() => v.remove(), 2900);
+  }
+  function reagir(emoji) {
+    const id = partidaDaUrl(), c = id && J.canais.get(id);
+    if (!c || J.semReacoes || Date.now() - J.reagiuEm < 1500) return; // 1 a cada 1,5 s
+    J.reagiuEm = Date.now();
+    voar(emoji, meuNome());
+    if (c.ok) Promise.resolve(c.ch.send({ type: 'broadcast', event: 'reacao', payload: { emoji, nome: meuNome(), player_id: eu() || null, k: minhaChave() } })).catch(() => {});
+  }
+  function receberReacao(id, x) {
+    if (!x || id !== partidaDaUrl() || J.semReacoes || !EMOJIS.includes(x.emoji)) return;
+    const k = String(x.k || x.player_id || x.nome || '?').slice(0, 64), t = Date.now();
+    if (t - (J.recebidas.get(k) || 0) < 1200) return; // quem manda rápido demais fica de fora
+    J.recebidas.set(k, t);
+    const r = x.player_id && C.jogador(x.player_id);
+    voar(x.emoji, r ? r.nick : String(x.nome || 'Alguém').slice(0, 20));
+  }
+  function trocarReacoes() {
+    J.semReacoes = !J.semReacoes;
+    try { localStorage.setItem('cobr-jogos-sem-reacoes', J.semReacoes ? '1' : ''); } catch (e) {}
+    if (J.semReacoes) limparVoos(true);
+    J.assin = null;
+    desenhar();
+  }
+  function barraReacoes() {
+    if (J.semReacoes) return el('div', { class: 'jg-reacoes so' }, el('button', { type: 'button', class: 'jg-esconder', text: 'MOSTRAR REAÇÕES', onclick: trocarReacoes }));
+    return el('div', { class: 'jg-reacoes', role: 'group', 'aria-label': 'Reações' },
+      EMOJIS.map((e) => el('button', { type: 'button', text: e, 'aria-label': `Reagir com ${e}`, onclick: () => reagir(e) })),
+      el('button', { type: 'button', class: 'jg-esconder', text: 'OCULTAR', 'aria-label': 'Ocultar as reações', onclick: trocarReacoes }));
+  }
+  // "👑 NICK FEZ DAMA!" no meio do tabuleiro + anel de fogo na peça, pra todo mundo
+  function fezDama(p, cor, casa, minhaCor) {
+    const quem = minhaCor && cor === minhaCor ? 'VOCÊ' : nick(cor === 'b' ? p.brancas : p.pretas).toUpperCase();
+    const ate = Date.now() + 3500;
+    J.fogo = { id: p.id, casa, ate };
+    setTimeout(() => {
+      if (J.fogo && J.fogo.ate === ate) { J.fogo = null; J.assin = null; desenhar(); }
+    }, 3600);
+    setTimeout(() => { // depois do tabuleiro novo estar na tela
+      const L = camada();
+      if (!L) return;
+      L.querySelectorAll('.jg-aviso-dama').forEach((a) => a.remove());
+      const a = el('div', { class: 'jg-aviso-dama', text: `👑 ${quem} FEZ DAMA!` });
+      L.append(a);
+      setTimeout(() => a.remove(), 3000);
+    }, 0);
   }
 
   // ---- janela do fim (imagem 04): vitória, derrota ou empate ----
@@ -1123,7 +1296,7 @@
     J.pop.style.top = Math.max(12, Math.round(b + 14)) + 'px';
   }
   addEventListener('scroll', posicionarPop, { passive: true });
-  addEventListener('resize', posicionarPop);
+  addEventListener('resize', () => { posicionarPop(); posVoos(); });
   document.addEventListener('transitionend', (e) => { if (e.target.closest && e.target.closest('.topo')) posicionarPop(); });
 
   function desenharBadge() {
@@ -1139,7 +1312,8 @@
     const minha = minhaPartida();
     C.marcarJogando(minha ? minha.id : null);
     const id = partidaDaUrl();
-    if (!id) { fecharFim(); J.assin = null; J.sel = null; }
+    if (!id) { fecharFim(); J.assin = null; J.sel = null; limparVoos(); }
+    sincronizarCanais();
     if (C.pag !== 'jogos') return;
     if (!J.ligado) { desenharDemo(); return; }
     if (id) desenharPartida(id); else desenharSala();
@@ -1153,6 +1327,7 @@
     document.querySelectorAll('.jg-tiq').forEach((n) => { if (n._tique && n._tique() === false) { n._tique = null; venceu = true; } });
     if (venceu) desenhar();
     conferirRelogio();
+    posVoos();
     // o tempo real pode cair sem avisar: com a partida aberta, confere no banco de vez em quando
     const id = J.ligado && partidaDaUrl();
     const p = id && linhaDe(id);
@@ -1181,6 +1356,8 @@
     clearInterval(J.tique);
     J.lista.clear(); J.ultimas = []; J.aberta = null; J.placar = null; J.perfis.clear(); J.tempoPed = null; J.rankTodo = false;
     J.sel = null; J.ctx = null; J.visto = null; J.ult = null; J.anim = null; J.assin = null; J.pendente = null; J.fimInfo = null;
+    sincronizarCanais(); J.recebidas.clear(); J.fogo = null; J.verQuem = null;
+    limparVoos();
     fecharFim();
     if (J.pop) { J.pop.remove(); J.pop = null; J.popId = null; }
     document.body.classList.remove('jg-em-partida');
@@ -1212,6 +1389,11 @@
         C.linhaRegra('Vitória', 'tirou todas as peças ou travou o outro'),
         C.linhaRegra('Empate', 'combinado, ou 20 lances seguidos só de damas'),
         C.linhaRegra('Desistir', 'vitória pro outro')),
+      C.tituloRegra('ASSISTIR'),
+      el('ul', { class: 'rg-lista' },
+        C.linhaRegra('Quem', 'todo mundo do clã, ao vivo'),
+        C.linhaRegra('Reações', '1 a cada 1,5 segundo'),
+        C.linhaRegra('Ocultar', 'esconde as reações neste aparelho')),
       C.tituloRegra('RANKING'),
       el('ul', { class: 'rg-lista' },
         C.linhaRegra('Ordem', 'mais vitórias, depois o aproveitamento'),
