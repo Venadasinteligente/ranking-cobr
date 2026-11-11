@@ -838,15 +838,20 @@
     if (sel) {
       const pre = sel.pre;
       const cands = jogaveis.filter((j) => comeca(j.caminho, pre));
-      // casa por casa: só vale a próxima casa do caminho; quando ela fecha a jogada, joga
+      // casa por casa: a peça para em cada casa e a comida some na hora; a última casa fecha a jogada
       const proximos = cands.filter((j) => j.caminho.length > pre.length && j.caminho[pre.length] === i);
       if (proximos.length) {
         const fecha = proximos.find((j) => j.caminho.length === pre.length + 1);
-        if (fecha) { jogar(p, fecha); return; }
+        if (fecha) { jogar(p, fecha, pre.length - 1); return; }
+        const comida = proximos[0].capturas[pre.length - 1];
+        J.anim = { id: p.id, caminho: [ultima(pre), i], capturas: comida == null ? [] : [comida], virou: false, tabAntes: est.tab };
+        if (!J.mudo) setTimeout(() => tocar([[520 + 70 * (pre.length - 1), 0.07], [390 + 70 * (pre.length - 1), 0.11]]), PASSO * 0.5);
         J.sel = { ...sel, pre: pre.concat(i) };
         desenharPartida(p.id);
         return;
       }
+      // no meio da captura não dá pra trocar de peça nem voltar: tem que continuar comendo
+      if (pre.length > 1) { toast('Continue comendo: toque na casa marcada.'); return; }
       if (cands.some((j) => j.caminho.indexOf(i, pre.length + 1) > 0)) { toast('Vá casa por casa: toque na casa marcada.'); return; }
     }
     if (origens.has(i)) {
@@ -866,7 +871,8 @@
     }
   }
   // mostra na hora (otimista); se o servidor recusar, desfaz e diz o motivo
-  async function jogar(p, j) {
+  // feito = casas da captura que a peça já andou na tela (a animação continua só dali)
+  async function jogar(p, j, feito = 0) {
     let novo;
     try { novo = R.aplicar(p.estado, j.caminho, opcoes()); } catch (e) { toast('Jogada inválida.', true); tremer(); return; }
     const seg = Number(J.cfg.tempo_jogada) || 60;
@@ -875,9 +881,9 @@
     J.sel = null;
     J.enviando = true;
     J.pendente = otim;
-    J.anim = { id: p.id, caminho: j.caminho, capturas: j.capturas, virou: j.viraDama, tabAntes: p.estado.tab };
+    J.anim = { id: p.id, caminho: j.caminho.slice(feito), capturas: j.capturas.slice(feito), virou: j.viraDama, tabAntes: p.estado.tab };
     J.ult = { id: p.id, versao: otim.versao, de, para };
-    somLance(j.capturas.length, j.viraDama);
+    somLance(j.capturas.length - feito, j.viraDama);
     if (j.viraDama) fezDama(p, p.estado.vez, para, p.estado.vez);
     forcar(otim);
     desenhar();
@@ -1044,12 +1050,22 @@
     J.assin = ass;
 
     const cands = sel ? jogaveis.filter((j) => comeca(j.caminho, sel.pre)) : [];
-    const m = { jogavel: jogaveis.length > 0, ult, fogo, sel: sel ? sel.pre[0] : -1, deve: captura ? origens : new Set(), alvos: new Set(), meios: new Set(sel ? sel.pre.slice(1) : []), vitimas: new Set(), caminhos: [] };
+    // no meio da captura a peça já está parada na casa que tocou e as comidas até ali saíram (só na tela)
+    const andou = sel && cands.length ? sel.pre.length - 1 : 0;
+    let vis = est;
+    if (andou) {
+      const t = est.tab.split(''), pc = t[sel.pre[0]];
+      t[sel.pre[0]] = '.';
+      for (const c of cands[0].capturas.slice(0, andou)) t[c] = '.';
+      t[ultima(sel.pre)] = pc;
+      vis = { ...est, tab: t.join('') };
+    }
+    const m = { jogavel: jogaveis.length > 0, ult, fogo, sel: sel ? ultima(sel.pre) : -1, deve: captura && !andou ? origens : new Set(), alvos: new Set(), meios: new Set(), vitimas: new Set(), caminhos: [] };
     // só a próxima casa fica marcada (a captura vai casa por casa, sem pular pra última)
     for (const j of cands) if (j.caminho.length > sel.pre.length) m.alvos.add(j.caminho[sel.pre.length]);
     if (cands.length) {
-      for (const c of cands[0].capturas) if (cands.every((j) => j.capturas.includes(c))) m.vitimas.add(c);
-      if (captura) m.caminhos = [...new Set(cands.map((j) => JSON.stringify(j.caminho.slice(0, sel.pre.length + 1))))].map((s) => JSON.parse(s));
+      for (const c of cands[0].capturas.slice(andou)) if (cands.every((j) => j.capturas.includes(c))) m.vitimas.add(c);
+      if (captura) m.caminhos = [...new Set(cands.map((j) => JSON.stringify(j.caminho.slice(andou, andou + 2))))].map((s) => JSON.parse(s));
     }
     J.ctx = { p, est, jogaveis, origens, captura, minhaCor };
 
@@ -1063,7 +1079,7 @@
       faixa = el('div', { class: 'jg-vez dele' }, !p.vencedor ? 'EMPATE' : jogo ? (p.vencedor === meu ? 'VITÓRIA' : 'DERROTA') : ['VITÓRIA DE ', el('b', { text: nick(p.vencedor) })],
         el('small', { text: (MOTIVO[p.motivo] || 'fim').toUpperCase() }));
     }
-    const tab = tabuleiro(est, souP, m);
+    const tab = tabuleiro(vis, souP, m);
     if (jogo && andando) tab.addEventListener('click', (e) => { const c = e.target.closest('[data-casa]'); if (c) tocarCasa(Number(c.dataset.casa)); });
 
     let acoes = null;
