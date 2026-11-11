@@ -3445,8 +3445,13 @@ body.jg-em-partida #jogos { padding-bottom: 16px; }
 .jg-tab { -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
 .jg-tab.jogavel .jg-c.es { cursor: pointer; }
 .jg-p { transition: transform .15s ease-out, box-shadow .15s; }
-.jg-some { z-index: 2; pointer-events: none; animation: jg-some .32s ease-in both; }
-@keyframes jg-some { to { transform: scale(.15); opacity: 0; } }
+.jg-some { z-index: 2; pointer-events: none; }
+.jg-vez { white-space: nowrap; }
+.jg-vez b { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 380px) {
+  .jg-vez { gap: 8px; padding-inline: 10px; letter-spacing: 1.5px; }
+  .jg-vez small { font-size: 10px; letter-spacing: .3px; padding-inline: 6px; }
+}
 .jg-treme { animation: jg-treme .32s; }
 @keyframes jg-treme { 20%, 60% { translate: -5px 0; } 40%, 80% { translate: 5px 0; } }
 button.jg-ico { padding: 0; font: inherit; cursor: pointer; }

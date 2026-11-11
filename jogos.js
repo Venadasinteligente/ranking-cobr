@@ -85,7 +85,25 @@
 
   // ---------- som e vibração (convite chegando) ----------
   let ac = null;
+  // iPhone/Safari: o áudio só sai depois de um toque na página. Destrava no primeiro toque
+  // (e de novo se o sistema suspender), pra o lance do outro e o convite tocarem som.
+  function destravarSom() {
+    try {
+      if (ac && ac.state === 'running') return;
+      ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+      if (ac.state !== 'running') ac.resume().catch(() => {});
+      const s = ac.createBufferSource();
+      s.buffer = ac.createBuffer(1, 1, 22050);
+      s.connect(ac.destination);
+      s.start(0);
+    } catch (e) {}
+  }
+  addEventListener('touchend', destravarSom, { capture: true, passive: true });
+  addEventListener('pointerdown', destravarSom, { capture: true, passive: true });
+  addEventListener('keydown', destravarSom, true);
   function tocar(notas) {
+    // antes do primeiro toque na página o navegador não deixa tocar: nem tenta
+    if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
     try {
       ac = ac || new (window.AudioContext || window.webkitAudioContext)();
       if (ac.state === 'suspended') ac.resume().catch(() => {});
@@ -597,6 +615,7 @@
     return true;
   }
 
+  const PASSO = 180; // ms de cada pulo da peça na animação do lance
   // sons (o botão de som da partida liga/desliga; fica salvo no aparelho)
   const SONS = {
     mover: [[330, 0.07]],
@@ -607,6 +626,13 @@
     derrota: [[392, 0.2], [330, 0.2], [262, 0.45]],
   };
   function som(k) { if (!J.mudo) tocar(SONS[k]); }
+  function somLance(capturas, virou) {
+    if (J.mudo) return;
+    if (!capturas) { tocar(SONS[virou ? 'dama' : 'mover']); return; }
+    for (let k = 0; k < capturas; k++) setTimeout(() => tocar([[520 + 70 * k, 0.07], [390 + 70 * k, 0.11]]), k * PASSO + PASSO * 0.5);
+    if (virou) setTimeout(() => tocar(SONS.dama), capturas * PASSO + 60);
+  }
+  const calmo = () => !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
   function trocarMudo() {
     J.mudo = !J.mudo;
     try { localStorage.setItem('cobr-jogos-mudo', J.mudo ? '1' : ''); } catch (e) {}
@@ -654,16 +680,17 @@
   function notarMudanca(p, est, minhaCor) {
     const v = J.visto;
     J.visto = { id: p.id, versao: p.versao, tab: est.tab, vez: est.vez, status: p.status };
-    if (!v || v.id !== p.id) { J.ult = null; J.anim = null; J.sel = null; J.verQuem = null; J.fogo = null; limparVoos(); buscarUltimoLance(p); return; }
+    if (!v || v.id !== p.id) { J.ult = null; J.anim = null; J.animando = null; J.sel = null; J.verQuem = null; J.fogo = null; limparVoos(); buscarUltimoLance(p); return; }
     if (p.versao === v.versao + 1 && est.tab !== v.tab) {
       if (!J.anim) { // lance do outro (o meu já foi animado na hora)
         const mov = diferenca(v.tab, est.tab, v.vez);
         if (mov) {
           J.ult = { id: p.id, versao: p.versao, de: mov.de, para: mov.para };
-          J.anim = { ...mov, tabAntes: v.tab };
           const virou = v.tab[mov.de] !== est.tab[mov.para];
+          const j = caminhoDe(v, mov);
+          J.anim = { id: p.id, caminho: j ? j.caminho : [mov.de, mov.para], capturas: j ? j.capturas : mov.capturas, virou, tabAntes: v.tab };
           if (virou) fezDama(p, v.vez, mov.para, minhaCor);
-          som(virou ? 'dama' : mov.capturas.length ? 'capturar' : 'mover');
+          somLance(mov.capturas.length, virou);
         } else J.ult = null;
       }
     } else if (p.versao === v.versao + 1 && est.tab === v.tab && est.vez !== v.vez && p.status === 'andamento') {
@@ -673,7 +700,7 @@
     } else if (p.versao > v.versao) { J.ult = null; buscarUltimoLance(p); }
     if (minhaCor && p.status === 'andamento' && p.versao > v.versao && v.vez !== est.vez && est.vez === minhaCor) {
       if (navigator.vibrate) navigator.vibrate(80);
-      setTimeout(() => som('vez'), 260);
+      setTimeout(() => som('vez'), 260 + (J.anim ? (J.anim.caminho.length - 1) * PASSO : 0));
     }
     if (v.status === 'andamento' && p.status === 'fim') {
       const meu = eu();
@@ -724,33 +751,57 @@
     }
     return box;
   }
-  // peça deslizando da casa de origem; capturadas encolhendo uma a uma
+  // o caminho do lance do outro (o banco só manda o tabuleiro novo): a jogada válida que bate
+  function caminhoDe(v, mov) {
+    try {
+      return R.jogadasValidas({ tab: v.tab, vez: v.vez, semProgresso: 0 }, opcoes()).find((j) => j.caminho[0] === mov.de && ultima(j.caminho) === mov.para
+        && j.capturas.length === mov.capturas.length && mov.capturas.every((c) => j.capturas.includes(c))) || null;
+    } catch (e) { return null; }
+  }
+  // peça deslizando casa por casa (PASSO ms cada pulo); cada capturada encolhe quando a peça passa por ela;
+  // virou dama: brilho dourado no fim. Redesenhou no meio (ex.: o servidor confirmou): continua de onde estava.
   function animar(box) {
-    const a = J.anim;
-    J.anim = null;
+    if (J.anim) { J.animando = { ...J.anim, t0: performance.now() }; J.anim = null; }
+    const a = J.animando;
     if (!a) return;
+    const pulos = a.caminho.length - 1, ja = performance.now() - a.t0;
+    if (a.id !== partidaDaUrl() || ja > pulos * PASSO + 900) { J.animando = null; return; }
+    if (calmo() || !box.animate) return;
     const cel = (i) => box.querySelector(`[data-casa="${i}"]`);
-    const cDe = cel(a.de), cPara = cel(a.para);
+    const cPara = cel(ultima(a.caminho));
     const pc = cPara && cPara.querySelector('.jg-p');
-    if (cDe && pc) {
-      const r1 = cDe.getBoundingClientRect(), r2 = cPara.getBoundingClientRect();
-      pc.style.transition = 'none';
+    const rodar = (alvo, quadros, o) => { const x = alvo.animate(quadros, { fill: 'both', ...o }); x.currentTime = ja; return x; };
+    if (pc && a.caminho.every((i) => cel(i))) {
+      const r2 = cPara.getBoundingClientRect();
+      const quadros = a.caminho.map((i) => {
+        const r = cel(i).getBoundingClientRect();
+        return { transform: `translate(${r.left - r2.left}px, ${r.top - r2.top}px)`, easing: 'cubic-bezier(.3, .1, .3, 1)' };
+      });
       pc.style.zIndex = '3';
-      pc.style.transform = `translate(${r1.left - r2.left}px, ${r1.top - r2.top}px)`;
-      pc.getBoundingClientRect();
-      pc.style.transition = 'transform .22s ease-out';
-      pc.style.transform = '';
-      setTimeout(() => { pc.style.transition = ''; pc.style.zIndex = ''; }, 260);
+      rodar(pc, quadros, { duration: pulos * PASSO, fill: 'backwards' }).finished.then(() => { pc.style.zIndex = ''; }).catch(() => {});
+      if (a.virou) {
+        rodar(pc, [{ scale: 1, filter: 'none' }, { scale: 1.28, filter: 'brightness(1.45) drop-shadow(0 0 12px #FFD84D)', offset: 0.35 }, { scale: 1, filter: 'none' }],
+          { duration: 700, delay: pulos * PASSO, easing: 'ease-out', fill: 'none' });
+      }
     }
     a.capturas.forEach((i, k) => {
       const c = cel(i), letra = a.tabAntes[i];
       if (!c || !letra || letra === '.') return;
       const f = peca(letra);
       f.classList.add('jg-some');
-      f.style.animationDelay = `${140 + k * 90}ms`;
       c.append(f);
-      setTimeout(() => f.remove(), 560 + k * 90);
+      rodar(f, [{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(.15)', opacity: 0 }], { duration: 260, delay: k * PASSO + PASSO * 0.55, easing: 'ease-in' })
+        .finished.then(() => f.remove()).catch(() => {});
     });
+  }
+  // tela baixa (iPhone SE, 360×780): o tabuleiro encolhe pra partida inteira caber sem rolar (mínimo 280px)
+  function ajustarTab() {
+    const box = document.querySelector('#jogos .jg-partida'), t = box && box.querySelector('.jg-tab');
+    if (!t) return;
+    t.style.maxWidth = '';
+    const resto = box.lastElementChild.getBoundingClientRect().bottom + scrollY - t.offsetHeight;
+    const cabe = Math.floor(innerHeight - resto - 4);
+    if (cabe < t.offsetWidth) t.style.maxWidth = `${Math.max(280, cabe)}px`;
   }
   function tremer() {
     const t = document.querySelector('#jogos .jg-tab');
@@ -811,9 +862,9 @@
     J.sel = null;
     J.enviando = true;
     J.pendente = otim;
-    J.anim = { de, para, capturas: j.capturas, tabAntes: p.estado.tab };
+    J.anim = { id: p.id, caminho: j.caminho, capturas: j.capturas, virou: j.viraDama, tabAntes: p.estado.tab };
     J.ult = { id: p.id, versao: otim.versao, de, para };
-    som(j.viraDama ? 'dama' : j.capturas.length ? 'capturar' : 'mover');
+    somLance(j.capturas.length, j.viraDama);
     if (j.viraDama) fezDama(p, p.estado.vez, para, p.estado.vez);
     forcar(otim);
     desenhar();
@@ -830,6 +881,7 @@
     } catch (e) {
       J.pendente = null;
       J.anim = null;
+      J.animando = null;
       J.ult = null;
       forcar(p);
       toast(e.message, true);
@@ -1005,6 +1057,7 @@
       barraJogador(p, embaixo, est, vez === embaixo),
       acoes,
       andando ? barraReacoes() : null));
+    ajustarTab();
     animar(tab);
     atualizarOlhos();
     desenharFim(p);
@@ -1221,6 +1274,7 @@
     J.fimAss = null;
   }
   function confete() {
+    if (calmo()) return [];
     const cores = ['#FF7A1A', '#FFB347', '#FFD84D', '#F4EDE6', '#E0457B', '#3BA4FF'];
     return Array.from({ length: 46 }, (_, i) => el('span', {
       class: 'jg-confete', 'aria-hidden': 'true',
@@ -1297,7 +1351,12 @@
     J.pop.style.top = Math.max(12, Math.round(b + 14)) + 'px';
   }
   addEventListener('scroll', posicionarPop, { passive: true });
-  addEventListener('resize', () => { posicionarPop(); posVoos(); });
+  addEventListener('resize', () => { posicionarPop(); ajustarTab(); posVoos(); });
+  // o que fica em cima/dentro da partida muda de altura sem redesenhar (faixa de quem assiste, cabeçalho): mede de novo
+  if (window.ResizeObserver) {
+    let rq = 0;
+    new ResizeObserver(() => { if (!rq) rq = requestAnimationFrame(() => { rq = 0; ajustarTab(); posVoos(); }); }).observe(document.body);
+  }
   document.addEventListener('transitionend', (e) => { if (e.target.closest && e.target.closest('.topo')) posicionarPop(); });
 
   function desenharBadge() {
@@ -1356,7 +1415,7 @@
     J.rt = null; J.conectou = false; J.carregou = false;
     clearInterval(J.tique);
     J.lista.clear(); J.ultimas = []; J.aberta = null; J.placar = null; J.perfis.clear(); J.tempoPed = null; J.rankTodo = false;
-    J.sel = null; J.ctx = null; J.visto = null; J.ult = null; J.anim = null; J.assin = null; J.pendente = null; J.fimInfo = null;
+    J.sel = null; J.ctx = null; J.visto = null; J.ult = null; J.anim = null; J.animando = null; J.assin = null; J.pendente = null; J.fimInfo = null;
     sincronizarCanais(); J.recebidas.clear(); J.fogo = null; J.verQuem = null;
     limparVoos();
     fecharFim();
