@@ -41,6 +41,9 @@ create table if not exists public.players (
   created_at  timestamptz not null default now()
 );
 create unique index if not exists players_nick_idx on public.players (lower(btrim(nick)));
+-- amigo = não é do clã: o Dono aceitou só pra jogar (sala de jogos). Não entra no ranking,
+-- no elenco nem no chat e só lê o que é dos jogos (passo 5d: is_membro / is_jogador).
+alter table public.players add column if not exists amigo boolean not null default false;
 
 alter table public.players enable row level security;
 revoke all on public.players from anon;
@@ -594,13 +597,32 @@ create table if not exists public.player_pedidos (
 alter table public.player_pedidos enable row level security;
 revoke all on public.player_pedidos from anon, authenticated;
 
--- Membro = conta ligada a um jogador do clã, ou admin. Só membro lê o site (passo 5e).
+-- Membro = conta ligada a um jogador do clã (que não é amigo), ou admin. Só membro lê o site (passo 5e).
 create or replace function public.is_membro()
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select exists(select 1 from player_contas c join players p on p.id = c.player_id
+                where c.user_id = auth.uid() and not p.amigo)
+      or exists(select 1 from admins where user_id = auth.uid());
+$$;
+
+-- Jogador = membro ou amigo: entra na sala de jogos (e só nela, se for amigo)
+create or replace function public.is_jogador()
 returns boolean
 language sql stable security definer set search_path = public
 as $$
   select exists(select 1 from player_contas where user_id = auth.uid())
       or exists(select 1 from admins where user_id = auth.uid());
+$$;
+
+-- A conta logada é de amigo (o site mostra só os jogos)
+create or replace function public.sou_amigo()
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select not is_membro() and exists(select 1 from player_contas c join players p on p.id = c.player_id
+                                    where c.user_id = auth.uid() and p.amigo);
 $$;
 
 -- Antes de criar a conta: livre (do elenco, sem dono) | tem_login | novo (vai pra aprovação)
@@ -668,35 +690,66 @@ $$;
 
 -- Aprovar: a conta fica com o perfil que o admin escolheu (p_player) ou, sem escolha,
 -- com o jogador desse nick (entra no elenco se for novo, volta se era ex-membro).
--- Devolve: ok | tem_login | nao_existe
+-- p_amigo = aceitar como AMIGO (não é do clã, só joga): fica com um perfil de amigo com o nick
+-- que digitou e só vê a sala de jogos. Nick igual ao de alguém do clã não dá.
+-- Devolve: ok | tem_login | nao_existe | nick_do_cla
 drop function if exists public.admin_aprovar_pedido(uuid);
-create or replace function public.admin_aprovar_pedido(p_user uuid, p_player uuid default null)
+drop function if exists public.admin_aprovar_pedido(uuid, uuid);
+create or replace function public.admin_aprovar_pedido(p_user uuid, p_player uuid default null, p_amigo boolean default false)
 returns text
 language plpgsql security definer set search_path = public
 as $$
 declare
   r player_pedidos%rowtype;
-  pid uuid := p_player;
+  v_amigo boolean := coalesce(p_amigo, false);
+  pid uuid := case when coalesce(p_amigo, false) then null else p_player end;
 begin
   select * into r from player_pedidos where user_id = p_user;
-  perform exigir_admin('aprovar pedido', jsonb_build_object('user', p_user, 'nick', r.nick, 'perfil', p_player,
+  perform exigir_admin(case when v_amigo then 'aprovar amigo' else 'aprovar pedido' end,
+    jsonb_build_object('user', p_user, 'nick', r.nick, 'perfil', pid, 'amigo', v_amigo,
     'email', (select email from auth.users where id = p_user)));
   if r.user_id is null then return 'nao_existe'; end if;
   if pid is not null and not exists(select 1 from players where id = pid) then return 'nao_existe'; end if;
   if pid is null then
     select id into pid from players where lower(btrim(nick)) = lower(btrim(r.nick));
   end if;
+  if v_amigo and pid is not null and not (select p.amigo from players p where p.id = pid) then
+    return 'nick_do_cla';
+  end if;
   if pid is not null and exists(select 1 from player_contas where player_id = pid and user_id <> p_user) then
     return 'tem_login';
   end if;
   if pid is null then
-    insert into players (nick) values (btrim(r.nick)) returning id into pid;
-  else
+    insert into players (nick, cargo, amigo)
+    values (btrim(r.nick), case when v_amigo then 'Amigo' else 'Membro' end, v_amigo)
+    returning id into pid;
+  elsif v_amigo then
     update players set ativo = true where id = pid and not ativo;
+  else
+    -- era amigo e agora entrou no clã: vira membro
+    update players set ativo = true, amigo = false, cargo = case when cargo = 'Amigo' then 'Membro' else cargo end
+    where id = pid and (not ativo or amigo);
   end if;
   delete from player_contas where user_id = p_user;
   insert into player_contas (player_id, user_id) values (pid, p_user);
   delete from player_pedidos where user_id = p_user;
+  return 'ok';
+end;
+$$;
+
+-- O admin passa um amigo pra membro do clã (entrou no clã) ou o contrário.
+-- Devolve: ok | nao_existe
+create or replace function public.admin_mudar_amigo(p_player uuid, p_amigo boolean)
+returns text
+language plpgsql security definer set search_path = public
+as $$
+begin
+  perform exigir_admin(case when p_amigo then 'virar amigo' else 'virar membro' end,
+    jsonb_build_object('jogador', p_player, 'nick', (select nick from players where id = p_player)));
+  if not exists(select 1 from players where id = p_player) then return 'nao_existe'; end if;
+  update players set amigo = coalesce(p_amigo, false), ativo = true,
+    cargo = case when p_amigo then 'Amigo' when cargo = 'Amigo' then 'Membro' else cargo end
+  where id = p_player;
   return 'ok';
 end;
 $$;
@@ -722,14 +775,20 @@ revoke all on function public.nick_status(text) from public;
 revoke all on function public.jogador_pedir_nick(text) from public, anon;
 revoke all on function public.meu_pedido() from public, anon;
 revoke all on function public.admin_pedidos() from public, anon;
-revoke all on function public.admin_aprovar_pedido(uuid, uuid) from public, anon;
+revoke all on function public.admin_aprovar_pedido(uuid, uuid, boolean) from public, anon;
+revoke all on function public.admin_mudar_amigo(uuid, boolean) from public, anon;
 revoke all on function public.admin_recusar_pedido(uuid) from public, anon;
+revoke all on function public.is_jogador() from public, anon;
+revoke all on function public.sou_amigo() from public, anon;
 grant execute on function public.is_membro() to authenticated;
+grant execute on function public.is_jogador() to authenticated;
+grant execute on function public.sou_amigo() to authenticated;
+grant execute on function public.admin_mudar_amigo(uuid, boolean) to authenticated;
 grant execute on function public.nick_status(text) to anon, authenticated;
 grant execute on function public.jogador_pedir_nick(text) to authenticated;
 grant execute on function public.meu_pedido() to authenticated;
 grant execute on function public.admin_pedidos() to authenticated;
-grant execute on function public.admin_aprovar_pedido(uuid, uuid) to authenticated;
+grant execute on function public.admin_aprovar_pedido(uuid, uuid, boolean) to authenticated;
 grant execute on function public.admin_recusar_pedido(uuid) to authenticated;
 
 
@@ -738,9 +797,10 @@ grant execute on function public.admin_recusar_pedido(uuid) to authenticated;
 drop policy if exists "membros leem" on public.scores;
 create policy "membros leem" on public.scores
   for select to authenticated using ((select public.is_membro()));
+-- amigo também lê os jogadores: precisa dos nicks pra sala de jogos
 drop policy if exists "membros leem jogadores" on public.players;
 create policy "membros leem jogadores" on public.players
-  for select to authenticated using ((select public.is_membro()));
+  for select to authenticated using ((select public.is_jogador()));
 drop policy if exists "membros leem config" on public.config_site;
 create policy "membros leem config" on public.config_site
   for select to authenticated using ((select public.is_membro()));
@@ -1541,7 +1601,8 @@ begin
   if p_ve = 'escolhidos' then
     insert into chat_canal_membros (canal, user_id)
     select v_id, u from unnest(coalesce(p_membros, '{}')) u
-    where exists (select 1 from player_contas where user_id = u) or exists (select 1 from admins where user_id = u)
+    where exists (select 1 from player_contas pc join players pl on pl.id = pc.player_id where pc.user_id = u and not pl.amigo)
+       or exists (select 1 from admins where user_id = u)
     on conflict do nothing;
   end if;
   return v_id;
@@ -1577,7 +1638,7 @@ as $$
 begin
   if not is_chat_adm() then raise exception 'acesso negado' using errcode = '42501'; end if;
   return coalesce((select jsonb_agg(e order by lower(e.nome)) from (
-    select c.user_id, c.player_id, p.nick as nome from player_contas c join players p on p.id = c.player_id
+    select c.user_id, c.player_id, p.nick as nome from player_contas c join players p on p.id = c.player_id where not p.amigo
     union all
     select a.user_id, null, coalesce(nullif(btrim(a.nome), ''), 'Dono') from admins a
     where not exists (select 1 from player_contas c where c.user_id = a.user_id)) e), '[]'::jsonb);
@@ -1767,7 +1828,7 @@ begin
                 when exists (select 1 from chat_adms d where d.user_id = c.user_id) then 'adm' else 'membro' end as papel,
            case when exists (select 1 from admins a where a.user_id = c.user_id) then 0
                 when exists (select 1 from chat_adms d where d.user_id = c.user_id) then 1 else 2 end as ordem
-    from player_contas c join players p on p.id = c.player_id
+    from player_contas c join players p on p.id = c.player_id where not p.amigo
     union all
     select a.user_id, null, coalesce(nullif(btrim(a.nome), ''), 'Dono'), 'dono', 0
     from admins a where not exists (select 1 from player_contas c where c.user_id = a.user_id)) e), '[]'::jsonb);
@@ -1981,7 +2042,9 @@ begin
                                                || lpad((coalesce((new.dados ->> 'dur')::int, 0) % 60)::text, 2, '0') || ')'
                   else left(new.txt, 160) end;
   with membros as (
-    select user_id from player_contas union select user_id from admins
+    -- amigo (só joga) não recebe aviso do chat
+    select c.user_id from player_contas c join players p on p.id = c.player_id where not p.amigo
+    union select user_id from admins
   ), alvo as (
     select m.user_id, 'aviso' as motivo, 3 as ordem from membros m where new.canal = 'avisos'
     union all
@@ -2442,10 +2505,10 @@ revoke all on public.jogos_partidas, public.jogos_lances from anon, authenticate
 grant select on public.jogos_partidas, public.jogos_lances to authenticated;
 drop policy if exists "membros veem partidas" on public.jogos_partidas;
 create policy "membros veem partidas" on public.jogos_partidas
-  for select to authenticated using ((select public.is_membro()));
+  for select to authenticated using ((select public.is_jogador()));
 drop policy if exists "membros veem lances" on public.jogos_lances;
 create policy "membros veem lances" on public.jogos_lances
-  for select to authenticated using ((select public.is_membro()));
+  for select to authenticated using ((select public.is_jogador()));
 
 -- padrão da configuração (o que o Dono já mudou fica)
 insert into public.config_site (chave, valor)
@@ -2827,7 +2890,7 @@ returns boolean
 language plpgsql security definer set search_path = public
 as $$
 begin
-  if not is_membro() then raise exception 'acesso negado' using errcode = '42501'; end if;
+  if not is_jogador() then raise exception 'acesso negado' using errcode = '42501'; end if;
   return jogos_aplicar_tempo(p_partida, interval '2 seconds');
 end;
 $$;
@@ -2856,7 +2919,7 @@ language sql stable security definer set search_path = public
 as $$
   with fim as (
     -- partida de torneio não entra no ranking normal
-    select * from jogos_partidas where jogo = p_jogo and status = 'fim' and torneio is null and is_membro()
+    select * from jogos_partidas where jogo = p_jogo and status = 'fim' and torneio is null and is_jogador()
   ), r as (
     select brancas as jogador, id, fim as quando,
            case when vencedor is null then 'E' when vencedor = brancas then 'V' else 'D' end as res from fim
@@ -3012,7 +3075,7 @@ revoke all on public.jogos_mensagens from anon, authenticated;
 grant select on public.jogos_mensagens to authenticated;
 drop policy if exists "membros leem a conversa" on public.jogos_mensagens;
 create policy "membros leem a conversa" on public.jogos_mensagens
-  for select to authenticated using ((select public.is_membro()));
+  for select to authenticated using ((select public.is_jogador()));
 
 -- manda uma mensagem na partida. Devolve { id, texto (já filtrado), criado_em }.
 create or replace function public.jogos_falar(p_partida uuid, p_texto text)
@@ -3025,7 +3088,8 @@ declare
   p jogos_partidas;
   r jogos_mensagens;
 begin
-  perform chat_exigir_voz();
+  -- membro silenciado no chat também não fala aqui; amigo não está no chat (só tem esta conversa)
+  if is_membro() then perform chat_exigir_voz(); end if;
   select * into p from jogos_partidas where id = p_partida;
   if p.id is null or v_eu not in (p.brancas, p.pretas) then raise exception 'Só quem está jogando escreve aqui'; end if;
   if not (p.status = 'andamento' or (p.status = 'fim' and p.fim > now() - interval '10 minutes')) then
@@ -3119,7 +3183,7 @@ begin
     execute format('revoke all on public.%I from anon, authenticated', t);
     execute format('grant select on public.%I to authenticated', t);
     execute format('drop policy if exists "membros veem" on public.%I', t);
-    execute format('create policy "membros veem" on public.%I for select to authenticated using ((select public.is_membro()))', t);
+    execute format('create policy "membros veem" on public.%I for select to authenticated using ((select public.is_jogador()))', t);
     if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
       execute format('alter publication supabase_realtime add table public.%I', t);
     end if;

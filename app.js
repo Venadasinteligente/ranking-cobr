@@ -19,9 +19,11 @@
   let modo = CFG.RANKING_POR === 'massa' ? 'massa' : 'pontos';
   let admin = null;           // { nome } quando quem está usando é admin (login do Supabase)
   let euId = null;            // id no elenco do jogador logado (login de jogador ou admin ligado ao jogador)
+  let souAmigo = false;       // a conta é de amigo (não é do clã, o Dono aceitou só pra jogar): o site mostra só os jogos
   let logins = new Map();     // só pro admin: id do jogador -> { email, admin, ultimo_acesso }
   let arquivoPrint = null;
   let jogadores = [];         // elenco do clã (tabela players)
+  let amigos = [];            // amigos (players.amigo): jogam na sala de jogos, mas não são do clã (fora do ranking e do elenco)
   let elenco = new Map();     // chave do nick -> jogador do elenco
   let elencoOk = true;        // false se a tabela players ainda não existe no banco
   let jogPorId = new Map();   // id do elenco -> jogador (torneios guardam o id, não o nick)
@@ -61,7 +63,7 @@
   const comTag = (nome) => `[${TAG}] ${nome}`;
   function indexarElenco() {
     elenco = new Map(jogadores.map((r) => [chave(r.nick), r]));
-    jogPorId = new Map(jogadores.map((r) => [r.id, r]));
+    jogPorId = new Map([...jogadores, ...amigos].map((r) => [r.id, r])); // os jogos acham o nick do amigo pelo id
   }
   const exMembro = (k) => { const r = elenco.get(k); return !!r && !r.ativo; };
   const nomeDe = (k, bruto) => (elenco.get(k) ? elenco.get(k).nick : limparNick(bruto));
@@ -483,6 +485,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   // ---------- busca rápida de jogador ----------
   let achados = [];
   function abrirBusca() {
+    if (souAmigo) return; // amigo só vê os jogos
     const dlg = $('dlgBusca');
     $('fBuscaGlobal').value = '';
     renderBusca();
@@ -549,6 +552,7 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   function mostrarPagina(rolar = true) {
     let { pag, n, raiz } = alvoDoEndereco(location.hash);
     if (!temConteudo(pag)) { pag = PAG_INICIO; n = null; raiz = true; }
+    if (souAmigo && pag !== 'jogos') { pag = 'jogos'; n = null; raiz = true; } // amigo: só a sala de jogos
     const mudou = pag !== pagAtual;
     pagAtual = pag;
     document.querySelectorAll('#principal [data-pag]').forEach((s) => s.classList.toggle('fora', s.dataset.pag !== pag));
@@ -3885,12 +3889,19 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   const ICONE_SAIR = '<path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/><path d="M10 16l-4-4 4-4M6 12h10"/>';
 
   // "eu": quem entrou com o login de jogador (vale em qualquer aparelho); pelo id, então trocar o nick não perde
-  function lerEu() { const r = euId && jogPorId.get(euId); return r ? chave(r.nick) : null; }
+  function lerEu() { const r = !souAmigo && euId && jogPorId.get(euId); return r ? chave(r.nick) : null; }
   function renderEu() {
     const k = lerEu();
     const btn = $('btnEu');
     // admin sem jogador ligado não precisa do botão (liga em "Editar jogador" > Sou eu)
     btn.hidden = !elencoOk || (!k && !!admin);
+    const amigo = souAmigo && jogPorId.get(euId);
+    if (amigo) {
+      // amigo não tem perfil no clã: o botão é só pra sair da conta
+      btn.replaceChildren(avatarDe(amigo.nick, 0, 'av-p'), el('span', { class: 'btn-txt', text: 'Sair' }));
+      btn.setAttribute('aria-label', `Sair da conta (${amigo.nick})`);
+      return;
+    }
     if (!k) {
       const txt = contaSemJogador ? 'Escolher nick' : 'Entrar';
       btn.replaceChildren(svg(ICONE_EU, 20), el('span', { class: 'btn-txt', text: txt }));
@@ -3909,6 +3920,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   function linkPerfil(nome) { return `${location.origin}${location.pathname}?jogador=${encodeURIComponent(nome)}`; }
 
   function abrirPerfil(k) {
+    if (souAmigo) return; // amigo não vê os perfis do clã
     if (document.querySelector('dialog[open]')) document.querySelectorAll('dialog[open]').forEach((d) => d.close());
     if (!perfilAtual && !torneioAtual) rolagemAntes = scrollY;
     const r = elenco.get(k);
@@ -3925,8 +3937,8 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   }
   // voltar = true: saiu do perfil/torneio pelo "voltar", então volta pro ponto onde estava
   function mostrarRota(novo = false, voltar = true) {
-    const k = chaveDaUrl();
-    const tn = k ? null : torneioDaUrl();
+    const k = souAmigo ? null : chaveDaUrl(); // amigo: nem perfil nem torneio do clã, só os jogos
+    const tn = k || souAmigo ? null : torneioDaUrl();
     const antes = perfilAtual, antesTn = torneioAtual;
     perfilAtual = k;
     torneioAtual = tn;
@@ -5953,17 +5965,20 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   }
   // carrega tudo e mostra o site (depois de entrar ou ao abrir já logado)
   async function abrirSite() {
+    // amigo (não é do clã): só a sala de jogos. Sem chat, ranking, perfis e torneios do clã;
+    // entra só na presença, pra aparecer "online" e ser chamado pra jogar
+    document.body.classList.toggle('so-jogos', souAmigo);
     const site = carregar();
-    ligarChat(site);
+    if (souAmigo) ligarPresencaJogos(site); else ligarChat(site);
     await site;
     destrancar();
     aplicarAdmin(admin);
     avisarJogos('site');
     mostrarRota();
-    ligarUso();
+    if (!souAmigo) ligarUso();
     if (!siteAberto) {
       siteAberto = true;
-      cerimoniaAutomatica();
+      if (!souAmigo) cerimoniaAutomatica();
       ligarTempoReal();
     }
   }
@@ -5973,6 +5988,9 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     euId = null;
     meuPedido = null;
     contaSemJogador = false;
+    souAmigo = false;
+    contaUid = null;
+    document.body.classList.remove('so-jogos');
     logins = new Map();
     pedidos = [];
     pd.dados = null;
@@ -5980,7 +5998,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     avisarJogos('sair');
     await desligarChat();
     if (!DEMO && sb) await sb.auth.signOut().catch(() => {});
-    if (!DEMO) { partidas = []; jogadores = []; torneios = []; lancamentos = []; indexarElenco(); }
+    if (!DEMO) { partidas = []; jogadores = []; amigos = []; torneios = []; lancamentos = []; indexarElenco(); }
     document.querySelectorAll('dialog[open]').forEach((d) => d.close());
     $('btnAdmin').textContent = 'Área do admin';
     trancar('visitante');
@@ -5993,6 +6011,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   let modoEntrar = 'entrar';
   let contaSemJogador = false; // logou, mas a conta não tem nick (o escolhido já tinha dono)
   let meuPedido = null;        // nick novo esperando aprovação
+  let contaUid = null;         // id da conta logada (o amigo entra na presença da sala de jogos com ele)
   let linkEmail = null;        // { tipo: 'signup' | 'recovery' } quando a pessoa chegou pelo link do e-mail
   let pedidos = [];            // só pro admin: contas esperando aprovação
   // demonstração: VENO já tem conta (veno@demo.com, senha 1234); outro e-mail com 1234 entra como admin
@@ -6011,11 +6030,13 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     if (DEMO) return;
     const { data } = await sb.auth.getSession();
     const s = data.session;
-    admin = null; euId = null; meuPedido = null; contaSemJogador = false;
+    admin = null; euId = null; meuPedido = null; contaSemJogador = false; souAmigo = false; contaUid = null;
     if (!s) return;
-    const [ra, rj, rp] = await Promise.all([sb.rpc('admin_eu'), sb.rpc('jogador_eu'), sb.rpc('meu_pedido')]);
+    contaUid = s.user ? s.user.id : null;
+    const [ra, rj, rp, rm] = await Promise.all([sb.rpc('admin_eu'), sb.rpc('jogador_eu'), sb.rpc('meu_pedido'), sb.rpc('sou_amigo')]);
     admin = !ra.error && ra.data ? { nome: ra.data } : null;
     euId = !rj.error && rj.data ? rj.data : null;
+    souAmigo = !admin && !!euId && !rm.error && rm.data === true; // sem o SQL novo: ninguém é amigo
     meuPedido = !rp.error && rp.data ? rp.data : null;
     const meta = (s.user && s.user.user_metadata) || {};
     if (!euId && !admin && !meuPedido && meta.nick) {
@@ -6193,7 +6214,8 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       const n = pedidos.length;
       toast(`Bem-vindo, ${admin.nome}.` + (n ? ` ${n} ${n === 1 ? 'pedido esperando' : 'pedidos esperando'} aprovação em Jogadores.` : ' Área do admin liberada.'));
     } else if (r) {
-      toast(confirmou ? `E-mail confirmado! Bem-vindo, ${comTag(r.nick)}.` : `Bem-vindo, ${comTag(r.nick)}!`);
+      const quem = souAmigo ? r.nick : comTag(r.nick); // amigo não leva a tag do clã
+      toast(confirmou ? `E-mail confirmado! Bem-vindo, ${quem}.` : `Bem-vindo, ${quem}!` + (souAmigo ? ' Bora jogar?' : ''));
     }
   }
 
@@ -6317,6 +6339,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     if (box.hidden) return;
     $('qtdPedidos').textContent = pedidos.length || '';
     $('qtdPedidos').hidden = !pedidos.length;
+    renderAmigos();
     if (!pedidos.length) { $('listaPedidos').replaceChildren(el('li', { class: 'pedido-vazio', text: 'Nenhum pedido esperando.' })); return; }
     const qtdPartidas = (r) => partidas.filter((x) => chave(x.player) === chave(r.nick)).length;
     // perfis que ainda não têm dono, quem está no clã primeiro
@@ -6343,25 +6366,30 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
         aviso,
         el('div', { class: 'pedido-btns' },
           el('button', { type: 'button', class: 'btn btn-perigo-sec', onclick: () => confirmar('RECUSAR PEDIDO?', `${p.email} não entra no site e a conta é apagada.`, 'Recusar', () => responderPedido(p, false)) }, 'Recusar'),
+          // amigo: não é do clã, só joga. Vê só a sala de jogos, fica fora do ranking, do elenco e do chat
+          el('button', { type: 'button', class: 'btn btn-sec', title: 'Não é do clã: só joga na sala de jogos', disabled: !!igual, // nick de alguém do clã não vira amigo
+            onclick: () => confirmar('ACEITAR COMO AMIGO?', `${nick} entra só pra jogar: vê a sala de jogos e mais nada (sem ranking, chat, jogadores e torneios do clã). Depois dá pra passar pra membro.`, 'Aceitar como amigo', () => responderPedido(p, true, null, true)) }, 'Como amigo'),
           el('button', { type: 'button', class: 'btn btn-pri', onclick: (e) => { e.currentTarget.disabled = true; responderPedido(p, true, sel.value || null); } }, 'Aprovar')));
     }));
   }
-  async function responderPedido(p, aprovar, perfil = null) {
+  async function responderPedido(p, aprovar, perfil = null, amigo = false) {
     try {
       if (DEMO) {
         const c = demoContas.get(p.user_id);
         if (aprovar) {
-          let id = perfil;
+          let id = amigo ? null : perfil;
           if (!id) {
-            id = 'dj' + (jogadores.length + 10);
-            jogadores.push({ id, nick: limparNick(p.nick), cargo: CARGO_PADRAO, ativo: true, created_at: new Date().toISOString() });
+            id = 'dj' + (jogadores.length + amigos.length + 10);
+            const novo = { id, nick: limparNick(p.nick), cargo: amigo ? 'Amigo' : CARGO_PADRAO, ativo: true, amigo, created_at: new Date().toISOString() };
+            (amigo ? amigos : jogadores).push(novo);
             indexarElenco();
           }
           c.player = id; c.pedido = null;
         } else demoContas.delete(p.user_id);
       } else {
         if (aprovar) {
-          const res = await rpcAdmin('admin_aprovar_pedido', { p_user: p.user_id, p_player: perfil });
+          const res = await rpcAdmin('admin_aprovar_pedido', amigo ? { p_user: p.user_id, p_player: null, p_amigo: true } : { p_user: p.user_id, p_player: perfil });
+          if (res === 'nick_do_cla') { toast('Esse nick é de alguém do clã. Pra aceitar como amigo, a pessoa precisa usar outro nick.', true); renderPedidos(); return; }
           if (res === 'tem_login') { toast('Esse perfil já tem conta de outra pessoa. Escolha outro ou tire o login dele antes.', true); await carregarLogins(); return; }
         } else await rpcAdmin('admin_recusar_pedido', { p_user: p.user_id });
         await carregar();
@@ -6369,10 +6397,49 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       await carregarLogins();
       render();
       const dono = perfil && jogPorId.get(perfil);
-      toast(aprovar ? `${p.email} aprovado como ${comTag(dono ? dono.nick : limparNick(p.nick))}. Já pode entrar.` : 'Pedido recusado.');
+      toast(!aprovar ? 'Pedido recusado.'
+        : amigo ? `${p.email} aceito como amigo (${limparNick(p.nick)}). Já pode entrar e jogar.`
+        : `${p.email} aprovado como ${comTag(dono ? dono.nick : limparNick(p.nick))}. Já pode entrar.`);
     } catch (e) {
       console.error(e);
       if (!erroSessao(e)) { toast('Não deu agora. Tenta de novo.', true); renderPedidos(); }
+    }
+  }
+
+  // amigos aceitos (só jogam): o admin passa pra membro quando entram no clã, ou tira o acesso
+  function renderAmigos() {
+    const box = $('amigosBox');
+    if (!box) return;
+    box.hidden = !admin || !amigos.length;
+    if (box.hidden) return;
+    const lista = [...amigos].sort((a, b) => a.nick.localeCompare(b.nick, 'pt-BR'));
+    $('listaAmigos').replaceChildren(...lista.map((r) => {
+      const l = loginDe(r.id);
+      return el('li', { class: 'pedido' },
+        el('div', { class: 'pedido-txt' },
+          el('b', { text: r.nick }),
+          el('small', { text: l ? `${l.email}${l.ultimo_acesso ? ` · entrou ${haQuanto(l.ultimo_acesso)}` : ''}` : 'sem login (tiraram o acesso)' })),
+        el('div', { class: 'pedido-btns' },
+          l ? el('button', { type: 'button', class: 'btn btn-perigo-sec', onclick: () => confirmar('TIRAR O ACESSO?', `${r.nick} não entra mais no site. As partidas que jogou continuam no histórico.`, 'Tirar acesso', () => mexerAmigo(r, 'tirar')) }, 'Tirar acesso') : null,
+          el('button', { type: 'button', class: 'btn btn-sec', onclick: () => confirmar('PASSAR PRA MEMBRO?', `${r.nick} entrou no clã: passa a ver o site inteiro e entra no elenco como ${comTag(r.nick)}.`, 'Virar membro', () => mexerAmigo(r, 'membro')) }, 'Virar membro')));
+    }));
+  }
+  async function mexerAmigo(r, acao) {
+    try {
+      if (DEMO) {
+        if (acao === 'membro') { amigos = amigos.filter((x) => x.id !== r.id); jogadores.push({ ...r, amigo: false, cargo: CARGO_PADRAO }); indexarElenco(); }
+        else for (const c of demoContas.values()) if (c.player === r.id) c.player = null;
+      } else {
+        if (acao === 'membro') await rpcAdmin('admin_mudar_amigo', { p_player: r.id, p_amigo: false });
+        else await rpcAdmin('admin_tirar_login', { p_player: r.id });
+        await carregar();
+      }
+      await carregarLogins();
+      render();
+      toast(acao === 'membro' ? `${comTag(r.nick)} agora é membro do clã.` : `${r.nick} ficou sem acesso.`);
+    } catch (e) {
+      console.error(e);
+      if (!erroSessao(e)) toast('Não deu agora. Tenta de novo.', true);
     }
   }
 
@@ -6453,13 +6520,15 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     if (DEMO) return;
     let [r, rj, rt, rl, rd] = await Promise.all([
       lerTudo(() => sb.from('scores').select('id, player, mass, print_path, created_at').order('created_at', { ascending: false }).order('id')),
-      lerTudo(() => sb.from('players').select('id, nick, cargo, ativo, avatar, vitrine, parede, created_at').order('nick').order('id')),
+      lerTudo(() => sb.from('players').select('id, nick, cargo, ativo, amigo, avatar, vitrine, parede, created_at').order('nick').order('id')),
       lerTudo(() => sb.from('torneios').select('*').order('inicio', { ascending: false }).order('id')),
       lerTudo(() => sb.from('torneio_lancamentos').select('id, torneio_id, player_id, valor, nota, print_path, created_at').order('created_at', { ascending: false }).order('id')),
       lerTudo(() => sb.from('jogos_partidas').select('id, brancas, pretas, vencedor, fim').eq('jogo', 'damas').eq('status', 'fim').is('torneio', null).order('fim').order('id')),
     ]);
     if (r.error) throw new Error(r.error.message);
     partidas = r.data || [];
+    // sem a coluna amigo (SQL antigo): ninguém é amigo
+    if (rj.error) rj = await lerTudo(() => sb.from('players').select('id, nick, cargo, ativo, avatar, vitrine, parede, created_at').order('nick').order('id'));
     paredeOk = !rj.error;
     if (rj.error) rj = await lerTudo(() => sb.from('players').select('id, nick, cargo, ativo, avatar, vitrine, created_at').order('nick').order('id'));
     vitrineOk = !rj.error;
@@ -6467,7 +6536,9 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     // sem a tabela players (script novo ainda não rodado) o site continua funcionando
     elencoOk = !rj.error;
     if (rj.error) console.warn('elenco:', rj.error.message);
-    jogadores = rj.data || [];
+    // amigo (só joga) fica fora do elenco: ranking, jogadores, torneios e chat são só do clã
+    jogadores = (rj.data || []).filter((x) => !x.amigo);
+    amigos = (rj.data || []).filter((x) => x.amigo);
     indexarElenco();
     // mesma coisa com os torneios: sem as tabelas, a seção só some
     torneiosOk = !rt.error && !rl.error;
@@ -6915,16 +6986,30 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
         if (chat.conectou) carregarChat().catch(() => {});
         chat.conectou = true;
       });
+    ligarPresenca();
+  }
+  // quem está online: a mesma presença serve o chat e a sala de jogos
+  function ligarPresenca(soJogos = false) {
     const pr = sb.channel('chat-online', { config: { presence: { key: euChat() } } });
     pr.on('presence', { event: 'sync' }, () => {
       chat.online = new Map(Object.entries(pr.presenceState()).map(([k, l]) => [k, l[0] || {}]));
-      if (chatVisivel()) desenharMembrosChat();
+      if (!soJogos && chatVisivel()) desenharMembrosChat();
       avisarJogos('online');
-    })
-      .on('broadcast', { event: 'digitando' }, ({ payload }) => alguemDigitando(payload))
-      .on('broadcast', { event: 'toque' }, ({ payload }) => tocaramChat(payload).catch(() => {}))
-      .subscribe((st) => { if (st === 'SUBSCRIBED') { chat.presencaOk = true; marcarOnline(); } });
+    });
+    if (!soJogos) {
+      pr.on('broadcast', { event: 'digitando' }, ({ payload }) => alguemDigitando(payload))
+        .on('broadcast', { event: 'toque' }, ({ payload }) => tocaramChat(payload).catch(() => {}));
+    }
+    pr.subscribe((st) => { if (st === 'SUBSCRIBED') { chat.presencaOk = true; marcarOnline(); } });
     chat.presenca = pr;
+  }
+  // amigo: não lê o chat, só entra na presença (aparece online na sala de jogos e pode ser chamado)
+  function ligarPresencaJogos(site = Promise.resolve()) {
+    if (chat.ligado || DEMO) return;
+    chat.ligado = true;
+    chat.eu = { user_id: contaUid, player_id: euId, nome: '', adm: false, dono: false, punicao: null };
+    site.then(() => { if (chat.ligado && !chat.presenca) ligarPresenca(true); })
+      .catch((e) => { console.warn('presença:', e.message); chat.ligado = false; });
   }
   // o "online" do chat é o mesmo da sala de jogos: junto vai a partida de damas em que a pessoa está
   function marcarOnline() {
@@ -9476,7 +9561,10 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     try { localStorage.removeItem('ranking_pin'); sessionStorage.removeItem('ranking_pin'); } catch (e) {}
 
     // perfil: página com link próprio, botão voltar do celular/navegador funciona
-    $('btnEu').addEventListener('click', () => { const k = lerEu(); if (k) abrirPerfil(k); else abrirEntrar(contaSemJogador ? 'nick' : 'entrar'); });
+    $('btnEu').addEventListener('click', () => {
+      if (souAmigo) { confirmar('SAIR DA CONTA?', 'Pra jogar de novo é só entrar com o seu e-mail e senha.', 'Sair', sairConta); return; }
+      const k = lerEu(); if (k) abrirPerfil(k); else abrirEntrar(contaSemJogador ? 'nick' : 'entrar');
+    });
     // entrar / criar conta
     $('formEntrar').addEventListener('submit', enviarEntrar);
     $('btnCancelarEntrar').addEventListener('click', () => $('dlgEntrar').close());

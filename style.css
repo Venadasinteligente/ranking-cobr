@@ -707,6 +707,10 @@ button, a, summary { touch-action: manipulation; }
 .form-nota b { color: var(--texto-2); }
 
 
+/* amigo do clã (não é membro, só joga): o site mostra só a sala de jogos */
+body.so-jogos .menu a:not(#menuJogos), body.so-jogos #btnBusca, body.so-jogos #btnTopoRegistrar,
+body.so-jogos .barra-baixo, body.so-jogos .rodape { display: none !important; }
+
 /* barra de baixo: só no celular */
 .barra-baixo { display: none; }
 .dica-arrastar { display: none; margin: 0; padding: 10px 16px 0; font-size: 12px; color: var(--texto-3); }
@@ -733,6 +737,7 @@ button, a, summary { touch-action: manipulation; }
     background: var(--laranja); color: var(--tinta-btn); box-shadow: 0 6px 20px rgba(255, 122, 26, .4), 0 0 0 4px var(--fundo);
   }
   body { padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
+  body.so-jogos { padding-bottom: env(safe-area-inset-bottom, 0px); } /* amigo: sem a barra de baixo */
   .rodape { padding-bottom: 0; }
   .toast { bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
   .topo #btnTopoRegistrar { display: none; }
@@ -996,7 +1001,7 @@ body.trancado > :not(.portao):not(dialog):not(.toast):not(script) { display: non
 .pedido-campo span { font-size: 12px; font-weight: 600; letter-spacing: 1px; color: var(--texto-2); }
 .pedido-campo select { min-height: 44px; }
 .pedido-aviso { color: var(--laranja-claro); font-size: 13px; }
-.pedido-btns { display: flex; gap: 8px; justify-content: flex-end; }
+.pedido-btns { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
 .pedido-vazio { color: var(--texto-3); font-size: 14px; padding: 4px 2px; }
 
 /* login do jogador (tela do admin: Editar jogador) */
