@@ -733,7 +733,6 @@
       const i = R.casa(lin, col);
       const cls = ['jg-c', i < 0 ? 'cl' : 'es'];
       if (m && i >= 0) {
-        if (m.ult && (m.ult.de === i || m.ult.para === i)) cls.push('ult');
         if (m.alvos.has(i)) cls.push('jg-alvo');
         else if (m.meios.has(i)) cls.push('jg-alvo', 'meio');
       }
@@ -839,16 +838,16 @@
     if (sel) {
       const pre = sel.pre;
       const cands = jogaveis.filter((j) => comeca(j.caminho, pre));
-      if (pre.length > 1 && i === ultima(pre)) {
-        const j = cands.find((c) => c.caminho.length === pre.length);
-        if (j) { jogar(p, j); return; }
-      }
+      // casa por casa: só vale a próxima casa do caminho; quando ela fecha a jogada, joga
       const proximos = cands.filter((j) => j.caminho.length > pre.length && j.caminho[pre.length] === i);
-      const seguem = proximos.filter((j) => j.caminho.length > pre.length + 1);
-      const terminam = cands.filter((j) => j.caminho.length > pre.length && ultima(j.caminho) === i);
-      if (terminam.length === 1 && !seguem.length) { jogar(p, terminam[0]); return; }
-      if (proximos.length) { J.sel = { ...sel, pre: pre.concat(i) }; desenharPartida(p.id); return; }
-      if (terminam.length > 1) { toast('Dois caminhos chegam nessa casa: toque antes na casa do meio.'); return; }
+      if (proximos.length) {
+        const fecha = proximos.find((j) => j.caminho.length === pre.length + 1);
+        if (fecha) { jogar(p, fecha); return; }
+        J.sel = { ...sel, pre: pre.concat(i) };
+        desenharPartida(p.id);
+        return;
+      }
+      if (cands.some((j) => j.caminho.indexOf(i, pre.length + 1) > 0)) { toast('Vá casa por casa: toque na casa marcada.'); return; }
     }
     if (origens.has(i)) {
       const mesma = sel && sel.pre[0] === i;
@@ -1046,14 +1045,11 @@
 
     const cands = sel ? jogaveis.filter((j) => comeca(j.caminho, sel.pre)) : [];
     const m = { jogavel: jogaveis.length > 0, ult, fogo, sel: sel ? sel.pre[0] : -1, deve: captura ? origens : new Set(), alvos: new Set(), meios: new Set(sel ? sel.pre.slice(1) : []), vitimas: new Set(), caminhos: [] };
-    for (const j of cands) {
-      if (j.caminho.length === sel.pre.length) m.alvos.add(ultima(sel.pre));
-      else m.alvos.add(ultima(j.caminho));
-      for (let k = sel.pre.length; k < j.caminho.length - 1; k++) m.meios.add(j.caminho[k]);
-    }
+    // só a próxima casa fica marcada (a captura vai casa por casa, sem pular pra última)
+    for (const j of cands) if (j.caminho.length > sel.pre.length) m.alvos.add(j.caminho[sel.pre.length]);
     if (cands.length) {
       for (const c of cands[0].capturas) if (cands.every((j) => j.capturas.includes(c))) m.vitimas.add(c);
-      if (captura) m.caminhos = cands.map((j) => j.caminho);
+      if (captura) m.caminhos = [...new Set(cands.map((j) => JSON.stringify(j.caminho.slice(0, sel.pre.length + 1))))].map((s) => JSON.parse(s));
     }
     J.ctx = { p, est, jogaveis, origens, captura, minhaCor };
 
