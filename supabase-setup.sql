@@ -2924,6 +2924,60 @@ begin
 end;
 $$;
 
+-- 11b) Conversa da partida: os dois jogadores trocam mensagens (texto ou as prontas, tipo "Bom jogo!").
+--      Quem assiste só lê (assim ninguém sopra jogada pra um dos lados) e continua com as reações.
+--      Vale durante a partida e até 10 minutos depois do fim (pro "GG" e a revanche).
+--      Passa pelo filtro de palavrões do chat; quem está silenciado ou banido no chat não fala aqui.
+--      Mensagens com mais de 30 dias são apagadas sozinhas.
+create table if not exists public.jogos_mensagens (
+  id         bigint generated always as identity primary key,
+  partida    uuid not null references public.jogos_partidas (id) on delete cascade,
+  player     uuid not null references public.players (id) on delete cascade,
+  texto      text not null check (char_length(texto) between 1 and 140),
+  criado_em  timestamptz not null default now()
+);
+create index if not exists jogos_mensagens_partida_idx on public.jogos_mensagens (partida, id);
+create index if not exists jogos_mensagens_criado_idx on public.jogos_mensagens (criado_em);
+
+alter table public.jogos_mensagens enable row level security;
+revoke all on public.jogos_mensagens from anon, authenticated;
+grant select on public.jogos_mensagens to authenticated;
+drop policy if exists "membros leem a conversa" on public.jogos_mensagens;
+create policy "membros leem a conversa" on public.jogos_mensagens
+  for select to authenticated using ((select public.is_membro()));
+
+-- manda uma mensagem na partida. Devolve { id, texto (já filtrado), criado_em }.
+create or replace function public.jogos_falar(p_partida uuid, p_texto text)
+returns jsonb
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_eu uuid := jogos_eu();
+  v_txt text := btrim(regexp_replace(coalesce(p_texto, ''), '\s+', ' ', 'g'));
+  p jogos_partidas;
+  r jogos_mensagens;
+begin
+  perform chat_exigir_voz();
+  select * into p from jogos_partidas where id = p_partida;
+  if p.id is null or v_eu not in (p.brancas, p.pretas) then raise exception 'Só quem está jogando escreve aqui'; end if;
+  if not (p.status = 'andamento' or (p.status = 'fim' and p.fim > now() - interval '10 minutes')) then
+    raise exception 'A conversa desta partida já fechou';
+  end if;
+  if v_txt = '' then raise exception 'Escreva alguma coisa'; end if;
+  if char_length(v_txt) > 140 then raise exception 'Mensagem grande demais (até 140 letras)'; end if;
+  if exists (select 1 from jogos_mensagens where partida = p_partida and player = v_eu and criado_em > now() - interval '1 second')
+     or (select count(*) from jogos_mensagens where partida = p_partida and player = v_eu and criado_em > now() - interval '1 minute') >= 20 then
+    raise exception 'Calma, muitas mensagens seguidas';
+  end if;
+  insert into jogos_mensagens (partida, player, texto) values (p_partida, v_eu, chat_filtrar(v_txt)) returning * into r;
+  return jsonb_build_object('id', r.id, 'texto', r.texto, 'criado_em', r.criado_em);
+end;
+$$;
+revoke all on function public.jogos_falar(uuid, text) from public, anon;
+grant execute on function public.jogos_falar(uuid, text) to authenticated;
+
+select cron.schedule('jogos-conversa-faxina', '17 * * * *', $$delete from public.jogos_mensagens where criado_em < now() - interval '30 days'$$);
+
 -- Pronto! Se apareceu "Success. No rows returned", deu certo.
 --
 -- Pra dar acesso de admin a alguém (depois de criar a conta em

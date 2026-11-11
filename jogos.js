@@ -24,6 +24,9 @@
   const IC_MUDO = '<path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9.5l5 5M22 9.5l-5 5"/>';
   const IC_TELA = '<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/>';
   const IC_TELA_SAIR = '<path d="M9 4v5H4M20 9h-5V4M15 20v-5h5M4 15h5v5"/>';
+  const IC_CONVERSA = '<path d="M21 11.5a8.4 8.4 0 0 1-12.3 7.5L3 20.5l1.5-5.2A8.5 8.5 0 1 1 21 11.5z"/>';
+  const IC_ENVIAR = '<path d="M4 12l16-8-6 16-2.5-6.5z"/><path d="M11.5 13.5L20 4"/>';
+  const IC_FECHAR = '<path d="M6 6l12 12M18 6L6 18"/>';
   const COROA = `<svg viewBox="0 0 24 24" stroke-width="1.2" stroke-linejoin="round">${C.ICONE_COROA}</svg>`;
 
   // ---------- estado ----------
@@ -57,6 +60,11 @@
     reagiuEm: 0, recebidas: new Map(),
     voos: null,              // camada por cima do tabuleiro (emojis voando e o aviso de dama)
     fogo: null,              // anel de fogo na peça que virou dama: { id, casa, ate }
+    // conversa da partida (só os dois jogadores escrevem; quem assiste lê)
+    conversa: null,          // { id, msgs, ok, ult, lidas, busca, em } da partida aberta
+    cvAberta: false, cvEl: null, falouEm: 0,
+    baloes: new Map(),       // player_id -> { texto, k, ate }: balão em cima da barra do jogador
+    semConversa: (() => { try { return !!localStorage.getItem('cobr-jogos-sem-conversa'); } catch (e) { return false; } })(),
   };
   const agora = () => Date.now() + J.desvio;
   const ms = (iso) => (iso ? new Date(iso).getTime() : 0);
@@ -960,7 +968,7 @@
       return true;
     };
     rel._tique();
-    return el('div', { class: `jg-jog ${vez ? 'vez' : ''}` }, C.avatarChat(nick(id), 'av-m'),
+    return el('div', { class: `jg-jog ${vez ? 'vez' : ''}`, 'data-jog': id }, C.avatarChat(nick(id), 'av-m'),
       el('div', { class: 'jg-jog-txt' }, el('b', { text: nick(id) }),
         el('small', null, `${cor === 'b' ? 'brancas' : 'pretas'} · ${n} ${n === 1 ? 'peça' : 'peças'}`,
           comeu ? el('span', { class: 'jg-mini', 'aria-label': `${comeu} capturadas` }, Array.from({ length: comeu }, () => el('i', { class: outra === 'p' ? 'es' : 'cl' }))) : null)),
@@ -1011,6 +1019,7 @@
     J.aberta = p;
     // convite (ainda não aceito ou recusado): a partida não existe, volta pra sala
     if (p.status !== 'andamento' && p.status !== 'fim') { C.irPara('#jogos'); return; }
+    if (!J.conversa || J.conversa.id !== p.id) buscarConversa(p.id);
     const meu = eu(), souB = !!meu && p.brancas === meu, souP = !!meu && p.pretas === meu, jogo = souB || souP;
     const minhaCor = souB ? 'b' : souP ? 'p' : null;
     const est = p.estado || R.estadoInicial();
@@ -1086,6 +1095,7 @@
       el('div', { class: 'jg-topo-partida' },
         el('button', { type: 'button', class: 'btn btn-sec', onclick: () => C.irPara('#jogos') }, ico(IC_VOLTAR, 16), 'Sala'),
         el('button', { type: 'button', class: 'jg-olhos', id: 'jgOlhos', hidden: true, 'aria-controls': 'jgQuem', 'aria-expanded': 'false', onclick: () => { J.verQuem = !verQuem(p); atualizarOlhos(); } }),
+        botaoConversa('jg-ico'),
         tela,
         el('button', { type: 'button', class: 'jg-ico', 'aria-label': J.mudo ? 'Ligar o som' : 'Desligar o som', 'aria-pressed': J.mudo ? 'true' : 'false', onclick: trocarMudo }, ico(J.mudo ? IC_MUDO : IC_SOM))),
       el('div', { class: 'jg-quem', id: 'jgQuem', hidden: true }),
@@ -1095,10 +1105,12 @@
       baixo,
       acoes,
       andando ? barraReacoes() : null));
+    pendurarBaloes();
     ajustarTab();
     animar(tab);
     atualizarOlhos();
     desenharFim(p);
+    if (J.cvAberta) desenharConversa();
   }
 
   // ---------- quem assiste e reações (imagem 03) ----------
@@ -1113,6 +1125,7 @@
     if (J.ligado && C.sb) {
       const id = partidaDaUrl(), p = id && linhaDe(id);
       if (p && p.status === 'andamento') quer.set(id, eu() && (p.brancas === eu() || p.pretas === eu()) ? 'jogador' : 'espectador');
+      else if (p && conversaViva(p)) quer.set(id, null); // acabou: o canal fica só pro "GG" da conversa chegar na hora
       if (naSala()) for (const x of emAndamento()) if (!quer.has(x.id)) quer.set(x.id, null);
     }
     for (const [id, c] of J.canais) if (!quer.has(id)) { if (C.sb) C.sb.removeChannel(c.ch); J.canais.delete(id); }
@@ -1127,9 +1140,12 @@
     c.ch = C.sb.channel('partida:' + id, { config: { presence: { key: minhaChave() }, broadcast: { self: false } } })
       .on('presence', { event: 'sync' }, () => { if (J.canais.get(id) === c) atualizarOlhos(); })
       .on('broadcast', { event: 'reacao' }, ({ payload }) => receberReacao(id, payload))
+      // "fala" só avisa que tem mensagem nova; o texto vem do banco (ninguém fala no nome de outro)
+      .on('broadcast', { event: 'fala' }, () => { if (id === partidaDaUrl()) buscarConversa(id); })
       .subscribe((st) => {
         c.ok = st === 'SUBSCRIBED';
         if (c.ok) { c.marcado = false; marcarPresenca(c); } // (re)conectou: marca de novo
+        if (c.ok && id === partidaDaUrl() && J.conversa && J.conversa.id === id && J.conversa.ok) buscarConversa(id);
       });
     return c;
   }
@@ -1237,6 +1253,241 @@
       EMOJIS.map((e) => el('button', { type: 'button', text: e, 'aria-label': `Reagir com ${e}`, onclick: () => reagir(e) })),
       el('button', { type: 'button', class: 'jg-esconder', text: 'OCULTAR', 'aria-label': 'Ocultar as reações', onclick: trocarReacoes }));
   }
+
+  // ---------- conversa da partida ----------
+  // os dois jogadores escrevem (texto ou as prontas); quem assiste só lê, assim ninguém sopra jogada.
+  // Vale até 10 min depois do fim. O banco filtra palavrão e barra quem está silenciado no chat.
+  const PRONTAS = ['Bom jogo! 🤝', 'Boa sorte! 🍀', 'Boa jogada! 👏', 'Uau! 😮', 'Quase! 😬', 'Foi mal 😅', 'Pensa logo! ⏳', 'Valeu! 🙏', 'GG 🏆', 'Revanche? 🔁'];
+  const CV_CAMPOS = 'id,partida,player,texto,criado_em';
+  const CV_DEPOIS = 10 * 60 * 1000; // a conversa fica aberta 10 min depois do fim
+  const CV_MAX = 140;
+  const conversaViva = (p) => !!p && (p.status === 'andamento' || (p.status === 'fim' && agora() - ms(p.fim) < CV_DEPOIS));
+  const souJogador = (p) => !!eu() && !!p && (p.brancas === eu() || p.pretas === eu());
+  const podeFalar = (p) => souJogador(p) && conversaViva(p);
+  function conversaDe(id) {
+    if (!J.conversa || J.conversa.id !== id) J.conversa = { id, msgs: [], ok: false, ult: 0, lidas: 0, busca: null, denovo: false, em: 0 };
+    return J.conversa;
+  }
+  // primeira vez: as últimas 100; depois só as novas (id maior que a última)
+  function buscarConversa(id) {
+    if (!J.ligado || !C.sb) return Promise.resolve();
+    const cv = conversaDe(id);
+    if (cv.busca) { cv.denovo = true; return cv.busca; }
+    cv.em = Date.now();
+    cv.busca = (async () => {
+      const q = C.sb.from('jogos_mensagens').select(CV_CAMPOS).eq('partida', id);
+      const r = cv.ok ? await q.gt('id', cv.ult).order('id', { ascending: true }).limit(100)
+        : await q.order('id', { ascending: false }).limit(100);
+      if (r.error) throw r.error;
+      if (J.conversa !== cv) return;
+      const primeira = !cv.ok;
+      cv.ok = true;
+      receberMsgs(cv, primeira ? (r.data || []).slice().reverse() : r.data || [], primeira);
+    })()
+      .catch((e) => console.warn('conversa:', e.message))
+      .finally(() => {
+        cv.busca = null;
+        if (cv.denovo && J.conversa === cv) { cv.denovo = false; buscarConversa(id); }
+      });
+    return cv.busca;
+  }
+  function receberMsgs(cv, lista, primeira = false) {
+    const ja = new Set(cv.msgs.map((m) => m.id));
+    const novas = lista.filter((m) => m && !ja.has(m.id));
+    if (!novas.length) { if (primeira) atualizarConversa(); return; }
+    cv.msgs.push(...novas);
+    cv.msgs.sort((a, b) => (a.pend ? 1 : 0) - (b.pend ? 1 : 0) || a.id - b.id);
+    if (cv.msgs.length > 200) cv.msgs.splice(0, cv.msgs.length - 200);
+    for (const m of novas) if (typeof m.id === 'number' && m.id > cv.ult) cv.ult = m.id;
+    if (primeira) cv.lidas = cv.ult; // o que já estava lá quando abriu não conta como novidade
+    else {
+      const deles = novas.filter((m) => m.player !== eu());
+      if (deles.length && cv.id === partidaDaUrl() && !J.semConversa) {
+        const m = deles[deles.length - 1];
+        if (!J.cvAberta) {
+          mostrarBalao(m.player, m.texto);
+          if (J.fim) toast(`💬 ${nick(m.player)}: ${m.texto}`);
+        }
+        if (!J.mudo) tocar([[740, 0.06], [988, 0.1]]);
+      }
+    }
+    if (J.cvAberta) cv.lidas = cv.ult;
+    atualizarConversa();
+  }
+  const naoLidas = () => {
+    const cv = J.conversa;
+    if (!cv || cv.id !== partidaDaUrl() || J.semConversa) return 0;
+    return cv.msgs.filter((m) => typeof m.id === 'number' && m.id > cv.lidas && m.player !== eu()).length;
+  };
+  // o botão 💬 (barra de cima da partida e janela do fim) com o número de mensagens novas
+  function botaoConversa(cls) {
+    const n = naoLidas();
+    return el('button', { type: 'button', class: `${cls} jg-cv-bt${J.semConversa ? ' mudo' : ''}`, 'aria-label': 'Conversa da partida', onclick: abrirConversa },
+      ico(IC_CONVERSA, cls === 'jg-ico' ? 18 : 17), cls === 'jg-ico' ? null : 'CONVERSA',
+      el('span', { class: 'jg-cv-n', 'data-cv-badge': '', hidden: !n, text: n > 9 ? '9+' : String(n) }));
+  }
+  function atualizarConversa() {
+    const n = naoLidas();
+    document.querySelectorAll('[data-cv-badge]').forEach((b) => { b.hidden = !n; b.textContent = n > 9 ? '9+' : String(n); });
+    document.querySelectorAll('.jg-cv-bt').forEach((b) => b.classList.toggle('mudo', J.semConversa));
+    if (J.cvAberta) desenharConversa();
+  }
+
+  // balão em cima (ou embaixo) da barra de quem falou, some sozinho
+  function mostrarBalao(pid, texto) {
+    if (J.semConversa) return;
+    const k = Date.now() + Math.random();
+    J.baloes.set(pid, { texto, k, ate: Date.now() + 4500 });
+    const b = document.querySelector(`#jogos .jg-jog[data-jog="${pid}"]`);
+    if (b) { b.querySelectorAll('.jg-balao').forEach((x) => x.remove()); b.append(el('div', { class: 'jg-balao', 'aria-hidden': 'true' }, el('span', { text: texto }))); }
+    setTimeout(() => {
+      const x = J.baloes.get(pid);
+      if (!x || x.k !== k) return;
+      J.baloes.delete(pid);
+      document.querySelectorAll(`#jogos .jg-jog[data-jog="${pid}"] .jg-balao`).forEach((n) => { n.classList.add('sai'); setTimeout(() => n.remove(), 260); });
+    }, 4500);
+  }
+  function tirarBalao(pid) {
+    J.baloes.delete(pid);
+    document.querySelectorAll(`#jogos .jg-jog[data-jog="${pid}"] .jg-balao`).forEach((n) => n.remove());
+  }
+  // a barra foi desenhada de novo: o balão que ainda vale volta (sem animar de novo)
+  function pendurarBaloes() {
+    if (J.semConversa) return;
+    for (const [pid, x] of J.baloes) {
+      if (x.ate < Date.now()) continue;
+      const b = document.querySelector(`#jogos .jg-jog[data-jog="${pid}"]`);
+      if (b && !b.querySelector('.jg-balao')) b.append(el('div', { class: 'jg-balao ja', 'aria-hidden': 'true' }, el('span', { text: x.texto })));
+    }
+  }
+
+  // o painel da conversa (sobe de baixo)
+  function abrirConversa() {
+    const id = partidaDaUrl();
+    if (!id) return;
+    J.cvAberta = true;
+    if (!J.conversa || J.conversa.id !== id) buscarConversa(id);
+    desenharConversa(true);
+  }
+  function fecharConversa() {
+    J.cvAberta = false;
+    if (J.cvEl) { J.cvEl.remove(); J.cvEl = null; }
+    atualizarConversa();
+  }
+  function trocarSemConversa() {
+    J.semConversa = !J.semConversa;
+    try { localStorage.setItem('cobr-jogos-sem-conversa', J.semConversa ? '1' : ''); } catch (e) {}
+    if (J.semConversa) for (const pid of [...J.baloes.keys()]) tirarBalao(pid);
+    if (J.cvEl) { J.cvEl.remove(); J.cvEl = null; } // monta de novo com o botão trocado
+    atualizarConversa();
+  }
+  const horaCv = (iso) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  function desenharConversa(focar = false) {
+    const id = partidaDaUrl(), p = id && linhaDe(id);
+    if (!J.cvAberta || !p) { if (J.cvEl) { J.cvEl.remove(); J.cvEl = null; } J.cvAberta = false; return; }
+    const cv = conversaDe(id);
+    cv.lidas = Math.max(cv.lidas, cv.ult);
+    document.querySelectorAll('[data-cv-badge]').forEach((b) => { b.hidden = true; });
+    if (!J.cvEl) {
+      const lista = el('div', { class: 'jg-cv-lista', role: 'log', 'aria-live': 'polite' });
+      const pe = el('div', { class: 'jg-cv-pe' });
+      const caixa = el('div', { class: 'jg-cv', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Conversa da partida' },
+        el('div', { class: 'jg-cv-cab' },
+          ico(IC_CONVERSA, 18),
+          el('div', { class: 'jg-cv-tit' }, el('b', { text: 'CONVERSA' }), el('small', { text: `${nick(p.brancas)} × ${nick(p.pretas)}` })),
+          el('button', { type: 'button', class: 'jg-esconder', 'aria-pressed': J.semConversa ? 'true' : 'false', onclick: trocarSemConversa, text: J.semConversa ? 'LIGAR AVISOS' : 'SILENCIAR' }),
+          el('button', { type: 'button', class: 'jg-ico', 'aria-label': 'Fechar a conversa', onclick: fecharConversa }, ico(IC_FECHAR, 18))),
+        lista, pe);
+      const fundo = el('div', { class: 'jg-cv-fundo' }, caixa);
+      fundo.addEventListener('click', (e) => { if (e.target === fundo) fecharConversa(); });
+      document.body.append(fundo);
+      J.cvEl = fundo;
+      J.cvEl._lista = lista; J.cvEl._pe = pe; J.cvEl._tipo = null;
+      encaixarCv();
+    }
+    // as mensagens
+    const lista = J.cvEl._lista;
+    const noFim = lista.scrollHeight - lista.scrollTop - lista.clientHeight < 40;
+    const jogo = souJogador(p), direita = jogo ? eu() : p.brancas; // quem assiste: brancas na direita
+    if (!cv.ok) trocar(lista, el('p', { class: 'jg-cv-vazio', text: 'Carregando…' }));
+    else if (!cv.msgs.length) trocar(lista, el('p', { class: 'jg-cv-vazio', text: podeFalar(p) ? 'Ninguém falou nada ainda. Manda um “Bom jogo!” 🤝' : 'Ninguém falou nada nesta partida.' }));
+    else {
+      trocar(lista, cv.msgs.map((m, i) => {
+        const dir = m.player === direita, minha = m.player === eu(), ant = cv.msgs[i - 1], cont = ant && ant.player === m.player;
+        const cor = m.player === p.brancas ? 'b' : 'p';
+        return el('div', { class: `jg-cv-m${dir ? ' dir' : ''}${minha ? ' eu' : ''}${cont ? ' cont' : ''}${m.pend ? ' pend' : ''}` },
+          minha ? null : el('span', { class: 'jg-cv-av' }, cont ? null : C.avatarChat(nick(m.player), 'av-p')),
+          el('div', { class: 'jg-cv-bolha' },
+            cont || jogo ? null : el('b', null, el('i', { class: `jg-cv-cor ${cor}` }), nick(m.player)),
+            el('span', { class: 'jg-cv-txt', text: m.texto }),
+            el('small', { text: m.pend ? 'enviando…' : horaCv(m.criado_em) })));
+      }));
+    }
+    if (noFim || focar || (cv.msgs.length && cv.msgs[cv.msgs.length - 1].player === eu())) lista.scrollTop = lista.scrollHeight;
+    // o rodapé: escrever (jogador), só ler (quem assiste) ou encerrada
+    const tipo = tipoConversa(p);
+    const pe = J.cvEl._pe;
+    if (J.cvEl._tipo !== tipo) {
+      J.cvEl._tipo = tipo;
+      if (tipo === 'fala') {
+        const inp = el('input', { type: 'text', maxlength: String(CV_MAX), placeholder: 'Mensagem…', 'aria-label': 'Mensagem', enterkeyhint: 'send', autocomplete: 'off' });
+        trocar(pe,
+          el('div', { class: 'jg-cv-prontas', role: 'group', 'aria-label': 'Mensagens prontas' },
+            PRONTAS.map((t) => el('button', { type: 'button', text: t, onclick: () => falar(t, true) }))),
+          el('form', { class: 'jg-cv-form', onsubmit: (e) => { e.preventDefault(); falar(inp.value); } },
+            inp, el('button', { type: 'submit', class: 'btn btn-pri', 'aria-label': 'Enviar' }, ico(IC_ENVIAR, 18))),
+          el('small', { class: 'jg-cv-nota', text: '👀 Quem assiste também lê' }));
+        if (focar && matchMedia('(hover: hover)').matches) setTimeout(() => inp.focus(), 50); // no celular o teclado não sobe sozinho
+      } else {
+        trocar(pe, el('p', { class: 'jg-cv-nota so', text: tipo === 'le' ? '👀 Só quem está jogando escreve aqui' : 'Conversa encerrada' }));
+      }
+    }
+  }
+  const tipoConversa = (p) => (podeFalar(p) ? 'fala' : souJogador(p) ? 'fechou' : 'le');
+  async function falar(texto, pronta = false) {
+    const id = partidaDaUrl(), p = id && linhaDe(id);
+    const t = String(texto || '').replace(/\s+/g, ' ').trim().slice(0, CV_MAX);
+    if (!p || !t || !podeFalar(p)) return;
+    if (Date.now() - J.falouEm < 1100) { toast('Calma, uma mensagem por vez.', true); return; }
+    J.falouEm = Date.now();
+    const cv = conversaDe(id);
+    const tmp = { id: 'tmp-' + J.falouEm, partida: id, player: eu(), texto: t, criado_em: new Date(agora()).toISOString(), pend: true };
+    cv.msgs.push(tmp);
+    const inp = J.cvEl && J.cvEl.querySelector('.jg-cv-form input');
+    if (!pronta && inp) inp.value = '';
+    if (pronta) fecharConversa(); else desenharConversa();
+    mostrarBalao(eu(), t);
+    try {
+      const { data, error } = await C.sb.rpc('jogos_falar', { p_partida: id, p_texto: t });
+      if (error) throw error;
+      cv.msgs = cv.msgs.filter((m) => m !== tmp);
+      const m = { id: Number(data.id), partida: id, player: eu(), texto: data.texto, criado_em: data.criado_em };
+      if (m.texto !== t && J.baloes.has(eu())) mostrarBalao(eu(), m.texto); // o filtro trocou palavrão por ***
+      receberMsgs(cv, [m]);
+      const c = J.canais.get(id);
+      if (c && c.ok) Promise.resolve(c.ch.send({ type: 'broadcast', event: 'fala', payload: {} })).catch(() => {});
+    } catch (e) {
+      cv.msgs = cv.msgs.filter((m) => m !== tmp);
+      tirarBalao(eu());
+      const i = J.cvEl && J.cvEl.querySelector('.jg-cv-form input');
+      if (!pronta && i && !i.value) i.value = t;
+      const msg = erroTxt(e);
+      toast(/silenciado/i.test(msg) ? 'Você está silenciado no chat: não dá pra mandar mensagem.' : msg, true);
+      atualizarConversa();
+    }
+  }
+  // teclado do celular aberto: o painel fica na parte que sobra da tela (a caixa de escrever não some atrás dele)
+  function encaixarCv() {
+    const v = window.visualViewport;
+    if (!J.cvEl || !v) return;
+    J.cvEl.style.top = `${Math.round(v.offsetTop)}px`;
+    J.cvEl.style.height = `${Math.round(v.height)}px`;
+    J.cvEl.style.bottom = 'auto';
+  }
+  if (window.visualViewport) { visualViewport.addEventListener('resize', encaixarCv); visualViewport.addEventListener('scroll', encaixarCv); }
+  addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && J.cvAberta) { e.stopPropagation(); fecharConversa(); }
+  }, true);
   // "👑 NICK FEZ DAMA!" no meio do tabuleiro + anel de fogo na peça, pra todo mundo
   function fezDama(p, cor, casa, minhaCor) {
     const quem = minhaCor && cor === minhaCor ? 'VOCÊ' : nick(cor === 'b' ? p.brancas : p.pretas).toUpperCase();
@@ -1352,6 +1603,7 @@
       info && info.assumiu ? el('p', { class: 'jg-fim-sobe', text: '🏆 Você assumiu o 1º lugar do ranking de damas!' }) : null,
       rev && rev.convidou === outro ? el('p', { class: 'jg-fim-sobe', text: `🔁 ${nick(outro)} pediu revanche!` }) : null,
       btRev,
+      jogo ? botaoConversa('btn btn-sec btn-grande') : null,
       el('button', { type: 'button', class: 'btn btn-sec btn-grande', text: 'VOLTAR PRA SALA', onclick: () => { J.fimFechado.add(p.id); C.irPara('#jogos'); } }));
     caixa.querySelector('.jg-fim-taca-box').outerHTML = TACA;
     const novo = !J.fim || J.fimTipo !== p.id + tipo;
@@ -1415,6 +1667,7 @@
     C.marcarJogando(minha ? minha.id : null);
     const id = partidaDaUrl();
     if (!id) { fecharFim(); J.assin = null; J.sel = null; limparVoos(); }
+    if (!id || (J.conversa && J.conversa.id !== id)) { if (J.cvAberta) fecharConversa(); J.conversa = null; J.baloes.clear(); }
     sincronizarCanais();
     if (C.pag !== 'jogos') return;
     if (!J.ligado) { desenharDemo(); return; }
@@ -1437,6 +1690,9 @@
       J.ultNoticia = Date.now();
       conferir(id);
     }
+    const cv = id && J.conversa;
+    if (cv && cv.id === id && cv.ok && p && conversaViva(p) && !document.hidden && Date.now() - cv.em > 15000) buscarConversa(id);
+    if (J.cvAberta && J.cvEl && p && tipoConversa(p) !== J.cvEl._tipo) desenharConversa();
   }
 
   async function ligar() {
@@ -1459,6 +1715,7 @@
     J.lista.clear(); J.ultimas = []; J.aberta = null; J.placar = null; J.perfis.clear(); J.tempoPed = null; J.rankTodo = false;
     J.sel = null; J.ctx = null; J.visto = null; J.ult = null; J.anim = null; J.animando = null; J.assin = null; J.pendente = null; J.fimInfo = null;
     sincronizarCanais(); J.recebidas.clear(); J.fogo = null; J.verQuem = null;
+    if (J.cvAberta) fecharConversa(); J.conversa = null; J.baloes.clear();
     limparVoos();
     fecharFim();
     if (J.pop) { J.pop.remove(); J.pop = null; J.popId = null; }
@@ -1497,6 +1754,13 @@
         C.linhaRegra('Quem', 'todo mundo do clã, ao vivo'),
         C.linhaRegra('Reações', '1 a cada 1,5 segundo'),
         C.linhaRegra('Ocultar', 'esconde as reações neste aparelho')),
+      C.tituloRegra('CONVERSA'),
+      el('ul', { class: 'rg-lista' },
+        C.linhaRegra('Quem escreve', 'só os 2 jogadores'),
+        C.linhaRegra('Quem assiste', 'lê, mas não escreve'),
+        C.linhaRegra('Prontas', '“Bom jogo!”, “GG”… com 1 toque'),
+        C.linhaRegra('Depois do fim', 'fica aberta mais 10 minutos'),
+        C.linhaRegra('Silenciar', 'tira os balões e o som neste aparelho')),
       C.tituloRegra('RANKING'),
       el('ul', { class: 'rg-lista' },
         C.linhaRegra('Ordem', 'mais vitórias, depois o aproveitamento'),
