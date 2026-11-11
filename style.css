@@ -3439,3 +3439,31 @@ body.jg-em-partida #jogos { padding-bottom: 16px; }
 .jg-ult-res.perdeu { background: rgba(255, 90, 78, .12); color: var(--perigo); }
 .jg-vivo-lado .av { flex: none; }
 @media (min-width: 640px) { .jg-pop { left: auto; right: 16px; width: 420px; } }
+
+/* ---- Sala de jogos: partida ao vivo (tocar, animar, fim) ---- */
+.jg-tab { -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
+.jg-tab.jogavel .jg-c.es { cursor: pointer; }
+.jg-p { transition: transform .15s ease-out, box-shadow .15s; }
+.jg-some { z-index: 2; pointer-events: none; animation: jg-some .32s ease-in both; }
+@keyframes jg-some { to { transform: scale(.15); opacity: 0; } }
+.jg-treme { animation: jg-treme .32s; }
+@keyframes jg-treme { 20%, 60% { translate: -5px 0; } 40%, 80% { translate: 5px 0; } }
+button.jg-ico { padding: 0; font: inherit; cursor: pointer; }
+.jg-ico[aria-pressed="true"] { color: var(--texto-3); }
+.jg-acoes .btn[disabled] { opacity: .55; cursor: default; }
+.jg-empate-pedido .btn-pri { animation: jg-pulsa 1.4s ease-in-out infinite; }
+@keyframes jg-pulsa { 50% { box-shadow: 0 0 0 4px rgba(255, 122, 26, .3), 0 0 18px rgba(255, 122, 26, .5); } }
+.jg-fim-fundo.entra .jg-fim { animation: jg-fim-entra .38s cubic-bezier(.2, 1.3, .4, 1) both; }
+@keyframes jg-fim-entra { from { transform: scale(.85); opacity: 0; } }
+.jg-fim-raios { animation: jg-gira 24s linear infinite; }
+@keyframes jg-gira { from { transform: translate(-50%, -50%) rotate(0); } to { transform: translate(-50%, -50%) rotate(360deg); } }
+.jg-confete { animation: jg-cai 2s cubic-bezier(.2, .6, .4, 1) both; }
+@keyframes jg-cai { from { translate: 0 -105vh; } }
+.jg-fim .btn[disabled] { opacity: .6; cursor: default; }
+.jg-fim-sobe + .jg-fim-sobe { margin-top: -6px; }
+.jg-fim.derrota { border-color: var(--linha-forte); background: var(--painel-2); box-shadow: 0 0 40px rgba(0, 0, 0, .5); }
+.jg-fim.derrota h3 { background: none; color: var(--texto-3); }
+.jg-fim.derrota .jg-fim-taca { filter: grayscale(1) brightness(.55); }
+.jg-fim.empate { border-color: var(--azul-linha); background: radial-gradient(circle at 50% 22%, rgba(59, 164, 255, .18), transparent 55%), var(--painel-2); box-shadow: 0 0 50px rgba(59, 164, 255, .18); }
+.jg-fim.empate h3 { background: linear-gradient(180deg, #E4F3FF, var(--azul-claro) 55%, var(--azul)); -webkit-background-clip: text; background-clip: text; }
+.jg-fim.empate .jg-fim-taca { filter: grayscale(1) sepia(1) hue-rotate(170deg) saturate(2.2) drop-shadow(0 0 18px rgba(59, 164, 255, .5)); }

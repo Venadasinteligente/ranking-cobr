@@ -20,11 +20,13 @@
   const IC_XADREZ = '<path d="M9 21h6M8 18h8l-1-6h-6zM12 3v4M10 5h4M9 12c-1-2 0-4 3-5 3 1 4 3 3 5"/>';
   const IC_VOLTAR = '<path d="M15 5l-7 7 7 7"/>';
   const IC_OLHO = '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>';
+  const IC_SOM = '<path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/>';
+  const IC_MUDO = '<path d="M4 9v6h4l5 4V5L8 9z"/><path d="M17 9.5l5 5M22 9.5l-5 5"/>';
   const COROA = `<svg viewBox="0 0 24 24" stroke-width="1.2" stroke-linejoin="round">${C.ICONE_COROA}</svg>`;
 
   // ---------- estado ----------
   const POR_PAGINA = 6;
-  const CAMPOS = 'id,jogo,status,convidou,convidado,brancas,pretas,estado,versao,prazo,empate_proposto_por,vencedor,motivo,criado_em,inicio,fim';
+  const CAMPOS = 'id,jogo,status,convidou,convidado,brancas,pretas,estado,versao,prazo,empate_proposto_por,vencedor,motivo,revanche_de,criado_em,inicio,fim';
   const J = {
     ligado: false, carregou: false, rt: null, conectou: false, tique: null,
     lista: new Map(),        // partidas vivas (convite e andamento): id -> linha
@@ -33,6 +35,16 @@
     cfg: { tempo_jogada: 60, ao_acabar_tempo: 'perde_partida', maioria_obrigatoria: true, convite_expira: 60 },
     desvio: 0,               // relógio do servidor menos o do aparelho (ms)
     pop: null, popId: null,
+    // partida aberta
+    sel: null,               // peça tocada: { id, versao, pre: [casas já escolhidas] }
+    ctx: null,               // jogadas possíveis do último desenho
+    enviando: false, pendente: null, // jogada otimista esperando o servidor
+    visto: null,             // a versão que está na tela (pra saber o que mudou)
+    ult: null, anim: null,   // último lance destacado / animação a fazer
+    assin: null,             // assinatura do último desenho (não redesenha à toa)
+    ultNoticia: 0,           // última notícia da partida aberta (tempo real ou conferida)
+    fim: null, fimAss: null, fimTipo: null, fimInfo: null, fimCarregando: null, fimFechado: new Set(),
+    mudo: (() => { try { return !!localStorage.getItem('cobr-jogos-mudo'); } catch (e) { return false; } })(),
   };
   const agora = () => Date.now() + J.desvio;
   const ms = (iso) => (iso ? new Date(iso).getTime() : 0);
@@ -106,6 +118,9 @@
     ]);
     if (vivas.error) throw vivas.error;
     J.lista = new Map(vivas.data.map((p) => [p.id, p]));
+    // jogada minha ainda a caminho do servidor: não volta o tabuleiro pra trás
+    const pend = J.pendente, doBanco = pend && J.lista.get(pend.id);
+    if (doBanco && doBanco.status === 'andamento' && doBanco.versao < pend.versao) J.lista.set(pend.id, pend);
     if (!ult.error) { J.ultimas = ult.data; J.temMais = ult.data.length === POR_PAGINA; }
     if (!cfg.error && cfg.data) J.cfg = { ...J.cfg, ...cfg.data };
     if (J.aberta && J.lista.has(J.aberta.id)) J.aberta = J.lista.get(J.aberta.id);
@@ -119,7 +134,8 @@
         .then(async () => {
           // a partida aberta pode ter acabado enquanto o aparelho dormia
           const id = partidaDaUrl();
-          if (id && !J.lista.has(id)) await buscarPartida(id);
+          if (id && !J.lista.has(id)) { const x = await buscarPartida(id); if (x && partidaDaUrl() === id) J.aberta = x; }
+          J.ultNoticia = Date.now();
           desenhar();
         })
         .catch((e) => console.warn('jogos:', e.message))
@@ -129,8 +145,8 @@
   }
   async function buscarPartida(id) {
     const r = await C.sb.from('jogos_partidas').select(CAMPOS).eq('id', id).maybeSingle();
-    J.aberta = r.data || null;
-    return J.aberta;
+    if (r.error) throw r.error;
+    return r.data || null;
   }
   async function maisUltimas(bt) {
     bt.disabled = true;
@@ -156,9 +172,9 @@
   function mudou(ev) {
     if (ev.eventType === 'DELETE') { J.lista.delete(ev.old.id); desenhar(); return; }
     const n = ev.new;
-    const antes = J.lista.get(n.id) || (J.aberta && J.aberta.id === n.id ? J.aberta : null);
-    if (n.status === 'convite' || n.status === 'andamento') J.lista.set(n.id, n); else J.lista.delete(n.id);
-    if (J.aberta && J.aberta.id === n.id) J.aberta = n;
+    const antes = linhaDe(n.id);
+    if (!guardar(n)) return;
+    if (n.id === partidaDaUrl()) J.ultNoticia = Date.now();
     if (n.status === 'fim' && !J.ultimas.some((p) => p.id === n.id)) J.ultimas.unshift(n);
     const meu = eu();
     if (meu) {
@@ -170,6 +186,17 @@
       }
       if (antes && antes.status === 'andamento' && n.status === 'fim' && (n.brancas === meu || n.pretas === meu) && partidaDaUrl() !== n.id) {
         toast(n.vencedor === meu ? 'Você venceu a partida de damas!' : n.vencedor ? `Partida encerrada: ${nick(n.vencedor)} venceu.` : 'Partida encerrada: empate.');
+      }
+      // proposta de empate na minha partida
+      if (antes && antes.status === 'andamento' && n.status === 'andamento' && (n.brancas === meu || n.pretas === meu)) {
+        const outro = n.brancas === meu ? n.pretas : n.brancas;
+        if (n.empate_proposto_por === outro && antes.empate_proposto_por !== outro) {
+          toast(`${nick(outro)} propôs empate.`);
+          som('vez');
+          if (navigator.vibrate) navigator.vibrate([80, 60, 80]);
+        } else if (antes.empate_proposto_por === meu && !n.empate_proposto_por && n.versao === antes.versao) {
+          toast(`${nick(outro)} recusou o empate.`);
+        }
       }
     }
     desenhar();
@@ -190,7 +217,6 @@
       toast(`Convite enviado pro ${r.nick}.`);
       const p = await buscarPartida(id);
       if (p && p.status === 'convite') J.lista.set(p.id, p);
-      J.aberta = null;
       desenhar();
     } catch (e) { toast(erroTxt(e), true); travar(bt, false); }
   }
@@ -210,14 +236,6 @@
     try { await rpc('jogos_cancelar', { p_partida: p.id }); J.lista.delete(p.id); desenhar(); }
     catch (e) { toast(erroTxt(e), true); recarregar(); }
   }
-  function desistir(p) {
-    const outro = p.brancas === eu() ? p.pretas : p.brancas;
-    C.confirmar('DESISTIR DA PARTIDA?', `A vitória vai pro ${nick(outro)}.`, 'Desistir', async () => {
-      try { await rpc('jogos_desistir', { p_partida: p.id }); await buscarPartida(p.id); J.lista.delete(p.id); desenhar(); }
-      catch (e) { toast(erroTxt(e), true); recarregar(); }
-    });
-  }
-
   // ---------- peças da tela ----------
   const CIRC = 2 * Math.PI * 22;
   // cartão de convite (na sala e no aviso de cima): anel com os segundos que faltam
@@ -365,26 +383,309 @@
     ];
   }
 
-  // ---------- partida (por enquanto só olhar; o tabuleiro de tocar vem na fase 5) ----------
+  // ---------- partida ao vivo (imagens 02 e 04) ----------
+  const opcoes = () => ({ maioria: J.cfg.maioria_obrigatoria !== false });
+  const corDe = (x) => (x && x !== '.' ? x.toLowerCase() : null);
+  const ultima = (c) => c[c.length - 1];
+  const comeca = (c, pre) => pre.every((x, k) => c[k] === x);
+  function linhaDe(id) { return J.lista.get(id) || (J.aberta && J.aberta.id === id ? J.aberta : null); }
+  function forcar(n) {
+    if (n.status === 'convite' || n.status === 'andamento') J.lista.set(n.id, n); else J.lista.delete(n.id);
+    if (J.aberta && J.aberta.id === n.id) J.aberta = n;
+  }
+  // guarda a versão nova de uma partida; notícia velha (ex.: chegou depois da jogada otimista) fica de fora
+  function guardar(n) {
+    const atual = linhaDe(n.id);
+    if (atual && atual.status === 'fim' && n.status !== 'fim') return false;
+    if (atual && atual.status === 'andamento' && n.status === 'andamento' && (n.versao | 0) < (atual.versao | 0)) return false;
+    forcar(n);
+    return true;
+  }
+
+  // sons (o botão de som da partida liga/desliga; fica salvo no aparelho)
+  const SONS = {
+    mover: [[330, 0.07]],
+    capturar: [[520, 0.08], [390, 0.13]],
+    dama: [[523, 0.09], [659, 0.09], [784, 0.09], [1047, 0.26]],
+    vez: [[880, 0.09], [1175, 0.17]],
+    vitoria: [[523, 0.12], [659, 0.12], [784, 0.12], [1047, 0.45]],
+    derrota: [[392, 0.2], [330, 0.2], [262, 0.45]],
+  };
+  function som(k) { if (!J.mudo) tocar(SONS[k]); }
+  function trocarMudo() {
+    J.mudo = !J.mudo;
+    try { localStorage.setItem('cobr-jogos-mudo', J.mudo ? '1' : ''); } catch (e) {}
+    J.assin = null;
+    desenhar();
+  }
+
+  // o servidor (api/jogos.js) confere e grava a jogada
+  async function api(corpo) {
+    let token = '';
+    try { const s = await C.sb.auth.getSession(); token = (s.data && s.data.session && s.data.session.access_token) || ''; } catch (e) {}
+    let r;
+    try {
+      r = await fetch('/api/jogos', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }, body: JSON.stringify(corpo) });
+    } catch (e) { throw new Error('Sem internet: a jogada não foi.'); }
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { const e = new Error(j.erro || 'Não deu certo. Tente de novo.'); e.status = r.status; throw e; }
+    return j;
+  }
+
+  // ---- o que mudou desde o último desenho: lance do outro, sua vez, fim ----
+  function diferenca(antes, depois, cor) {
+    let de = -1, para = -1;
+    const capturas = [];
+    for (let i = 0; i < 32; i++) {
+      const a = antes[i], d = depois[i];
+      if (a === d) continue;
+      if (corDe(a) === cor && d === '.') de = i;
+      else if (corDe(d) === cor) para = i;
+      else if (a !== '.' && d === '.') capturas.push(i);
+    }
+    return de >= 0 && para >= 0 ? { de, para, capturas } : null;
+  }
+  async function buscarUltimoLance(p) {
+    try {
+      const r = await C.sb.from('jogos_lances').select('n,caminho').eq('partida', p.id).order('n', { ascending: false }).limit(1);
+      const l = r.data && r.data[0];
+      const v = J.visto;
+      if (!l || !v || v.id !== p.id || l.n !== v.versao || !l.caminho || l.caminho.length < 2) return;
+      J.ult = { id: p.id, versao: l.n, de: l.caminho[0], para: ultima(l.caminho) };
+      J.assin = null;
+      if (partidaDaUrl() === p.id) desenharPartida(p.id);
+    } catch (e) {}
+  }
+  function notarMudanca(p, est, minhaCor) {
+    const v = J.visto;
+    J.visto = { id: p.id, versao: p.versao, tab: est.tab, vez: est.vez, status: p.status };
+    if (!v || v.id !== p.id) { J.ult = null; J.anim = null; J.sel = null; buscarUltimoLance(p); return; }
+    if (p.versao === v.versao + 1 && est.tab !== v.tab) {
+      if (!J.anim) { // lance do outro (o meu já foi animado na hora)
+        const mov = diferenca(v.tab, est.tab, v.vez);
+        if (mov) {
+          J.ult = { id: p.id, versao: p.versao, de: mov.de, para: mov.para };
+          J.anim = { ...mov, tabAntes: v.tab };
+          const virou = v.tab[mov.de] !== est.tab[mov.para];
+          som(virou ? 'dama' : mov.capturas.length ? 'capturar' : 'mover');
+        } else J.ult = null;
+      }
+    } else if (p.versao > v.versao) { J.ult = null; buscarUltimoLance(p); }
+    if (minhaCor && p.status === 'andamento' && p.versao > v.versao && v.vez !== est.vez && est.vez === minhaCor) {
+      if (navigator.vibrate) navigator.vibrate(80);
+      setTimeout(() => som('vez'), 260);
+    }
+    if (v.status === 'andamento' && p.status === 'fim') {
+      const meu = eu();
+      if (minhaCor && p.vencedor && p.vencedor !== meu) setTimeout(() => som('derrota'), 300);
+      else setTimeout(() => som('vitoria'), 300);
+    }
+  }
+
+  // ---- tabuleiro ----
   function peca(letra) {
     const s = el('span', { class: `jg-p ${letra.toLowerCase()}` });
     if (letra === 'B' || letra === 'P') s.innerHTML = COROA;
     return s;
   }
   // girar = quem joga de pretas vê o tabuleiro do lado dele (as pretas embaixo)
-  function tabuleiro(est, girar) {
-    const box = el('div', { class: 'jg-tab' });
+  function tabuleiro(est, girar, m = null) {
+    const box = el('div', { class: 'jg-tab' + (m && m.jogavel ? ' jogavel' : '') });
     for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
       const lin = girar ? 7 - r : r, col = girar ? 7 - c : c;
       const i = R.casa(lin, col);
-      const cel = el('div', { class: `jg-c ${i < 0 ? 'cl' : 'es'}`, 'data-casa': i < 0 ? null : String(i) });
+      const cls = ['jg-c', i < 0 ? 'cl' : 'es'];
+      if (m && i >= 0) {
+        if (m.ult && (m.ult.de === i || m.ult.para === i)) cls.push('ult');
+        if (m.alvos.has(i)) cls.push('jg-alvo');
+        else if (m.meios.has(i)) cls.push('jg-alvo', 'meio');
+      }
+      const cel = el('div', { class: cls.join(' '), 'data-casa': i < 0 ? null : String(i) });
       if (c === 0) cel.append(el('span', { class: 'crd n', text: String(8 - lin) }));
       if (r === 7) cel.append(el('span', { class: 'crd l', text: 'abcdefgh'[col] }));
-      if (i >= 0 && est.tab[i] !== '.') cel.append(peca(est.tab[i]));
+      if (i >= 0 && est.tab[i] !== '.') {
+        const pc = peca(est.tab[i]);
+        if (m) {
+          if (m.sel === i) pc.classList.add('sel');
+          if (m.deve.has(i)) pc.classList.add('deve');
+          if (m.vitimas.has(i)) pc.classList.add('vitima');
+        }
+        cel.append(pc);
+      }
       box.append(cel);
+    }
+    // seta tracejada com o caminho da captura
+    if (m && m.caminhos.length) {
+      const pt = (i) => { const { lin, col } = R.coord(i); return `${(girar ? 7 - col : col) + 0.5},${(girar ? 7 - lin : lin) + 0.5}`; };
+      const w = document.createElement('div');
+      w.innerHTML = `<svg class="jg-caminho" viewBox="0 0 8 8" aria-hidden="true"><defs><marker id="jgSeta" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4" markerHeight="4" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#FFB347"/></marker></defs>${m.caminhos.map((cm) => `<polyline points="${cm.map(pt).join(' ')}" fill="none" stroke="#FFB347" stroke-width=".07" stroke-dasharray=".18 .12" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#jgSeta)" opacity=".95"/>`).join('')}</svg>`;
+      box.append(w.firstChild);
     }
     return box;
   }
+  // peça deslizando da casa de origem; capturadas encolhendo uma a uma
+  function animar(box) {
+    const a = J.anim;
+    J.anim = null;
+    if (!a) return;
+    const cel = (i) => box.querySelector(`[data-casa="${i}"]`);
+    const cDe = cel(a.de), cPara = cel(a.para);
+    const pc = cPara && cPara.querySelector('.jg-p');
+    if (cDe && pc) {
+      const r1 = cDe.getBoundingClientRect(), r2 = cPara.getBoundingClientRect();
+      pc.style.transition = 'none';
+      pc.style.zIndex = '3';
+      pc.style.transform = `translate(${r1.left - r2.left}px, ${r1.top - r2.top}px)`;
+      pc.getBoundingClientRect();
+      pc.style.transition = 'transform .22s ease-out';
+      pc.style.transform = '';
+      setTimeout(() => { pc.style.transition = ''; pc.style.zIndex = ''; }, 260);
+    }
+    a.capturas.forEach((i, k) => {
+      const c = cel(i), letra = a.tabAntes[i];
+      if (!c || !letra || letra === '.') return;
+      const f = peca(letra);
+      f.classList.add('jg-some');
+      f.style.animationDelay = `${140 + k * 90}ms`;
+      c.append(f);
+      setTimeout(() => f.remove(), 560 + k * 90);
+    });
+  }
+  function tremer() {
+    const t = document.querySelector('#jogos .jg-tab');
+    if (!t) return;
+    t.classList.remove('jg-treme');
+    t.getBoundingClientRect();
+    t.classList.add('jg-treme');
+    if (navigator.vibrate) navigator.vibrate(40);
+  }
+
+  // ---- tocar no tabuleiro ----
+  function tocarCasa(i) {
+    const x = J.ctx;
+    if (!x || J.enviando) return;
+    const { p, est, jogaveis, origens, minhaCor } = x;
+    if (!jogaveis.length) {
+      if (corDe(est.tab[i]) === minhaCor && p.status === 'andamento') toast(`Vez do ${nick(est.vez === 'b' ? p.brancas : p.pretas)}.`);
+      return;
+    }
+    const sel = J.sel;
+    if (sel) {
+      const pre = sel.pre;
+      const cands = jogaveis.filter((j) => comeca(j.caminho, pre));
+      if (pre.length > 1 && i === ultima(pre)) {
+        const j = cands.find((c) => c.caminho.length === pre.length);
+        if (j) { jogar(p, j); return; }
+      }
+      const proximos = cands.filter((j) => j.caminho.length > pre.length && j.caminho[pre.length] === i);
+      const seguem = proximos.filter((j) => j.caminho.length > pre.length + 1);
+      const terminam = cands.filter((j) => j.caminho.length > pre.length && ultima(j.caminho) === i);
+      if (terminam.length === 1 && !seguem.length) { jogar(p, terminam[0]); return; }
+      if (proximos.length) { J.sel = { ...sel, pre: pre.concat(i) }; desenharPartida(p.id); return; }
+      if (terminam.length > 1) { toast('Dois caminhos chegam nessa casa: toque antes na casa do meio.'); return; }
+    }
+    if (origens.has(i)) {
+      const mesma = sel && sel.pre[0] === i;
+      J.sel = mesma && sel.pre.length === 1 && origens.size > 1 ? null : { id: p.id, versao: p.versao, pre: [i] };
+      desenharPartida(p.id);
+      return;
+    }
+    if (corDe(est.tab[i]) === minhaCor) {
+      toast(x.captura ? 'Captura obrigatória: jogue uma peça marcada.' : 'Essa peça não tem jogada agora.', true);
+      tremer();
+      return;
+    }
+    if (sel && (sel.pre.length > 1 || origens.size > 1)) {
+      J.sel = sel.pre.length > 1 ? { ...sel, pre: [sel.pre[0]] } : null;
+      desenharPartida(p.id);
+    }
+  }
+  // mostra na hora (otimista); se o servidor recusar, desfaz e diz o motivo
+  async function jogar(p, j) {
+    let novo;
+    try { novo = R.aplicar(p.estado, j.caminho, opcoes()); } catch (e) { toast('Jogada inválida.', true); tremer(); return; }
+    const seg = Number(J.cfg.tempo_jogada) || 60;
+    const otim = { ...p, estado: novo, versao: p.versao + 1, prazo: new Date(agora() + seg * 1000).toISOString(), empate_proposto_por: null };
+    const de = j.caminho[0], para = ultima(j.caminho);
+    J.sel = null;
+    J.enviando = true;
+    J.pendente = otim;
+    J.anim = { de, para, capturas: j.capturas, tabAntes: p.estado.tab };
+    J.ult = { id: p.id, versao: otim.versao, de, para };
+    som(j.viraDama ? 'dama' : j.capturas.length ? 'capturar' : 'mover');
+    forcar(otim);
+    desenhar();
+    try {
+      const r = await api({ acao: 'jogar', partida: p.id, versao: p.versao, caminho: j.caminho });
+      J.pendente = null;
+      const cur = linhaDe(p.id) || otim;
+      if (r.status === 'fim') {
+        const x = await buscarPartida(p.id).catch(() => null);
+        guardar(x || { ...cur, status: 'fim', estado: r.estado, versao: r.versao });
+      } else if ((cur.versao | 0) <= r.versao) {
+        guardar({ ...cur, estado: r.estado, versao: r.versao, status: r.status, prazo: r.prazo || cur.prazo });
+      }
+    } catch (e) {
+      J.pendente = null;
+      J.anim = null;
+      J.ult = null;
+      forcar(p);
+      toast(e.message, true);
+      J.enviando = false;
+      J.assin = null;
+      desenhar();
+      tremer();
+      // confere com o banco: a jogada pode ter chegado, ou o outro já jogou
+      const x = await buscarPartida(p.id).catch(() => null);
+      if (x) forcar(x);
+    }
+    J.enviando = false;
+    J.assin = null;
+    desenhar();
+  }
+
+  // ---- empate, desistência, revanche ----
+  async function proporEmpate(p, bt) {
+    bt.disabled = true;
+    try { await rpc('jogos_propor_empate', { p_partida: p.id }); toast(`Empate proposto. Esperando o ${nick(p.brancas === eu() ? p.pretas : p.brancas)}.`); await conferir(p.id); }
+    catch (e) { toast(erroTxt(e), true); bt.disabled = false; }
+  }
+  async function responderEmpate(p, aceitar, bt) {
+    travar(bt, true);
+    try { await rpc('jogos_responder_empate', { p_partida: p.id, p_aceitar: aceitar }); await conferir(p.id); }
+    catch (e) { toast(erroTxt(e), true); travar(bt, false); }
+  }
+  function desistir(p) {
+    const outro = p.brancas === eu() ? p.pretas : p.brancas;
+    C.confirmar('DESISTIR DA PARTIDA?', `A vitória vai pro ${nick(outro)}.`, 'Desistir', async () => {
+      try { await rpc('jogos_desistir', { p_partida: p.id }); await conferir(p.id); }
+      catch (e) { toast(erroTxt(e), true); recarregar(); }
+    });
+  }
+  const pedidoRevanche = (p) => [...J.lista.values()].find((x) => x.revanche_de === p.id && x.status === 'convite' && vivo(x)) || null;
+  async function revanche(p, bt) {
+    bt.disabled = true;
+    try {
+      const id = await rpc('jogos_revanche', { p_partida: p.id });
+      const x = id ? await buscarPartida(id) : null;
+      if (x) guardar(x);
+      if (x && x.status === 'andamento') { J.fimFechado.add(p.id); C.irPara('#jogos/' + x.id); return; }
+      toast(`Pedido de revanche enviado pro ${nick(p.brancas === eu() ? p.pretas : p.brancas)}.`);
+      J.fimAss = null;
+      desenhar();
+    } catch (e) { toast(erroTxt(e), true); bt.disabled = false; }
+  }
+  // confere a partida no banco (depois de uma ação, ou quando o tempo real fica quieto demais)
+  async function conferir(id) {
+    try {
+      const x = await buscarPartida(id);
+      if (!x) return;
+      const cur = linhaDe(id);
+      if (!cur || x.versao !== cur.versao || x.status !== cur.status || x.empate_proposto_por !== cur.empate_proposto_por || x.prazo !== cur.prazo) mudou({ eventType: 'UPDATE', new: x });
+    } catch (e) {}
+  }
+
+  // ---- barras dos jogadores ----
   const contar = (est, cor) => [...est.tab].filter((x) => x.toLowerCase() === cor).length;
   function barraJogador(p, cor, est, vez) {
     const id = cor === 'b' ? p.brancas : p.pretas;
@@ -405,20 +706,18 @@
           comeu ? el('span', { class: 'jg-mini', 'aria-label': `${comeu} capturadas` }, Array.from({ length: comeu }, () => el('i', { class: outra === 'p' ? 'es' : 'cl' }))) : null)),
       rel);
   }
-  function maiorCaptura(est) {
-    try {
-      const l = R.jogadasValidas(est, { maioria: J.cfg.maioria_obrigatoria !== false });
-      return l.reduce((m, j) => Math.max(m, j.capturas.length), 0);
-    } catch (e) { return 0; }
-  }
+
+  // ---- a tela da partida ----
   function desenharPartida(id) {
     const sec = $('jogos');
-    const p = J.lista.get(id) || (J.aberta && J.aberta.id === id ? J.aberta : null);
+    const p = linhaDe(id);
     if (!p) {
+      J.assin = null;
       trocar(sec, el('p', { class: 'jg-vazio', text: 'Carregando a partida…' }));
       buscarPartida(id).then((x) => {
         if (partidaDaUrl() !== id) return;
         if (!x) { toast('Partida não encontrada.', true); C.irPara('#jogos'); return; }
+        J.aberta = x;
         desenharPartida(id);
       }).catch(() => toast('Não consegui abrir a partida.', true));
       return;
@@ -427,14 +726,44 @@
     // convite (ainda não aceito ou recusado): a partida não existe, volta pra sala
     if (p.status !== 'andamento' && p.status !== 'fim') { C.irPara('#jogos'); return; }
     const meu = eu(), souB = !!meu && p.brancas === meu, souP = !!meu && p.pretas === meu, jogo = souB || souP;
+    const minhaCor = souB ? 'b' : souP ? 'p' : null;
     const est = p.estado || R.estadoInicial();
     const andando = p.status === 'andamento';
     const vez = andando ? est.vez : null;
     const embaixo = souP ? 'p' : 'b', emCima = embaixo === 'b' ? 'p' : 'b';
-    const minhaVez = jogo && vez === (souB ? 'b' : 'p');
+    const minhaVez = jogo && vez === minhaCor;
+    notarMudanca(p, est, minhaCor);
+
+    // jogadas possíveis e o que está selecionado
+    let jogaveis = [];
+    if (minhaVez && !J.enviando) { try { jogaveis = R.jogadasValidas(est, opcoes()); } catch (e) {} }
+    const origens = new Set(jogaveis.map((j) => j.caminho[0]));
+    const captura = jogaveis.length > 0 && jogaveis[0].capturas.length > 0;
+    let sel = J.sel && J.sel.id === p.id && J.sel.versao === p.versao && origens.has(J.sel.pre[0]) ? J.sel : null;
+    if (!sel && captura && origens.size === 1) sel = { id: p.id, versao: p.versao, pre: [jogaveis[0].caminho[0]] };
+    J.sel = sel;
+    const ult = J.ult && J.ult.id === p.id ? J.ult : null;
+
+    const ass = JSON.stringify([p.id, p.versao, p.status, p.prazo, p.empate_proposto_por, p.vencedor, sel, J.enviando, ult, J.mudo, J.fimFechado.has(p.id), meu]);
+    if (ass === J.assin && sec.querySelector('.jg-partida')) { desenharFim(p); return; }
+    J.assin = ass;
+
+    const cands = sel ? jogaveis.filter((j) => comeca(j.caminho, sel.pre)) : [];
+    const m = { jogavel: jogaveis.length > 0, ult, sel: sel ? sel.pre[0] : -1, deve: captura ? origens : new Set(), alvos: new Set(), meios: new Set(sel ? sel.pre.slice(1) : []), vitimas: new Set(), caminhos: [] };
+    for (const j of cands) {
+      if (j.caminho.length === sel.pre.length) m.alvos.add(ultima(sel.pre));
+      else m.alvos.add(ultima(j.caminho));
+      for (let k = sel.pre.length; k < j.caminho.length - 1; k++) m.meios.add(j.caminho[k]);
+    }
+    if (cands.length) {
+      for (const c of cands[0].capturas) if (cands.every((j) => j.capturas.includes(c))) m.vitimas.add(c);
+      if (captura) m.caminhos = cands.map((j) => j.caminho);
+    }
+    J.ctx = { p, est, jogaveis, origens, captura, minhaCor };
+
     let faixa;
     if (andando && minhaVez) {
-      const cap = maiorCaptura(est);
+      const cap = jogaveis.reduce((mx, j) => Math.max(mx, j.capturas.length), 0);
       faixa = el('div', { class: 'jg-vez' }, 'SUA VEZ', cap ? el('small', { text: `CAPTURA OBRIGATÓRIA · ${cap} ${cap === 1 ? 'PEÇA' : 'PEÇAS'}` }) : null);
     } else if (andando) {
       faixa = el('div', { class: 'jg-vez dele' }, 'VEZ DE ', el('b', { text: nick(vez === 'b' ? p.brancas : p.pretas) }));
@@ -442,18 +771,151 @@
       faixa = el('div', { class: 'jg-vez dele' }, !p.vencedor ? 'EMPATE' : jogo ? (p.vencedor === meu ? 'VITÓRIA' : 'DERROTA') : ['VITÓRIA DE ', el('b', { text: nick(p.vencedor) })],
         el('small', { text: (MOTIVO[p.motivo] || 'fim').toUpperCase() }));
     }
+    const tab = tabuleiro(est, souP, m);
+    if (jogo && andando) tab.addEventListener('click', (e) => { const c = e.target.closest('[data-casa]'); if (c) tocarCasa(Number(c.dataset.casa)); });
+
+    let acoes = null;
+    if (jogo && andando) {
+      const pediu = p.empate_proposto_por;
+      acoes = pediu && pediu !== meu
+        ? el('div', { class: 'jg-acoes jg-empate-pedido' },
+          el('button', { type: 'button', class: 'btn btn-pri', onclick: (e) => responderEmpate(p, true, e.currentTarget) }, '½ Aceitar empate'),
+          el('button', { type: 'button', class: 'btn btn-sec', text: 'Recusar', onclick: (e) => responderEmpate(p, false, e.currentTarget) }))
+        : el('div', { class: 'jg-acoes' },
+          el('button', { type: 'button', class: 'btn btn-sec', disabled: pediu === meu, onclick: (e) => proporEmpate(p, e.currentTarget) }, pediu === meu ? '½ Empate proposto' : '½ Propor empate'),
+          el('button', { type: 'button', class: 'btn btn-perigo-sec', text: 'Desistir', onclick: () => desistir(p) }));
+    } else if (!andando) {
+      acoes = el('div', { class: 'jg-acoes' },
+        el('button', { type: 'button', class: 'btn btn-sec', text: 'Ver resultado', onclick: () => { J.fimFechado.delete(p.id); J.assin = null; desenhar(); } }),
+        el('button', { type: 'button', class: 'btn btn-sec', text: 'Voltar pra sala', onclick: () => C.irPara('#jogos') }));
+    }
+
     trocar(sec, el('div', { class: 'jg-partida' },
       el('div', { class: 'jg-topo-partida' },
-        el('button', { type: 'button', class: 'btn btn-sec', onclick: () => C.irPara('#jogos') }, ico(IC_VOLTAR, 16), 'Sala')),
+        el('button', { type: 'button', class: 'btn btn-sec', onclick: () => C.irPara('#jogos') }, ico(IC_VOLTAR, 16), 'Sala'),
+        el('button', { type: 'button', class: 'jg-ico', style: 'margin-left:auto', 'aria-label': J.mudo ? 'Ligar o som' : 'Desligar o som', 'aria-pressed': J.mudo ? 'true' : 'false', onclick: trocarMudo }, ico(J.mudo ? IC_MUDO : IC_SOM))),
       barraJogador(p, emCima, est, vez === emCima),
       faixa,
-      tabuleiro(est, souP),
+      tab,
       barraJogador(p, embaixo, est, vez === embaixo),
-      jogo && andando ? el('div', { class: 'jg-acoes' },
-        el('button', { type: 'button', class: 'btn btn-perigo-sec', text: 'Desistir', onclick: () => desistir(p) })) : null,
-      !andando ? el('div', { class: 'jg-acoes' },
-        el('button', { type: 'button', class: 'btn btn-sec', text: 'Voltar pra sala', onclick: () => C.irPara('#jogos') })) : null));
+      acoes));
+    animar(tab);
+    desenharFim(p);
   }
+
+  // ---- janela do fim (imagem 04): vitória, derrota ou empate ----
+  const TACA = '<svg class="jg-fim-taca" viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="jgOuro" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF1C2"/><stop offset=".5" stop-color="#FFD84D"/><stop offset="1" stop-color="#E08A1E"/></linearGradient></defs>'
+    + '<path d="M18 8h28v12c0 9-6 16-14 16S18 29 18 20z" fill="url(#jgOuro)"/><path d="M18 12H10v4c0 6 4 10 9 10M46 12h8v4c0 6-4 10-9 10" fill="none" stroke="url(#jgOuro)" stroke-width="3.5"/>'
+    + '<rect x="29" y="35" width="6" height="9" fill="url(#jgOuro)"/><path d="M21 51h22l-3-7H24z" fill="url(#jgOuro)"/><rect x="17" y="51" width="30" height="6" rx="1.5" fill="#9A4F12"/>'
+    + '<circle cx="32" cy="19" r="7" fill="#26211E" stroke="#FF7A1A" stroke-width="2"/><circle cx="32" cy="19" r="4" fill="none" stroke="rgba(255,122,26,.5)" stroke-width="1.2"/></svg>';
+  function motivoFim(p) {
+    const meu = eu(), jogo = !!meu && (p.brancas === meu || p.pretas === meu);
+    if (!p.vencedor) return p.motivo === 'empate_20' ? '20 lances seguidos só de damas' : 'Empate combinado';
+    const perdeu = p.vencedor === p.brancas ? p.pretas : p.brancas;
+    const voce = jogo && perdeu === meu;
+    const quem = voce ? 'Você' : nick(perdeu);
+    if (p.motivo === 'sem_pecas') return `${quem} ficou sem peças`;
+    if (p.motivo === 'sem_jogadas') return `${quem} ficou sem jogadas`;
+    if (p.motivo === 'desistencia') return `${quem} desistiu`;
+    if (p.motivo === 'tempo') return voce ? 'Seu tempo acabou' : `Acabou o tempo do ${quem}`;
+    return `${nick(p.vencedor)} venceu`;
+  }
+  // números da partida (lances do banco) e se o vencedor assumiu o 1º lugar do ranking de damas
+  async function carregarFimInfo(p) {
+    if (J.fimCarregando === p.id) return;
+    J.fimCarregando = p.id;
+    const info = { id: p.id, capturas: {}, damas: {}, assumiu: false };
+    try {
+      const r = await C.sb.from('jogos_lances').select('player,capturas,virou_dama').eq('partida', p.id);
+      for (const l of r.data || []) {
+        info.capturas[l.player] = (info.capturas[l.player] || 0) + ((l.capturas && l.capturas.length) || 0);
+        if (l.virou_dama) info.damas[l.player] = (info.damas[l.player] || 0) + 1;
+      }
+      if (p.vencedor && p.vencedor === eu()) info.assumiu = await assumiuPrimeiro(p);
+    } catch (e) {}
+    J.fimInfo = info;
+    J.fimCarregando = null;
+    J.fimAss = null;
+    const x = linhaDe(p.id);
+    if (x && partidaDaUrl() === p.id) desenharFim(x);
+  }
+  // mesma ordem do jogos_placar: vitórias, aproveitamento, partidas, nick
+  function ordemPlacar(a, b) {
+    return b.vitorias - a.vitorias || b.vitorias / b.partidas - a.vitorias / a.partidas || b.partidas - a.partidas || String(a.nick).toLowerCase().localeCompare(String(b.nick).toLowerCase());
+  }
+  async function assumiuPrimeiro(p) {
+    const r = await C.sb.rpc('jogos_placar', { p_jogo: 'damas' });
+    const depois = (r.data || []).slice().sort(ordemPlacar);
+    if (!depois.length || depois[0].player_id !== p.vencedor) return false;
+    const perdeu = p.vencedor === p.brancas ? p.pretas : p.brancas;
+    const antes = depois.map((x) => {
+      if (x.player_id === p.vencedor) return { ...x, partidas: x.partidas - 1, vitorias: x.vitorias - 1 };
+      if (x.player_id === perdeu) return { ...x, partidas: x.partidas - 1, derrotas: x.derrotas - 1 };
+      return x;
+    }).filter((x) => x.partidas > 0).sort(ordemPlacar);
+    return !antes.length || antes[0].player_id !== p.vencedor;
+  }
+  function fecharFim() {
+    if (J.fim) { J.fim.remove(); J.fim = null; }
+    J.fimAss = null;
+  }
+  function confete() {
+    const cores = ['#FF7A1A', '#FFB347', '#FFD84D', '#F4EDE6', '#E0457B', '#3BA4FF'];
+    return Array.from({ length: 46 }, (_, i) => el('span', {
+      class: 'jg-confete', 'aria-hidden': 'true',
+      style: `left:${(Math.random() * 100).toFixed(1)}%;top:${(Math.random() * 100).toFixed(1)}%;background:${cores[i % cores.length]};transform:rotate(${Math.round(Math.random() * 360)}deg);opacity:${(0.6 + Math.random() * 0.4).toFixed(2)};animation-duration:${(1.4 + Math.random() * 1.6).toFixed(2)}s;animation-delay:${(Math.random() * 0.6).toFixed(2)}s`,
+    }));
+  }
+  function desenharFim(p) {
+    if (!p || p.status !== 'fim' || partidaDaUrl() !== p.id || J.fimFechado.has(p.id)) { fecharFim(); return; }
+    const info = J.fimInfo && J.fimInfo.id === p.id ? J.fimInfo : null;
+    if (!info) carregarFimInfo(p);
+    const meu = eu(), jogo = !!meu && (p.brancas === meu || p.pretas === meu);
+    const rev = jogo ? pedidoRevanche(p) : null;
+    const ass = JSON.stringify([p.id, p.vencedor, p.motivo, p.versao, !!info, rev && rev.id, rev && rev.convidou]);
+    if (J.fim && J.fimAss === ass) return;
+    const tipo = !p.vencedor ? 'empate' : jogo && p.vencedor !== meu ? 'derrota' : 'vitoria';
+    const outro = jogo ? (p.brancas === meu ? p.pretas : p.brancas) : null;
+    // de quem são os números: o meu (se joguei) ou do vencedor; empate visto de fora: os dois somados
+    const quem = jogo ? meu : p.vencedor;
+    const soma = (o) => (quem ? o[quem] || 0 : Object.values(o).reduce((a, b) => a + b, 0));
+    const esq = jogo ? meu : p.vencedor || p.brancas;
+    const dir = esq === p.brancas ? p.pretas : p.brancas;
+    const lado = (id) => el('div', { class: p.vencedor && id !== p.vencedor ? 'perdeu' : null }, C.avatarChat(nick(id), 'av-m'), nick(id));
+    const stat = (rot, n) => el('div', null, el('small', { text: rot }), el('b', { text: n == null ? '–' : String(n) }));
+    let btRev = null;
+    if (jogo) {
+      const pediuEle = rev && rev.convidou === outro, pediEu = rev && rev.convidou === meu;
+      btRev = el('button', { type: 'button', class: 'btn btn-pri btn-grande', disabled: !!pediEu, onclick: (e) => revanche(p, e.currentTarget) },
+        pediEu ? `ESPERANDO ${nick(outro).toUpperCase()}…` : pediuEle ? 'ACEITAR REVANCHE' : 'REVANCHE');
+    }
+    const caixa = el('div', { class: `jg-fim ${tipo}`, role: 'dialog', 'aria-modal': 'true', 'aria-label': tipo === 'vitoria' ? 'Vitória' : tipo === 'derrota' ? 'Derrota' : 'Empate' },
+      tipo === 'vitoria' ? el('div', { class: 'jg-fim-raios' }) : null,
+      el('div', { class: 'jg-fim-taca-box' }),
+      el('h3', { text: tipo === 'vitoria' ? 'VITÓRIA!' : tipo === 'derrota' ? 'DERROTA' : 'EMPATE' }),
+      el('p', { class: 'jg-fim-motivo', text: motivoFim(p) }),
+      el('div', { class: 'jg-fim-duelo' }, lado(esq), el('span', { class: 'x', text: '×' }), lado(dir)),
+      el('div', { class: 'jg-fim-stats' }, stat('LANCES', p.versao), stat('CAPTURAS', info ? soma(info.capturas) : null), stat('DAMAS', info ? soma(info.damas) : null)),
+      info && info.assumiu ? el('p', { class: 'jg-fim-sobe', text: '🏆 Você assumiu o 1º lugar do ranking de damas!' }) : null,
+      rev && rev.convidou === outro ? el('p', { class: 'jg-fim-sobe', text: `🔁 ${nick(outro)} pediu revanche!` }) : null,
+      btRev,
+      el('button', { type: 'button', class: 'btn btn-sec btn-grande', text: 'VOLTAR PRA SALA', onclick: () => { J.fimFechado.add(p.id); C.irPara('#jogos'); } }));
+    caixa.querySelector('.jg-fim-taca-box').outerHTML = TACA;
+    const novo = !J.fim || J.fimTipo !== p.id + tipo;
+    const fundo = el('div', { class: 'jg-fim-fundo' + (novo ? ' entra' : '') }, tipo === 'vitoria' && novo ? confete() : (J.fim ? [...J.fim.querySelectorAll('.jg-confete')] : null), caixa);
+    // tocar fora da janela fecha e mostra o tabuleiro final
+    fundo.addEventListener('click', (e) => { if (e.target === fundo || e.target.classList.contains('jg-confete')) { J.fimFechado.add(p.id); J.assin = null; desenhar(); } });
+    if (J.fim) J.fim.replaceWith(fundo); else document.body.append(fundo);
+    J.fim = fundo;
+    J.fimAss = ass;
+    J.fimTipo = p.id + tipo;
+  }
+  addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || !J.fim || !J.aberta) return;
+    J.fimFechado.add(J.aberta.id);
+    J.assin = null;
+    desenhar();
+  });
 
   // ---------- convite em qualquer página (imagem 06) ----------
   function desenharPop() {
@@ -489,9 +951,10 @@
     desenharPop();
     const minha = minhaPartida();
     C.marcarJogando(minha ? minha.id : null);
+    const id = partidaDaUrl();
+    if (!id) { fecharFim(); J.assin = null; J.sel = null; }
     if (C.pag !== 'jogos') return;
     if (!J.ligado) { desenharDemo(); return; }
-    const id = partidaDaUrl();
     if (id) desenharPartida(id); else desenharSala();
   }
   function desenharDemo() {
@@ -502,6 +965,13 @@
     let venceu = false;
     document.querySelectorAll('.jg-tiq').forEach((n) => { if (n._tique && n._tique() === false) { n._tique = null; venceu = true; } });
     if (venceu) desenhar();
+    // o tempo real pode cair sem avisar: com a partida aberta, confere no banco de vez em quando
+    const id = J.ligado && partidaDaUrl();
+    const p = id && linhaDe(id);
+    if (id && !document.hidden && (!p || p.status === 'andamento') && Date.now() - J.ultNoticia > 15000) {
+      J.ultNoticia = Date.now();
+      conferir(id);
+    }
   }
 
   async function ligar() {
@@ -522,6 +992,8 @@
     J.rt = null; J.conectou = false; J.carregou = false;
     clearInterval(J.tique);
     J.lista.clear(); J.ultimas = []; J.aberta = null;
+    J.sel = null; J.ctx = null; J.visto = null; J.ult = null; J.anim = null; J.assin = null; J.pendente = null; J.fimInfo = null;
+    fecharFim();
     if (J.pop) { J.pop.remove(); J.pop = null; J.popId = null; }
     document.body.classList.remove('jg-em-partida');
     desenharBadge();
@@ -571,6 +1043,8 @@
     clearTimeout(esperaOnline);
     esperaOnline = setTimeout(() => { if (J.ligado && naSala()) desenharSala(); }, 150);
   });
+  // a internet voltou: pega o que mudou enquanto estava fora
+  addEventListener('online', () => { if (J.ligado) recarregar(); });
   let voltouEm = 0;
   document.addEventListener('visibilitychange', () => {
     if (document.hidden || !J.ligado || Date.now() - voltouEm < 3000) return;
