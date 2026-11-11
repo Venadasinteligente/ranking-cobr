@@ -3254,3 +3254,188 @@ button.pd-membro:hover { border-color: var(--linha-forte); }
 /* texto em degradê é transparente: a sombra da plaquinha apareceria por dentro das letras */
 .tem-parede .bot-num, .tem-parede .lider-nick, .tem-parede .ch-brabo-nick, .tem-parede .txt-dia, .tem-parede .rei-nome, .tem-parede .rei-cta,
 .linha-parede .txt-dia, .linha-parede .link-nome.forte, .com-parede .pp-nome, .com-parede .pp-topo .txt-dia { text-shadow: none; }
+
+/* ======================================================================
+   SALA DE JOGOS (damas): copiado do referencia/jogos-mock.css, igual às imagens
+   ====================================================================== */
+#jogos { padding-top: 14px; padding-bottom: 110px; }
+.jg-cab { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.jg-cab h2 { margin: 0; font-family: var(--f-titulo); font-weight: 600; font-size: 44px; line-height: 1; letter-spacing: 1px; }
+.jg-jogos { display: flex; gap: 8px; margin-bottom: 18px; overflow-x: auto; scrollbar-width: none; }
+.jg-jogo { display: inline-flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 999px; border: 1px solid var(--linha-forte); background: var(--painel); color: var(--texto-2); font-weight: 600; font-size: 14px; white-space: nowrap; }
+.jg-jogo.ativo { border-color: var(--laranja); color: var(--texto); background: var(--laranja-fundo); box-shadow: inset 0 0 0 1px var(--laranja); }
+.jg-jogo small { font-size: 10px; letter-spacing: 1.5px; color: var(--texto-3); font-weight: 700; }
+.jg-jogo svg { color: var(--laranja-claro); }
+.jg-rot { display: flex; align-items: center; justify-content: space-between; margin: 22px 0 10px; font-size: 12px; letter-spacing: 2.5px; color: var(--texto-3); font-weight: 700; }
+.jg-rot .vivo { display: inline-flex; align-items: center; gap: 6px; color: var(--perigo); letter-spacing: 1.5px; }
+.jg-rot .vivo::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--perigo); box-shadow: 0 0 10px var(--perigo); }
+.jg-card { border: 1px solid var(--linha); background: var(--painel-2); border-radius: 16px; padding: 14px; }
+
+/* convite recebido */
+.jg-convite { position: relative; overflow: hidden; border-color: var(--laranja); background: linear-gradient(135deg, #2B1608, var(--painel-2) 70%); box-shadow: 0 0 28px rgba(255, 122, 26, .2); }
+.jg-convite-top { display: flex; align-items: center; gap: 12px; }
+.jg-convite-txt { flex: 1; min-width: 0; font-size: 15px; line-height: 1.3; }
+.jg-convite-txt small { display: block; margin-top: 3px; font-size: 12px; letter-spacing: 1.5px; color: var(--laranja-claro); font-weight: 700; }
+.jg-conta { position: relative; flex: none; width: 50px; height: 50px; display: grid; place-items: center; font-family: var(--f-titulo); font-size: 22px; color: var(--laranja-claro); }
+.jg-conta svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+.jg-convite-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+.jg-convite-btns .btn { min-height: 46px; font-size: 15px; }
+
+/* lista de quem está online (mesma linha do painel de membros do chat) */
+.jg-lista { padding: 6px; }
+.jg-lista .ch-membro { position: relative; padding: 8px 10px; min-height: 64px; }
+.jg-lista .ch-membro + .ch-membro { margin-top: 4px; }
+.jg-acao { margin-left: auto; flex: none; position: relative; z-index: 1; }
+.jg-acao.btn { min-height: 38px; padding: 0 14px; font-size: 13px; border-radius: 9px; }
+.jg-st { margin-left: auto; flex: none; position: relative; z-index: 1; padding: 5px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 1px; background: rgba(0, 0, 0, .55); border: 1px solid var(--linha-forte); color: var(--texto-2); }
+.jg-st.jogando { color: var(--laranja-claro); border-color: var(--laranja-escuro); }
+.jg-st.enviado { color: var(--azul-claro); border-color: var(--azul-linha); }
+
+/* partidas acontecendo agora */
+.jg-vivo { display: flex; align-items: center; gap: 10px; }
+.jg-vivo + .jg-vivo { margin-top: 10px; }
+.jg-vivo-lado { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 74px; font-size: 13px; font-weight: 700; text-align: center; }
+.jg-vivo-meio { flex: 1; text-align: center; }
+.jg-vivo-x { font-family: var(--f-titulo); font-size: 30px; line-height: 1; color: var(--laranja); }
+.jg-vivo-info { font-size: 12px; color: var(--texto-3); }
+.jg-vivo .btn { min-height: 36px; padding: 0 12px; font-size: 13px; margin-top: 6px; }
+
+/* ranking de damas */
+#jgRanking .podio { margin-bottom: 14px; }
+.jg-ult { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.jg-ult li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--painel-2); border: 1px solid var(--linha); font-size: 14px; }
+.jg-ult .av { flex: none; }
+.jg-ult-txt { flex: 1; min-width: 0; line-height: 1.25; }
+.jg-ult-txt b.ganhou { color: var(--laranja-claro); }
+.jg-ult-txt small { display: block; font-size: 12px; color: var(--texto-3); }
+.jg-ult-res { flex: none; font-size: 11px; letter-spacing: 1px; font-weight: 700; padding: 4px 8px; border-radius: 6px; background: var(--laranja-escuro); color: var(--laranja-claro); }
+.jg-ult-res.emp { background: var(--azul-fundo); color: var(--azul-claro); }
+.jg-mais { display: block; width: 100%; margin-top: 10px; }
+
+/* ---------------- partida ---------------- */
+.jg-partida { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; }
+.jg-topo-partida { display: flex; align-items: center; gap: 8px; }
+.jg-topo-partida .btn { min-height: 36px; padding: 0 12px; font-size: 13px; }
+.jg-olhos { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: var(--painel); border: 1px solid var(--linha-forte); font-size: 13px; font-weight: 600; color: var(--texto-2); }
+.jg-olhos b { color: var(--texto); }
+.jg-ico { display: inline-grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--painel); border: 1px solid var(--linha-forte); color: var(--texto-2); }
+.jg-jog { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 14px; background: var(--painel-2); border: 1px solid var(--linha); }
+.jg-jog .av { width: 42px; height: 42px; font-size: 22px; flex: none; }
+.jg-jog.vez { border-color: var(--laranja); box-shadow: inset 0 0 0 1px var(--laranja), 0 0 18px rgba(255, 122, 26, .22); }
+.jg-jog-txt { min-width: 0; line-height: 1.2; }
+.jg-jog-txt b { font-size: 16px; }
+.jg-jog-txt small { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--texto-3); margin-top: 2px; }
+.jg-mini { display: inline-flex; }
+.jg-mini i { width: 11px; height: 11px; border-radius: 50%; margin-right: -3px; box-shadow: 0 1px 2px rgba(0, 0, 0, .6); }
+.jg-mini i.cl { background: radial-gradient(circle at 35% 30%, #FFF6E8, #E9C79A 60%, #C98F4E); }
+.jg-mini i.es { background: radial-gradient(circle at 35% 30%, #4A4440, #1C1917); border: 1.5px solid var(--laranja); }
+.jg-relogio { margin-left: auto; flex: none; min-width: 72px; text-align: center; font-family: var(--f-titulo); font-size: 30px; line-height: 1.2; padding: 0 10px; border-radius: 10px; background: var(--fundo); border: 1px solid var(--linha); color: var(--texto-3); font-variant-numeric: tabular-nums; }
+.jg-relogio.corre { color: var(--laranja-claro); border-color: var(--laranja); }
+.jg-relogio.acaba { color: #fff; background: var(--perigo); border-color: var(--perigo); box-shadow: 0 0 0 4px rgba(255, 90, 78, .25), 0 0 22px rgba(255, 90, 78, .6); }
+.jg-vez { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 4px 12px; border-radius: 12px; background: var(--laranja); color: var(--tinta-btn); font-family: var(--f-titulo); font-size: 28px; line-height: 1.15; letter-spacing: 2px; }
+.jg-vez small { font-family: var(--f-texto); font-size: 11px; font-weight: 700; letter-spacing: 1px; padding: 3px 8px; border-radius: 6px; background: rgba(26, 15, 6, .18); }
+.jg-vez.dele { background: var(--painel); color: var(--texto-2); border: 1px solid var(--linha-forte); }
+.jg-vez.dele b { color: var(--texto); font-weight: 600; }
+
+/* tabuleiro */
+.jg-tab { position: relative; display: grid; grid-template-columns: repeat(8, 1fr); aspect-ratio: 1; border-radius: 12px; overflow: hidden; border: 2px solid var(--linha-forte); box-shadow: 0 0 0 4px #0E0906, 0 0 34px rgba(255, 122, 26, .16); }
+.jg-c { position: relative; }
+.jg-c.cl { background: linear-gradient(145deg, #3E2C1F, #33241A); }
+.jg-c.es { background: radial-gradient(circle at 50% 45%, rgba(255, 122, 26, .07), transparent 70%), #120C08; }
+.jg-c.ult { background: radial-gradient(circle, rgba(255, 179, 71, .2), rgba(255, 179, 71, .08)), #1D130B; box-shadow: inset 0 0 0 2px rgba(255, 179, 71, .35); }
+.jg-c .crd { position: absolute; font-size: 9px; font-weight: 600; color: rgba(201, 187, 174, .45); line-height: 1; }
+.jg-c .crd.n { top: 3px; left: 3px; }
+.jg-c .crd.l { bottom: 3px; right: 4px; }
+.jg-p { position: absolute; inset: 11%; border-radius: 50%; display: grid; place-items: center; }
+.jg-p::after { content: ""; position: absolute; inset: 20%; border-radius: 50%; }
+.jg-p.b { background: radial-gradient(circle at 35% 28%, #FFF8EC, #F2D6AE 45%, #D59B58 100%); box-shadow: inset 0 -3px 0 rgba(120, 66, 18, .45), inset 0 2px 0 rgba(255, 255, 255, .6), 0 4px 7px rgba(0, 0, 0, .65); }
+.jg-p.b::after { border: 2px solid rgba(160, 96, 34, .35); }
+.jg-p.p { background: radial-gradient(circle at 35% 28%, #57504A, #26211E 55%, #0E0C0B); border: 2px solid var(--laranja); box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .55), inset 0 1px 0 rgba(255, 255, 255, .15), 0 4px 7px rgba(0, 0, 0, .7), 0 0 8px rgba(255, 122, 26, .25); }
+.jg-p.p::after { border: 2px solid rgba(255, 122, 26, .35); }
+.jg-p svg { position: relative; z-index: 1; width: 58%; height: 58%; }
+.jg-p.b svg { fill: #C25A00; stroke: #8A3E00; }
+.jg-p.p svg { fill: #FFB347; stroke: #FFD58A; filter: drop-shadow(0 0 3px rgba(255, 179, 71, .8)); }
+.jg-p.sel { box-shadow: 0 0 0 3px var(--laranja-claro), 0 0 18px 2px var(--laranja), 0 4px 7px rgba(0, 0, 0, .65); transform: translateY(-2px) scale(1.04); }
+.jg-p.deve { box-shadow: 0 0 0 3px rgba(255, 122, 26, .95), 0 0 14px rgba(255, 122, 26, .7), 0 4px 7px rgba(0, 0, 0, .65); }
+.jg-p.vitima { opacity: .55; filter: saturate(.6); }
+.jg-p.vitima::before { content: "✕"; position: absolute; z-index: 2; inset: 0; display: grid; place-items: center; color: var(--perigo); font-size: 22px; font-weight: 700; text-shadow: 0 0 6px rgba(0, 0, 0, .9); }
+.jg-alvo::after { content: ""; position: absolute; inset: 35%; border-radius: 50%; background: var(--laranja-claro); box-shadow: 0 0 14px var(--laranja), 0 0 0 4px rgba(255, 179, 71, .22); }
+.jg-alvo.meio::after { inset: 40%; background: rgba(255, 179, 71, .55); box-shadow: none; }
+.jg-caminho { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.jg-dama-fogo { position: absolute; inset: -2%; border-radius: 50%; z-index: 0; background: conic-gradient(from 0deg, #FF7A1A, #FFD84D, #FF5A1A, #FFB347, #FF7A1A); filter: blur(5px); opacity: .95; }
+.jg-dama-fogo::after { content: ""; position: absolute; inset: -18%; border-radius: 50%; border: 2px solid rgba(255, 216, 77, .7); box-shadow: 0 0 18px rgba(255, 179, 71, .9); }
+
+/* ações e reações */
+.jg-acoes { display: flex; gap: 8px; }
+.jg-acoes .btn { min-height: 40px; padding: 0 12px; font-size: 13px; flex: 1; }
+.jg-acoes .jg-ico { width: 40px; height: 40px; flex: none; }
+.jg-reacoes { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 6px; border-radius: 14px; background: var(--painel-2); border: 1px solid var(--linha); }
+.jg-reacoes button { width: 46px; height: 40px; border-radius: 10px; border: 0; background: var(--painel); font-size: 22px; line-height: 1; }
+.jg-reacoes .jg-esconder { width: auto; padding: 0 10px; font-size: 11px; font-weight: 700; letter-spacing: 1px; color: var(--texto-3); background: none; font-family: var(--f-texto); }
+.jg-voa { position: absolute; z-index: 5; display: flex; flex-direction: column; align-items: center; pointer-events: none; }
+.jg-voa span { font-size: 40px; line-height: 1; filter: drop-shadow(0 3px 6px rgba(0, 0, 0, .6)); }
+.jg-voa small { margin-top: 2px; padding: 1px 7px; border-radius: 6px; background: rgba(11, 8, 6, .8); font-size: 11px; font-weight: 700; color: var(--texto-2); }
+.jg-aviso-dama { position: absolute; z-index: 6; left: 50%; top: 40%; transform: translate(-50%, -50%); padding: 8px 16px; border-radius: 12px; background: rgba(11, 8, 6, .88); border: 1px solid var(--laranja); color: var(--laranja-claro); font-family: var(--f-titulo); font-size: 26px; letter-spacing: 1.5px; white-space: nowrap; box-shadow: 0 0 24px rgba(255, 122, 26, .45); }
+.jg-quem { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 10px; border-radius: 12px; background: var(--painel-2); border: 1px solid var(--linha); font-size: 12px; color: var(--texto-3); }
+.jg-quem .av { width: 28px; height: 28px; font-size: 15px; }
+.jg-so-ver { text-align: center; font-size: 12px; letter-spacing: 2px; font-weight: 700; color: var(--texto-3); }
+
+/* fim de partida */
+.jg-fim-fundo { position: fixed; inset: 0; z-index: 40; background: rgba(6, 4, 3, .78); backdrop-filter: blur(3px); display: grid; place-items: center; padding: 16px; }
+.jg-fim { position: relative; width: 100%; max-width: 400px; overflow: hidden; border-radius: 22px; border: 1px solid #8A5A1E; background: radial-gradient(circle at 50% 22%, rgba(255, 179, 71, .25), transparent 55%), var(--painel-2); text-align: center; padding: 22px 18px 18px; box-shadow: 0 0 60px rgba(255, 122, 26, .3); }
+.jg-fim-raios { position: absolute; left: 50%; top: 105px; width: 560px; height: 560px; transform: translate(-50%, -50%); background: repeating-conic-gradient(from 0deg, rgba(255, 179, 71, .1) 0 8deg, transparent 8deg 22deg); -webkit-mask: radial-gradient(circle, #000 20%, transparent 62%); mask: radial-gradient(circle, #000 20%, transparent 62%); }
+.jg-fim > :not(.jg-fim-raios) { position: relative; }
+.jg-fim-taca { width: 120px; height: 120px; margin: 0 auto 2px; filter: drop-shadow(0 0 22px rgba(255, 179, 71, .7)); }
+.jg-fim h3 { margin: 0; font-family: var(--f-titulo); font-weight: 700; font-size: 62px; line-height: .95; letter-spacing: 3px; background: linear-gradient(180deg, #FFF1C2, #FFD84D 45%, #FF9A2E); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.jg-fim-motivo { margin: 4px 0 14px; color: var(--texto-2); font-size: 15px; }
+.jg-fim-duelo { display: flex; align-items: center; justify-content: center; gap: 16px; margin-bottom: 14px; }
+.jg-fim-duelo > div { display: flex; flex-direction: column; align-items: center; gap: 4px; font-weight: 700; font-size: 14px; }
+.jg-fim-duelo .perdeu { opacity: .55; }
+.jg-fim-duelo .x { font-family: var(--f-titulo); font-size: 26px; color: var(--texto-3); }
+.jg-fim-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+.jg-fim-stats div { padding: 8px 4px; border-radius: 10px; background: var(--fundo); border: 1px solid var(--linha); }
+.jg-fim-stats small { display: block; font-size: 10px; letter-spacing: 1.5px; color: var(--texto-3); font-weight: 700; }
+.jg-fim-stats b { font-family: var(--f-titulo); font-size: 28px; line-height: 1.1; font-weight: 600; }
+.jg-fim-sobe { margin: 0 0 14px; padding: 8px 10px; border-radius: 10px; background: var(--laranja-fundo); border: 1px solid var(--laranja-escuro); color: var(--laranja-claro); font-size: 13px; font-weight: 600; }
+.jg-fim .btn { width: 100%; }
+.jg-fim .btn + .btn { margin-top: 8px; }
+.jg-confete { position: absolute; z-index: 41; width: 9px; height: 14px; border-radius: 2px; pointer-events: none; }
+
+/* pop de convite em qualquer página */
+.jg-pop { position: fixed; z-index: 50; left: 12px; right: 12px; top: 58px; padding: 14px; border-radius: 16px; border: 1px solid var(--laranja); background: linear-gradient(135deg, #2B1608, #140E0A 70%); box-shadow: 0 12px 40px rgba(0, 0, 0, .7), 0 0 28px rgba(255, 122, 26, .3); }
+.menu .ch-badge { margin-left: 4px; }
+
+/* bloco Damas no perfil */
+.jg-pf-grade { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.jg-pf-grade .pstat { text-align: center; }
+.jg-pf-barra { display: flex; height: 8px; border-radius: 99px; overflow: hidden; margin: 12px 0 4px; background: var(--fundo); }
+.jg-pf-barra i:nth-child(1) { background: var(--verde); }
+.jg-pf-barra i:nth-child(2) { background: var(--azul); }
+.jg-pf-barra i:nth-child(3) { background: var(--perigo); }
+.jg-pf-leg { display: flex; justify-content: space-between; font-size: 12px; color: var(--texto-3); }
+.jg-pf-pos { display: flex; align-items: center; gap: 12px; margin: 12px 0; padding: 10px 12px; border-radius: 12px; background: var(--laranja-fundo); border: 1px solid var(--laranja-escuro); }
+.jg-pf-pos b { font-family: var(--f-titulo); font-size: 36px; line-height: 1; color: var(--laranja-claro); }
+.jg-pf-pos span { font-size: 13px; color: var(--texto-2); line-height: 1.3; }
+.jg-forma { display: flex; gap: 6px; margin-top: 4px; }
+.jg-forma i { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; font-style: normal; font-weight: 700; font-size: 13px; }
+.jg-forma .v { background: rgba(61, 220, 132, .14); color: var(--verde); border: 1px solid rgba(61, 220, 132, .4); }
+.jg-forma .d { background: rgba(255, 90, 78, .12); color: var(--perigo); border: 1px solid rgba(255, 90, 78, .4); }
+.jg-forma .e { background: var(--azul-fundo); color: var(--azul-claro); border: 1px solid var(--azul-linha); }
+/* durante a partida a barra de baixo some: o tabuleiro ganha a tela */
+body.jg-em-partida #barraBaixo { display: none; }
+body.jg-em-partida #jogos { padding-bottom: 16px; }
+.perfil-stats.jg-pf-grade { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.jg-pf-grade .pstat { min-width: 0; padding-inline: 4px; }
+.jg-pf-grade .pstat-rot { font-size: 10px; letter-spacing: 1px; }
+.jg-pf-leg + .perfil-h3 { margin-top: 18px; }
+
+/* ---- Sala de jogos: o que o site real precisa além do visual das imagens ---- */
+.jg-card.jg-convite + .jg-card.jg-convite { margin-top: 10px; }
+.jg-convite-btns.um { grid-template-columns: 1fr; }
+.jg-jogo[aria-disabled] { cursor: default; }
+.jg-vazio { margin: 0; padding: 12px 8px; font-size: 14px; color: var(--texto-3); text-align: center; }
+.jg-aviso { padding: 22px 14px; text-align: center; color: var(--texto-2); font-size: 15px; }
+.jg-acao.btn[disabled] { cursor: default; opacity: .45; }
+.jg-ult-res.perdeu { background: rgba(255, 90, 78, .12); color: var(--perigo); }
+.jg-vivo-lado .av { flex: none; }
+@media (min-width: 640px) { .jg-pop { left: auto; right: 16px; width: 420px; } }

@@ -527,10 +527,11 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
   // sem # (ou com um # que não existe) abre o ranking. #hall, #tabela etc. abrem a
   // página de quem eles fazem parte e rolam até lá.
   const PAG_INICIO = 'ranking';
-  const RAIZES = new Set(['ranking', 'torneios', 'temporadas', 'jogadores', 'partidas', 'patentes', 'chat', 'painel']); // abrem no topo da página
+  const RAIZES = new Set(['ranking', 'torneios', 'temporadas', 'jogadores', 'partidas', 'patentes', 'chat', 'painel', 'jogos']); // abrem no topo da página
   let pagAtual = null;
   function alvoDoEndereco(hash) {
-    const id = decodeURIComponent(String(hash || '').slice(1));
+    let id = decodeURIComponent(String(hash || '').slice(1));
+    if (/^jogos\//.test(id)) id = 'jogos'; // #jogos/<partida>: a partida abre dentro da página de jogos
     const n = id ? document.getElementById(id) : null;
     const sec = n && n.closest('#principal [data-pag]');
     return sec ? { pag: sec.dataset.pag, n, raiz: RAIZES.has(id) } : { pag: PAG_INICIO, n: null, raiz: true };
@@ -3198,7 +3199,8 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   }
 
   // ---------- como funciona (regras em abas, no lugar dos textos no meio do site) ----------
-  const REGRA_ABAS = ['temporada', 'patentes', 'pontos', 'medalhas', 'chat'];
+  const REGRA_ABAS = ['temporada', 'patentes', 'pontos', 'medalhas', 'chat', 'damas'];
+  const REGRAS_EXTRA = {}; // abas montadas fora do app.js (a de damas vem do jogos.js)
   let regraAba = 'temporada';
   // linha de regra: ícone/rótulo curto à esquerda, valor à direita (como tela de regras de jogo)
   const linhaRegra = (rot, ...val) => el('li', { class: 'rg-linha' }, el('span', { class: 'rg-rot', text: rot }), el('span', { class: 'rg-val' }, ...val));
@@ -3206,7 +3208,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
   function abrirRegras(aba = regraAba) {
     regraAba = REGRA_ABAS.includes(aba) ? aba : 'temporada';
     document.querySelectorAll('.aba[data-regra]').forEach((x) => x.setAttribute('aria-selected', String(x.dataset.regra === regraAba)));
-    const corpo = { temporada: regrasTemporada, patentes: regrasPatentes, pontos: regrasPontos, medalhas: regrasMedalhas, chat: regrasChat }[regraAba]();
+    const corpo = ({ temporada: regrasTemporada, patentes: regrasPatentes, pontos: regrasPontos, medalhas: regrasMedalhas, chat: regrasChat }[regraAba] || REGRAS_EXTRA[regraAba] || (() => []))();
     trocar($('regrasCorpo'), corpo);
     const dlg = $('dlgRegras');
     if (!dlg.open) dlg.showModal();
@@ -3901,6 +3903,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       else mostrarPagina(true);
     }
     contarTela();
+    avisarJogos('rota', { pag: k || tn ? null : pagAtual });
   }
 
   async function compartilharPerfil(nome) {
@@ -5902,6 +5905,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     await site;
     destrancar();
     aplicarAdmin(admin);
+    avisarJogos('site');
     mostrarRota();
     ligarUso();
     if (!siteAberto) {
@@ -5920,6 +5924,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     pedidos = [];
     pd.dados = null;
     usoTela = null;
+    avisarJogos('sair');
     await desligarChat();
     if (!DEMO && sb) await sb.auth.signOut().catch(() => {});
     if (!DEMO) { partidas = []; jogadores = []; torneios = []; lancamentos = []; indexarElenco(); }
@@ -6857,11 +6862,21 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     pr.on('presence', { event: 'sync' }, () => {
       chat.online = new Map(Object.entries(pr.presenceState()).map(([k, l]) => [k, l[0] || {}]));
       if (chatVisivel()) desenharMembrosChat();
+      avisarJogos('online');
     })
       .on('broadcast', { event: 'digitando' }, ({ payload }) => alguemDigitando(payload))
       .on('broadcast', { event: 'toque' }, ({ payload }) => tocaramChat(payload).catch(() => {}))
-      .subscribe((st) => { if (st === 'SUBSCRIBED') pr.track({ player_id: chat.eu.player_id, nome: meuNick() }); });
+      .subscribe((st) => { if (st === 'SUBSCRIBED') { chat.presencaOk = true; marcarOnline(); } });
     chat.presenca = pr;
+  }
+  // o "online" do chat é o mesmo da sala de jogos: junto vai a partida de damas em que a pessoa está
+  function marcarOnline() {
+    if (chat.presenca && chat.presencaOk && chat.eu) chat.presenca.track({ player_id: chat.eu.player_id, nome: meuNick(), jogando: chat.jogando || null }).catch(() => {});
+  }
+  function marcarJogando(id) {
+    if ((chat.jogando || null) === (id || null)) return;
+    chat.jogando = id || null;
+    marcarOnline();
   }
   // ao sair da conta: este aparelho para de receber as notificações dela
   async function desligarChat() {
@@ -6874,7 +6889,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     }
     if (sb && chat.rt) sb.removeChannel(chat.rt);
     if (sb && chat.presenca) sb.removeChannel(chat.presenca);
-    chat.rt = null; chat.presenca = null; chat.conectou = false; chat.ligado = false; chat.eu = null;
+    chat.rt = null; chat.presenca = null; chat.presencaOk = false; chat.jogando = null; chat.conectou = false; chat.ligado = false; chat.eu = null;
     chat.online.clear();
     limparChat();
     atualizarBadgesChat();
@@ -7380,19 +7395,23 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     const lista = membrosChat();
     const grupo = (st, rot) => {
       const l = lista.filter((x) => x.st === st);
-      return l.length ? [el('div', { class: 'ch-lado-rot', text: `${rot} — ${l.length}` }), ...l.map(membroChat)] : [];
+      return l.length ? [el('div', { class: 'ch-lado-rot', text: `${rot} — ${l.length}` }), ...l.map((x) => membroChat(x))] : [];
     };
     trocar($('chatMembros'),
       el('div', { class: 'ch-membros-topo' }, el('b', { text: 'MEMBROS' }), el('button', { type: 'button', class: 'tn-x', 'aria-label': 'Fechar', onclick: () => $('chatMembros').classList.remove('aberto'), text: '×' })),
       ...grupo('jogo', 'JOGANDO'), ...grupo('on', 'ONLINE'), ...grupo('off', 'OFFLINE'));
     trocar($('chatMembrosBtn'), svg(ICONE_GENTE, 18), el('span', { text: String(lista.filter((x) => x.st !== 'off').length) }));
   }
-  function membroChat(x) {
+  // o = { sub, extra }: a sala de jogos usa a mesma linha com outra legenda e um botão à direita
+  // (aí a linha é uma div: botão dentro de botão não vale)
+  function membroChat(x, o = {}) {
     const p = patenteDe(ptsPat(x.k)).atual, brabo = !x.semPerfil && ehLider(x.k);
-    return comParede(el('button', { type: 'button', class: `ch-membro ${x.st} ${brabo ? 'lider' : ''}`, disabled: !!x.semPerfil, onclick: () => abrirPerfil(x.k) },
+    const sub = o.sub != null ? o.sub : x.st === 'jogo' ? (x.ate ? `jogando · até ${horaChat(x.ate)}` : 'jogando') : brabo ? `top 1 · ${nomeTemp(Date.now()).toLowerCase()}` : p.nome;
+    return comParede(el(o.extra ? 'div' : 'button', { type: o.extra ? null : 'button', class: `ch-membro ${x.st} ${brabo ? 'lider' : ''}`, disabled: !o.extra && !!x.semPerfil,
+      onclick: (e) => { if (!x.semPerfil && !e.target.closest('.jg-acao')) abrirPerfil(x.k); } },
       el('span', { class: 'ch-membro-av' }, avatarChat(x.nick), el('span', { class: `ch-st ${x.st}` })),
       el('span', { class: 'ch-membro-txt' }, el('b', { class: brabo ? 'lider-nick' : '', style: `--pc:${p.cor}`, text: x.nick }),
-        el('span', { class: 'ch-membro-sub', text: x.st === 'jogo' ? (x.ate ? `jogando · até ${horaChat(x.ate)}` : 'jogando') : brabo ? `top 1 · ${nomeTemp(Date.now()).toLowerCase()}` : p.nome }))), x.k);
+        el('span', { class: 'ch-membro-sub', text: sub })), o.extra), x.k);
   }
 
   // ---------- página ----------
@@ -8760,6 +8779,13 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       const salvou = salvar();
       if (depois) depois(salvou);
     } }, el('i'), txt);
+    // convite da sala de jogos: preferência própria (ligada pra todo mundo até a pessoa desligar)
+    let jogosLigado = eu.prefs.jogos !== false;
+    const chaveJogos = DEMO ? null : el('button', { type: 'button', class: 'ch-switch', role: 'switch', 'aria-checked': String(jogosLigado), onclick: (ev) => {
+      jogosLigado = !jogosLigado;
+      ev.currentTarget.setAttribute('aria-checked', String(jogosLigado));
+      chatRpc('push_salvar_jogos', { p_ligado: jogosLigado }).catch(erroChat);
+    } }, el('i'), 'Me chamarem pra jogar');
     // ligar "Todas as mensagens" com este aparelho desligado: pede a permissão e liga junto
     const tudoMudou = (salvou) => {
       mostrarCanais();
@@ -8785,7 +8811,7 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
       el('div', { class: 'av-estado' }, el('span', { class: `ch-bola ${ligado ? 'on' : ''}` }), el('span', { text: estado }), botao),
       problemaPush ? ajudaPush(problemaPush) : null,
       el('div', { class: 'mod-rot', text: 'ME AVISAR QUANDO' }),
-      el('div', { class: 'av-prefs' }, chave('tudo', 'Todas as mensagens', tudoMudou), chave('mencao', 'Me marcarem com @'), chave('resposta', 'Responderem minha mensagem'), chave('aviso', `Sair aviso no #${nomeCanal('avisos')}`), chave('bonde', 'Alguém chamar o bonde')),
+      el('div', { class: 'av-prefs' }, chave('tudo', 'Todas as mensagens', tudoMudou), chave('mencao', 'Me marcarem com @'), chave('resposta', 'Responderem minha mensagem'), chave('aviso', `Sair aviso no #${nomeCanal('avisos')}`), chave('bonde', 'Alguém chamar o bonde'), chaveJogos),
       canaisRot, canais,
       el('div', { class: 'mod-rot', text: 'APP DO CLÃ' }),
       app);
@@ -9473,6 +9499,26 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
         $('portaoTxt').textContent = 'Não consegui ler o ranking agora. Confere a internet e recarrega a página.';
       });
   }
+
+  // ---------- ponte pra sala de jogos (jogos.js) ----------
+  // O jogos.js fica fora deste arquivo e usa só o que está aqui. O app.js avisa por eventos:
+  // cobr:site (entrou e carregou), cobr:sair (saiu da conta), cobr:rota (trocou de página;
+  // detail.pag = página aberta ou null no perfil/torneio) e cobr:online (mudou quem está online).
+  function avisarJogos(tipo, detail = {}) {
+    if (tipo === 'site' || tipo === 'sair') window.COBR.aberto = tipo === 'site'; // o jogos.js pode carregar depois do aviso
+    document.dispatchEvent(new CustomEvent('cobr:' + tipo, { detail }));
+  }
+  window.COBR = {
+    DEMO, aberto: false, $, el, trocar, svg, toast, chave, confirmar, irPara, abrirPerfil, abrirRegras, linhaRegra, tituloRegra,
+    avatarChat, comParede, ehLider, ptsPat, ICONE_COROA, regras: REGRAS_EXTRA,
+    membroLinha: (x, o) => membroChat(x, o),
+    marcarJogando,
+    get sb() { return sb; },
+    get euId() { return euId; },
+    get pag() { return perfilAtual || torneioAtual ? null : pagAtual; },
+    jogador: (id) => jogPorId.get(id) || null,
+    online: () => chat.online,
+  };
 
   iniciar();
 })();

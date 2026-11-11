@@ -66,6 +66,7 @@
     <nav class="menu" aria-label="Páginas">
       <a href="#ranking">Ranking</a>
       <a href="#chat" id="menuChat">Chat<span class="ch-badge" data-badge-chat hidden></span></a>
+      <a href="#jogos" id="menuJogos">Jogos<span class="ch-badge" data-badge-jogos hidden></span></a>
       <a href="#torneios" id="menuTorneios" hidden>Torneios</a>
       <a href="#temporadas" id="menuTrofeus">Troféus</a>
       <a href="#jogadores">Jogadores</a>
@@ -397,6 +398,9 @@
     </div>
   </section>
 
+  <!-- sala de jogos: montada pelo jogos.js (#jogos = sala, #jogos/<id> = partida) -->
+  <section class="wrap bloco" id="jogos" data-pag="jogos" aria-label="Sala de jogos"></section>
+
   <section class="wrap bloco pd" id="painel" data-pag="painel" aria-label="Painel do dono" hidden>
     <div class="bloco-topo">
       <div>
@@ -684,7 +688,7 @@
     <button type="button" class="link-btn" id="btnFecharBusca">Fechar</button>
   </div>
   <div class="busca-atalhos" id="buscaAtalhos">
-    <a href="#ranking">Ranking</a><a href="#chat">Chat</a><a href="#torneios">Torneios</a><a href="#temporadas">Troféus</a><a href="#jogadores">Jogadores</a><a href="#partidas">Partidas</a><a href="#hall">Hall da fama</a><a href="#patentes">Patentes</a>
+    <a href="#ranking">Ranking</a><a href="#chat">Chat</a><a href="#jogos">Jogos</a><a href="#torneios">Torneios</a><a href="#temporadas">Troféus</a><a href="#jogadores">Jogadores</a><a href="#partidas">Partidas</a><a href="#hall">Hall da fama</a><a href="#patentes">Patentes</a>
   </div>
   <ul class="busca-lista" id="listaBusca"></ul>
 </dialog>
@@ -728,6 +732,7 @@
   </div>
   <nav class="mais-grade" id="maisGrade" aria-label="Outras páginas">
     <button type="button" class="mais-regras mais-app" data-app data-app-abrir hidden><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M12 7.5v7M9 11.5l3 3 3-3"/></svg><b>Baixar o app</b><small>O COBR na tela do celular</small></button>
+    <a href="#jogos" id="maisJogos"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="7.5" rx="8" ry="3.2"/><path d="M4 7.5v3.6c0 1.8 3.6 3.2 8 3.2s8-1.4 8-3.2V7.5"/><path d="M4 11.1v4.6c0 1.8 3.6 3.2 8 3.2s8-1.4 8-3.2v-4.6"/></svg><b>Jogos</b><small>Damas com o pessoal do clã</small></a>
     <a href="#torneios" id="maisTorneios"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg><b>Torneios</b><small>Campeonatos com placar ao vivo</small></a>
     <a href="#temporadas" id="maisTrofeus"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4z"/><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3"/></svg><b>Troféus</b><small>A taça de cada temporada</small></a>
     <a href="#hall" id="maisHall"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3 6 6 1-4.5 4.5 1 6.5L12 17l-5.5 3 1-6.5L3 9l6-1z"/></svg><b>Hall da fama</b><small>As maiores partidas do clã</small></a>
@@ -752,6 +757,7 @@
     <button type="button" role="tab" class="aba" data-regra="pontos">Pontos</button>
     <button type="button" role="tab" class="aba" data-regra="medalhas">Medalhas</button>
     <button type="button" role="tab" class="aba" data-regra="chat">Chat</button>
+    <button type="button" role="tab" class="aba" data-regra="damas">Damas</button>
   </div>
   <div class="regras-corpo" id="regrasCorpo" role="tabpanel"></div>
 </dialog>
@@ -913,5 +919,7 @@
 <script src="config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
 <script src="app.js"></script>
+<script src="damas-regras.js"></script>
+<script src="jogos.js"></script>
 </body>
 </html>
