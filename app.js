@@ -1077,7 +1077,8 @@ ${faixa(236, 245, `url(#${id}o)`)}${faixa(245, 261, `url(#${id}g)`)}${faixa(261,
         indexarElenco();
       } else {
         const res = await rpcAdmin('admin_delete_player', { p_id: r.id });
-        if (res === 'tem_partidas') return erroJogador('Ele tem partidas. Desmarque "Ainda está no clã" em vez de apagar.');
+        if (res === 'tem_partidas') return erroJogador('Ele tem partidas (no ranking ou na sala de jogos). Desmarque "Ainda está no clã" em vez de apagar.');
+        if (res === 'tem_torneio') return erroJogador('Ele está na chave de um torneio de damas. Desmarque "Ainda está no clã" em vez de apagar.');
         await carregar();
       }
       $('dlgJogador').close();
@@ -6420,7 +6421,9 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
           el('b', { text: r.nick }),
           el('small', { text: l ? `${l.email}${l.ultimo_acesso ? ` · entrou ${haQuanto(l.ultimo_acesso)}` : ''}` : 'sem login (tiraram o acesso)' })),
         el('div', { class: 'pedido-btns' },
-          l ? el('button', { type: 'button', class: 'btn btn-perigo-sec', onclick: () => confirmar('TIRAR O ACESSO?', `${r.nick} não entra mais no site. As partidas que jogou continuam no histórico.`, 'Tirar acesso', () => mexerAmigo(r, 'tirar')) }, 'Tirar acesso') : null,
+          l ? el('button', { type: 'button', class: 'btn btn-perigo-sec', onclick: () => confirmar('TIRAR O ACESSO?', `${r.nick} não entra mais no site. As partidas que jogou continuam no histórico.`, 'Tirar acesso', () => mexerAmigo(r, 'tirar')) }, 'Tirar acesso')
+            // sem login: o dono pode apagar de vez (some da lista junto com as partidas de damas dele)
+            : el('button', { type: 'button', class: 'btn btn-perigo-sec', onclick: () => confirmar('APAGAR O AMIGO?', `${r.nick} some da lista e as partidas de damas dele saem do histórico. Não dá pra desfazer.`, 'Apagar', () => mexerAmigo(r, 'apagar')) }, 'Apagar'),
           el('button', { type: 'button', class: 'btn btn-sec', onclick: () => confirmar('PASSAR PRA MEMBRO?', `${r.nick} entrou no clã: passa a ver o site inteiro e entra no elenco como ${comTag(r.nick)}.`, 'Virar membro', () => mexerAmigo(r, 'membro')) }, 'Virar membro')));
     }));
   }
@@ -6428,15 +6431,20 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
     try {
       if (DEMO) {
         if (acao === 'membro') { amigos = amigos.filter((x) => x.id !== r.id); jogadores.push({ ...r, amigo: false, cargo: CARGO_PADRAO }); indexarElenco(); }
+        else if (acao === 'apagar') amigos = amigos.filter((x) => x.id !== r.id);
         else for (const c of demoContas.values()) if (c.player === r.id) c.player = null;
       } else {
         if (acao === 'membro') await rpcAdmin('admin_mudar_amigo', { p_player: r.id, p_amigo: false });
-        else await rpcAdmin('admin_tirar_login', { p_player: r.id });
+        else if (acao === 'apagar') {
+          const res = await rpcAdmin('admin_delete_player', { p_id: r.id });
+          if (res === 'tem_torneio') return toast(`${r.nick} está na chave de um torneio de damas, então fica na lista (sem acesso).`, true);
+          if (res !== 'ok') throw new Error(res);
+        } else await rpcAdmin('admin_tirar_login', { p_player: r.id });
         await carregar();
       }
       await carregarLogins();
       render();
-      toast(acao === 'membro' ? `${comTag(r.nick)} agora é membro do clã.` : `${r.nick} ficou sem acesso.`);
+      toast(acao === 'membro' ? `${comTag(r.nick)} agora é membro do clã.` : acao === 'apagar' ? `${r.nick} foi apagado.` : `${r.nick} ficou sem acesso.`);
     } catch (e) {
       console.error(e);
       if (!erroSessao(e)) toast('Não deu agora. Tenta de novo.', true);

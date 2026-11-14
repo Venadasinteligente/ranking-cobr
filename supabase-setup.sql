@@ -206,8 +206,12 @@ create or replace function public.admin_delete_player(p_id uuid)
 returns text
 language plpgsql security definer set search_path = public
 as $$
+declare
+  v_amigo boolean;
 begin
-  perform exigir_admin('apagar jogador', jsonb_build_object('id', p_id));
+  perform exigir_admin('apagar jogador', jsonb_build_object('id', p_id, 'nick', (select nick from players where id = p_id)));
+  select amigo into v_amigo from players where id = p_id;
+  if not found then return 'ok'; end if;
   if exists(select 1 from scores s join players p on lower(btrim(s.player)) = lower(btrim(p.nick)) where p.id = p_id) then
     return 'tem_partidas';
   end if;
@@ -215,6 +219,18 @@ begin
   if to_regclass('public.torneio_lancamentos') is not null
      and exists(select 1 from torneio_lancamentos where player_id = p_id) then
     return 'tem_partidas';
+  end if;
+  -- damas: quem está numa chave de torneio fica (a chave mostra o nome dele)
+  if to_regclass('public.jogos_torneio_confrontos') is not null
+     and (exists(select 1 from jogos_torneio_confrontos where p_id in (a, b, vencedor))
+          or exists(select 1 from jogos_torneios where campeao = p_id)) then
+    return 'tem_torneio';
+  end if;
+  if to_regclass('public.jogos_partidas') is not null
+     and exists(select 1 from jogos_partidas where p_id in (convidou, convidado, brancas, pretas, vencedor, empate_proposto_por)) then
+    -- membro do clã guarda o histórico (vira ex-membro); amigo só jogava: as partidas de damas dele saem junto
+    if not coalesce(v_amigo, false) then return 'tem_partidas'; end if;
+    delete from jogos_partidas where p_id in (convidou, convidado, brancas, pretas, vencedor, empate_proposto_por);
   end if;
   delete from players where id = p_id;
   return 'ok';
