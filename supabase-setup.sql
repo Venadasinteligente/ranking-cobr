@@ -232,6 +232,11 @@ begin
     if not coalesce(v_amigo, false) then return 'tem_partidas'; end if;
     delete from jogos_partidas where p_id in (convidou, convidado, brancas, pretas, vencedor, empate_proposto_por);
   end if;
+  -- amigo com login: a conta dele sai junto (igual recusar pedido). Conta de admin nunca.
+  if coalesce(v_amigo, false) then
+    delete from auth.users where id in (select user_id from player_contas where player_id = p_id)
+      and id not in (select user_id from admins);
+  end if;
   delete from players where id = p_id;
   return 'ok';
 end;

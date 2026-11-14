@@ -6421,9 +6421,9 @@ ${M ? `<g class="md-brilho" clip-path="url(#${id}k)"><rect x="-80" y="30" width=
           el('b', { text: r.nick }),
           el('small', { text: l ? `${l.email}${l.ultimo_acesso ? ` · entrou ${haQuanto(l.ultimo_acesso)}` : ''}` : 'sem login (tiraram o acesso)' })),
         el('div', { class: 'pedido-btns' },
-          l ? el('button', { type: 'button', class: 'btn btn-perigo-sec', onclick: () => confirmar('TIRAR O ACESSO?', `${r.nick} não entra mais no site. As partidas que jogou continuam no histórico.`, 'Tirar acesso', () => mexerAmigo(r, 'tirar')) }, 'Tirar acesso')
-            // sem login: o dono pode apagar de vez (some da lista junto com as partidas de damas dele)
-            : el('button', { type: 'button', class: 'btn btn-perigo-sec', onclick: () => confirmar('APAGAR O AMIGO?', `${r.nick} some da lista e as partidas de damas dele saem do histórico. Não dá pra desfazer.`, 'Apagar', () => mexerAmigo(r, 'apagar')) }, 'Apagar'),
+          l ? el('button', { type: 'button', class: 'btn btn-perigo-sec', onclick: () => confirmar('TIRAR O ACESSO?', `${r.nick} não entra mais no site. As partidas que jogou continuam no histórico.`, 'Tirar acesso', () => mexerAmigo(r, 'tirar')) }, 'Tirar acesso') : null,
+          // apagar de vez: some da lista com as partidas de damas dele (e a conta, se tiver login)
+          el('button', { type: 'button', class: 'btn btn-perigo-sec', onclick: () => confirmar('APAGAR O AMIGO?', `${r.nick} some da lista${l ? ', a conta dele é apagada' : ''} e as partidas de damas dele saem do histórico. Não dá pra desfazer.`, 'Apagar', () => mexerAmigo(r, 'apagar')) }, 'Apagar'),
           el('button', { type: 'button', class: 'btn btn-sec', onclick: () => confirmar('PASSAR PRA MEMBRO?', `${r.nick} entrou no clã: passa a ver o site inteiro e entra no elenco como ${comTag(r.nick)}.`, 'Virar membro', () => mexerAmigo(r, 'membro')) }, 'Virar membro')));
     }));
   }
