@@ -3184,7 +3184,7 @@ create table if not exists public.jogos_torneio_confrontos (
 create table if not exists public.jogos_pedras (
   id         bigint generated always as identity primary key,
   player     uuid not null references public.players (id) on delete cascade,
-  pedra      text not null check (pedra in ('ouro', 'prata', 'brasa', 'veneno', 'gelo', 'barca', 'real')),
+  pedra      text not null check (pedra in ('ouro', 'prata', 'brasa', 'veneno', 'gelo', 'barca', 'real', 'dragao')),
   torneio    uuid references public.jogos_torneios (id) on delete set null,
   colocacao  integer,                     -- 1 campeão, 2 vice, 3 semifinal
   criado_em  timestamptz not null default now(),
@@ -3192,16 +3192,16 @@ create table if not exists public.jogos_pedras (
 );
 create table if not exists public.jogos_pedra_uso (
   player         uuid primary key references public.players (id) on delete cascade,
-  pedra          text not null default 'classica' check (pedra in ('classica', 'ouro', 'prata', 'brasa', 'veneno', 'gelo', 'barca', 'real')),
+  pedra          text not null default 'classica' check (pedra in ('classica', 'ouro', 'prata', 'brasa', 'veneno', 'gelo', 'barca', 'real', 'dragao')),
   atualizado_em  timestamptz not null default now()
 );
--- quem já tinha as tabelas: troca a lista de pedras aceitas (entraram Barcelona e Real Madrid)
+-- quem já tinha as tabelas: troca a lista de pedras aceitas (entraram Barcelona, Real Madrid e o Dragão)
 alter table public.jogos_pedras drop constraint if exists jogos_pedras_pedra_check;
 alter table public.jogos_pedras add constraint jogos_pedras_pedra_check
-  check (pedra in ('ouro', 'prata', 'brasa', 'veneno', 'gelo', 'barca', 'real'));
+  check (pedra in ('ouro', 'prata', 'brasa', 'veneno', 'gelo', 'barca', 'real', 'dragao'));
 alter table public.jogos_pedra_uso drop constraint if exists jogos_pedra_uso_pedra_check;
 alter table public.jogos_pedra_uso add constraint jogos_pedra_uso_pedra_check
-  check (pedra in ('classica', 'ouro', 'prata', 'brasa', 'veneno', 'gelo', 'barca', 'real'));
+  check (pedra in ('classica', 'ouro', 'prata', 'brasa', 'veneno', 'gelo', 'barca', 'real', 'dragao'));
 
 do $$
 declare t text;
@@ -3524,7 +3524,7 @@ language plpgsql security definer set search_path = public
 as $$
 declare v_eu uuid := jogos_eu();
 begin
-  if p_pedra is null or p_pedra not in ('classica', 'ouro', 'prata', 'brasa', 'veneno', 'gelo', 'barca', 'real') then raise exception 'Pedra desconhecida'; end if;
+  if p_pedra is null or p_pedra not in ('classica', 'ouro', 'prata', 'brasa', 'veneno', 'gelo', 'barca', 'real', 'dragao') then raise exception 'Pedra desconhecida'; end if;
   -- Clássica, Barcelona e Real Madrid são grátis pra todo mundo; as outras só quem ganhou no torneio
   if p_pedra not in ('classica', 'barca', 'real') and not exists (select 1 from jogos_pedras where player = v_eu and pedra = p_pedra) then
     raise exception 'Você ainda não ganhou essa pedra';
@@ -3550,6 +3550,14 @@ begin
   end loop;
 end;
 $$;
+
+-- 11d) Pedra exclusiva: o Dragão (pedra + tabuleiro com dragão) é só do VENO.
+--      Não vira prêmio de torneio. Quando ele usa, quem joga com ele e quem assiste vê o tabuleiro do dragão.
+--      Pra dar pra outra pessoa, troque o nick abaixo e rode só este pedaço de novo.
+insert into public.jogos_pedras (player, pedra)
+select p.id, 'dragao' from public.players p
+where lower(btrim(p.nick)) = 'veno'
+  and not exists (select 1 from public.jogos_pedras x where x.player = p.id and x.pedra = 'dragao');
 
 -- Pronto! Se apareceu "Success. No rows returned", deu certo.
 --

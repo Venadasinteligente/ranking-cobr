@@ -1,0 +1,240 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800">
+<!-- tabuleiro do Dragão (pedra exclusiva do VENO): fica atrás das casas do tabuleiro (style.css: .jg-tab.tb-dragao) -->
+<style>
+.olho{transform-box:fill-box;transform-origin:50% 50%;animation:pisca 7s ease-in-out infinite}
+@keyframes pisca{0%,90%,100%{transform:scaleY(1)}93%{transform:scaleY(.08)}96%{transform:scaleY(1)}}
+.luz{animation:luz 2.8s ease-in-out infinite}
+@keyframes luz{0%,100%{opacity:.6}50%{opacity:1}}
+.fogo{animation:fogo 1.3s ease-in-out infinite alternate}
+@keyframes fogo{from{opacity:.55}to{opacity:1}}
+.chama{transform-box:fill-box;transform-origin:50% 100%;animation:chama 1.1s ease-in-out infinite alternate}
+@keyframes chama{from{transform:scale(.94,.82) skewX(3deg)}to{transform:scale(1.05,1.1) skewX(-3deg)}}
+</style>
+<defs>
+  <radialGradient id="fundo" cx="400" cy="330" r="640" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#8a2006"/>
+    <stop offset=".25" stop-color="#420a04"/>
+    <stop offset=".58" stop-color="#170302"/>
+    <stop offset="1" stop-color="#050101"/>
+  </radialGradient>
+  <radialGradient id="aura" cx="400" cy="340" r="340" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#ff9a2a" stop-opacity=".6"/>
+    <stop offset=".4" stop-color="#ff4a0a" stop-opacity=".22"/>
+    <stop offset="1" stop-color="#ff3a0a" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="membrana" x1="0" y1="0" x2=".4" y2="1">
+    <stop offset="0" stop-color="#a3240f"/>
+    <stop offset=".45" stop-color="#5a0d07"/>
+    <stop offset="1" stop-color="#1e0303"/>
+  </linearGradient>
+  <radialGradient id="membranaLuz" cx="690" cy="215" r="420" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#ff7a2a" stop-opacity=".45"/>
+    <stop offset=".5" stop-color="#ff4a1a" stop-opacity=".12"/>
+    <stop offset="1" stop-color="#ff4a1a" stop-opacity="0"/>
+  </radialGradient>
+  <linearGradient id="osso" x1="0" y1="1" x2="1" y2="0">
+    <stop offset="0" stop-color="#2e1d12"/>
+    <stop offset=".4" stop-color="#9c7f5c"/>
+    <stop offset=".75" stop-color="#f1e3c4"/>
+    <stop offset="1" stop-color="#3a2414"/>
+  </linearGradient>
+  <linearGradient id="chifre" x1="0" y1="1" x2=".6" y2="0">
+    <stop offset="0" stop-color="#20140c"/>
+    <stop offset=".35" stop-color="#8a6c4a"/>
+    <stop offset=".7" stop-color="#efdcb8"/>
+    <stop offset="1" stop-color="#1a0e08"/>
+  </linearGradient>
+  <linearGradient id="couro" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#641609"/>
+    <stop offset=".45" stop-color="#360806"/>
+    <stop offset="1" stop-color="#160303"/>
+  </linearGradient>
+  <linearGradient id="pescoco" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#2a0605"/>
+    <stop offset="1" stop-color="#0c0202"/>
+  </linearGradient>
+  <linearGradient id="placa" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#8a3a14"/>
+    <stop offset="1" stop-color="#3a1206"/>
+  </linearGradient>
+  <linearGradient id="focinho" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#7a200d" stop-opacity="0"/>
+    <stop offset=".3" stop-color="#7e220e" stop-opacity=".8"/>
+    <stop offset="1" stop-color="#3a0a05" stop-opacity=".95"/>
+  </linearGradient>
+  <radialGradient id="sombraRosto" cx="400" cy="320" r="190" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#000" stop-opacity="0"/>
+    <stop offset=".65" stop-color="#000" stop-opacity=".12"/>
+    <stop offset="1" stop-color="#000" stop-opacity=".6"/>
+  </radialGradient>
+  <pattern id="escamas" width="22" height="14" patternUnits="userSpaceOnUse">
+    <path d="M0 0Q11 16 22 0M-11 7Q0 23 11 7M11 7Q22 23 33 7" fill="none" stroke="#000" stroke-opacity=".6" stroke-width="1.7"/>
+    <path d="M2 1.6Q11 13 20 1.6M-9 8.6Q0 20 9 8.6M13 8.6Q22 20 31 8.6" fill="none" stroke="#ff8a4a" stroke-opacity=".16" stroke-width="1"/>
+  </pattern>
+  <pattern id="escamasMiudas" width="12" height="8" patternUnits="userSpaceOnUse">
+    <path d="M0 0Q6 9 12 0M-6 4Q0 13 6 4M6 4Q12 13 18 4" fill="none" stroke="#000" stroke-opacity=".55" stroke-width="1.1"/>
+  </pattern>
+  <radialGradient id="olhoCor" cx=".55" cy=".5" r=".62">
+    <stop offset="0" stop-color="#fffbd0"/>
+    <stop offset=".3" stop-color="#ffe04a"/>
+    <stop offset=".72" stop-color="#ff7a0a"/>
+    <stop offset="1" stop-color="#a81800"/>
+  </radialGradient>
+  <radialGradient id="bocaCor" cx="400" cy="532" r="80" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#fff3b0"/>
+    <stop offset=".35" stop-color="#ffb52a"/>
+    <stop offset=".75" stop-color="#ff4a0a"/>
+    <stop offset="1" stop-color="#7a0e02"/>
+  </radialGradient>
+  <linearGradient id="chamaFora" x1="0" y1="1" x2="0" y2="0">
+    <stop offset="0" stop-color="#ff6a0a"/>
+    <stop offset=".5" stop-color="#e02a04" stop-opacity=".85"/>
+    <stop offset="1" stop-color="#7a0800" stop-opacity="0"/>
+  </linearGradient>
+  <linearGradient id="chamaDentro" x1="0" y1="1" x2="0" y2="0">
+    <stop offset="0" stop-color="#fff6c0"/>
+    <stop offset=".4" stop-color="#ffc23a"/>
+    <stop offset="1" stop-color="#ff7a0a" stop-opacity="0"/>
+  </linearGradient>
+  <linearGradient id="dente" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#d9c8a6"/>
+    <stop offset="1" stop-color="#fffbea"/>
+  </linearGradient>
+  <filter id="brilho" x="-60%" y="-60%" width="220%" height="220%">
+    <feGaussianBlur stdDeviation="5" result="b"/>
+    <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+  <filter id="borra" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="12"/></filter>
+  <filter id="borraLeve" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="2.2"/></filter>
+
+  <!-- uma labareda (base em 0,0; sobe até -150) com o miolo amarelo -->
+  <g id="labareda">
+    <path d="M-34 0C-58-26-44-62-26-86C-28-62-16-56-12-70C-14-98 4-124 2-150C24-118 40-92 30-60C38-66 42-80 40-92C62-60 58-22 34 0Z" fill="url(#chamaFora)"/>
+    <path d="M-18 0C-32-18-22-40-10-56C-8-40 0-38 2-48C6-66 12-80 10-96C24-72 30-48 20-30C26-34 28-42 28-48C38-28 32-10 18 0Z" fill="url(#chamaDentro)"/>
+  </g>
+
+  <path id="cabeca" d="M400 230C420 224 446 208 468 196L502 204C532 224 554 256 562 288C568 306 570 320 566 334C558 358 532 378 502 394C478 408 462 434 458 464C455 490 446 510 426 520C416 524 408 525 400 525C392 525 384 524 374 520C354 510 345 490 342 464C338 434 322 408 298 394C268 378 242 358 234 334C230 320 232 306 238 288C246 256 268 224 298 204L332 196C354 208 380 224 400 230Z"/>
+  <path id="focinhoForma" d="M400 300C428 300 446 330 450 370C454 410 452 450 446 480C440 506 424 520 400 522C376 520 360 506 354 480C348 450 346 410 350 370C354 330 372 300 400 300Z"/>
+
+  <!-- metade direita do corpo; a esquerda é o espelho -->
+  <g id="lado">
+    <!-- asa -->
+    <path d="M500 545C562 430 622 282 690 212L792 92Q748 206 800 300Q738 360 776 482Q718 478 702 612Q628 566 548 642Z" fill="url(#membrana)" opacity=".95"/>
+    <path d="M500 545C562 430 622 282 690 212L792 92Q748 206 800 300Q738 360 776 482Q718 478 702 612Q628 566 548 642Z" fill="url(#membranaLuz)"/>
+    <g fill="none" stroke="#ff6a2a" stroke-opacity=".18" stroke-width="1.2">
+      <path d="M690 212Q700 260 760 300M690 212Q690 300 740 420M690 212Q660 330 690 520M610 360Q640 420 700 470M580 450Q620 520 690 580"/>
+    </g>
+    <g fill="none" stroke-linecap="round">
+      <path d="M690 212L792 92M690 212L800 300M690 212L776 482M690 212L702 612" stroke="#120504" stroke-width="7"/>
+      <path d="M690 212L792 92M690 212L800 300M690 212L776 482M690 212L702 612" stroke="#7a3a22" stroke-width="2" stroke-opacity=".7"/>
+      <path d="M500 545C562 430 622 282 690 212" stroke="#120504" stroke-width="15"/>
+      <path d="M502 538C562 428 620 284 688 214" stroke="#8a4a2a" stroke-width="3" stroke-opacity=".8"/>
+    </g>
+    <path d="M684 216L700 168L708 214Z" fill="url(#osso)"/>
+    <path d="M788 96L800 70L798 104Z" fill="url(#osso)"/>
+
+    <!-- pescoço -->
+    <path d="M400 436H450C490 540 514 680 528 800H400Z" fill="url(#pescoco)"/>
+    <path d="M400 436H450C490 540 514 680 528 800H400Z" fill="url(#escamas)" opacity=".9"/>
+    <path d="M452 450C490 540 514 680 528 800" fill="none" stroke="#ff6a2a" stroke-opacity=".35" stroke-width="2.5" filter="url(#borraLeve)"/>
+    <path d="M488 560L540 540L496 590ZM502 640L556 628L508 672ZM514 722L566 714L518 752Z" fill="url(#osso)" opacity=".9"/>
+
+    <!-- chifres (atrás da cabeça) -->
+    <path d="M462 214C470 150 516 78 626 18C578 92 538 160 512 232Z" fill="url(#chifre)"/>
+    <g fill="none" stroke="#1a0e08" stroke-opacity=".7" stroke-width="2">
+      <path d="M468 180Q486 186 506 196M480 142Q498 150 518 162M500 108Q516 116 534 126M526 78Q540 86 556 94M560 50Q570 56 582 62"/>
+    </g>
+    <path d="M472 196C484 140 528 84 616 28" fill="none" stroke="#fff4d8" stroke-opacity=".35" stroke-width="2"/>
+    <path d="M548 262C602 244 656 226 716 224C664 252 612 284 562 304Z" fill="url(#chifre)"/>
+    <path d="M556 300L634 314L562 334ZM548 340L622 368L540 372ZM520 380L586 414L500 400Z" fill="url(#osso)"/>
+
+    <!-- mandíbula, boca acesa e dentes de baixo -->
+    <path d="M400 528L456 516C468 540 466 566 454 582C440 598 422 604 400 606Z" fill="url(#couro)"/>
+    <path d="M400 528L456 516C468 540 466 566 454 582C440 598 422 604 400 606Z" fill="url(#escamasMiudas)"/>
+    <path class="fogo" d="M400 512L446 504L460 520C458 542 444 558 400 564Z" fill="url(#bocaCor)" filter="url(#brilho)"/>
+    <path d="M412 562L418 540L424 562ZM428 560L436 534L443 557ZM444 554L452 522L458 546Z" fill="url(#dente)"/>
+  </g>
+
+  <!-- metade direita do rosto (por cima da cabeça) -->
+  <g id="rosto">
+    <path d="M440 510L452 494L448 552ZM425 518L433 516L430 544ZM410 522L418 521L414 540Z" fill="url(#dente)"/>
+    <!-- bochecha e queixo marcados -->
+    <path d="M500 340C526 340 548 330 562 316M480 360C498 372 506 384 506 394" fill="none" stroke="#000" stroke-opacity=".5" stroke-width="3"/>
+    <!-- sobrancelha brava -->
+    <path d="M418 300C450 276 496 258 548 262L536 282C496 280 458 292 430 314Z" fill="#1c0403"/>
+    <path d="M420 298C452 276 498 262 546 264" fill="none" stroke="#ff8a4a" stroke-opacity=".4" stroke-width="1.6"/>
+    <!-- olho -->
+    <path d="M430 320Q462 286 520 288Q494 330 430 320Z" fill="#060000"/>
+    <g class="olho">
+      <path class="luz" d="M436 317Q464 291 514 292Q490 325 436 317Z" fill="url(#olhoCor)" filter="url(#brilho)"/>
+      <ellipse cx="477" cy="305" rx="3.6" ry="13" fill="#140000" transform="rotate(14 477 305)"/>
+      <circle cx="490" cy="297" r="2.4" fill="#fff" opacity=".85"/>
+    </g>
+    <!-- narina com fogo -->
+    <path d="M410 478C418 466 432 464 438 472C432 482 420 488 410 478Z" fill="#050000"/>
+    <path class="fogo" d="M415 477C421 470 430 469 433 473C429 479 421 481 415 477Z" fill="#ff7a1a" filter="url(#brilho)"/>
+  </g>
+</defs>
+
+<rect width="800" height="800" fill="url(#fundo)"/>
+
+<!-- selo de fogo atrás do dragão -->
+<g fill="none" stroke="#ff7a2a">
+  <circle cx="400" cy="360" r="330" stroke-opacity=".22" stroke-width="2.5"/>
+  <circle cx="400" cy="360" r="312" stroke-opacity=".14" stroke-width="1.5" stroke-dasharray="3 9"/>
+  <circle cx="400" cy="360" r="250" stroke-opacity=".12" stroke-width="1.5"/>
+  <path d="M400 30L686 525H114Z M400 690L114 195H686Z" stroke-opacity=".1" stroke-width="1.5"/>
+</g>
+<circle cx="400" cy="350" r="340" fill="url(#aura)"/>
+
+<!-- fogueira na base, atrás do dragão -->
+<g opacity=".9">
+  <g transform="translate(40 812) scale(1.15)"><use class="chama" style="animation-delay:-.2s" href="#labareda"/></g>
+  <g transform="translate(118 812) scale(.9 1.25)"><use class="chama" style="animation-delay:-.75s" href="#labareda"/></g>
+  <g transform="translate(196 812) scale(1 1.05)"><use class="chama" style="animation-delay:-.4s" href="#labareda"/></g>
+  <g transform="translate(270 812) scale(.8 .85)"><use class="chama" style="animation-delay:-1s" href="#labareda"/></g>
+  <g transform="translate(530 812) scale(-.8 .85)"><use class="chama" style="animation-delay:-.55s" href="#labareda"/></g>
+  <g transform="translate(604 812) scale(-1 1.05)"><use class="chama" style="animation-delay:-.15s" href="#labareda"/></g>
+  <g transform="translate(682 812) scale(-.9 1.25)"><use class="chama" style="animation-delay:-.9s" href="#labareda"/></g>
+  <g transform="translate(760 812) scale(-1.15 1.15)"><use class="chama" style="animation-delay:-.35s" href="#labareda"/></g>
+</g>
+
+<use href="#lado"/>
+<use href="#lado" transform="matrix(-1 0 0 1 800 0)"/>
+
+<!-- placas da barriga com fogo por dentro -->
+<path class="luz" d="M352 560H448V800H352Z" fill="#ff5a1a" opacity=".85" filter="url(#borraLeve)"/>
+<g fill="url(#placa)" stroke="#120302" stroke-width="2">
+  <path d="M350 548Q400 566 450 548L452 580Q400 598 348 580Z"/>
+  <path d="M348 588Q400 606 452 588L455 622Q400 640 345 622Z"/>
+  <path d="M345 630Q400 648 455 630L458 666Q400 684 342 666Z"/>
+  <path d="M342 674Q400 692 458 674L461 712Q400 730 339 712Z"/>
+  <path d="M339 720Q400 738 461 720L464 760Q400 778 336 760Z"/>
+  <path d="M336 768Q400 786 464 768L466 812Q400 830 334 812Z"/>
+</g>
+
+<!-- cabeça -->
+<use href="#cabeca" fill="url(#couro)"/>
+<use href="#cabeca" fill="url(#escamas)"/>
+<use href="#focinhoForma" fill="url(#focinho)"/>
+<use href="#focinhoForma" fill="url(#escamasMiudas)" opacity=".8"/>
+<path d="M450 370C454 410 452 450 446 480M350 370C346 410 348 450 354 480" fill="none" stroke="#000" stroke-opacity=".55" stroke-width="3"/>
+<use href="#cabeca" fill="url(#sombraRosto)"/>
+<path d="M234 334C230 320 232 306 238 288C246 256 268 224 298 204L332 196C354 208 380 224 400 230C420 224 446 208 468 196L502 204C532 224 554 256 562 288C568 306 570 320 566 334" fill="none" stroke="#ff9a4a" stroke-opacity=".55" stroke-width="3" filter="url(#borraLeve)"/>
+
+<!-- crista do meio da testa -->
+<g fill="#6a1e0c" stroke="#120302" stroke-width="1.6">
+  <path d="M386 236L400 262L414 236L400 246Z"/>
+  <path d="M388 272L400 294L412 272L400 281Z"/>
+  <path d="M390 306L400 326L410 306L400 313Z"/>
+</g>
+
+<use href="#rosto"/>
+<use href="#rosto" transform="matrix(-1 0 0 1 800 0)"/>
+
+<!-- brilho do fogo saindo da boca -->
+<ellipse class="fogo" cx="400" cy="560" rx="70" ry="22" fill="#ff7a1a" opacity=".45" filter="url(#borra)"/>
+
+<!-- vinheta -->
+<rect width="800" height="800" fill="none" stroke="#000" stroke-opacity=".55" stroke-width="60" filter="url(#borra)"/>
+</svg>

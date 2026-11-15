@@ -781,8 +781,10 @@
   }
   // girar = quem joga de pretas vê o tabuleiro do lado dele (as pretas embaixo)
   // pedra de clube traz o tabuleiro do time junto: cada jogador vê o da pedra dele (quem assiste, o das brancas)
-  const TABULEIROS = new Set(['barca', 'real']);
+  // o Dragão (exclusiva do VENO) é a exceção: com ele na partida, todo mundo vê o tabuleiro do dragão
+  const TABULEIROS = new Set(['barca', 'real', 'dragao']);
   const temaTab = (sk) => (TABULEIROS.has(sk) ? 'tb-' + sk : '');
+  const temaPartida = (skins, cor) => (skins.b === 'dragao' || skins.p === 'dragao' ? 'dragao' : skins[cor]);
   function tabuleiro(est, girar, m = null, tema = '') {
     const box = el('div', { class: 'jg-tab' + (m && m.jogavel ? ' jogavel' : '') + (temaTab(tema) ? ' ' + temaTab(tema) : '') });
     for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
@@ -1256,7 +1258,7 @@
       faixa = el('div', { class: 'jg-vez dele' }, !p.vencedor ? 'EMPATE' : jogo ? (p.vencedor === meu ? 'VITÓRIA' : 'DERROTA') : ['VITÓRIA DE ', el('b', { text: nick(p.vencedor) })],
         el('small', { text: (MOTIVO[p.motivo] || 'fim').toUpperCase() }));
     }
-    const tab = tabuleiro(vis, souP, m, J.skins[minhaCor || 'b']);
+    const tab = tabuleiro(vis, souP, m, temaPartida(J.skins, minhaCor || 'b'));
     if (jogo && andando) tab.addEventListener('click', (e) => { const c = e.target.closest('[data-casa]'); if (c) tocarCasa(Number(c.dataset.casa)); });
 
     let acoes = null;
@@ -1927,7 +1929,7 @@
         avatar: (pid) => C.avatarChat(nick(pid), 'av-m'),
         peca: (letra) => { J.skins = skins; return peca(letra); }, // a pedra que cada um escolheu vale no replay também
         girar: !!meu && p.pretas === meu, // quem jogou de pretas vê do lado dele
-        tema: temaTab(skins[meu && p.pretas === meu ? 'p' : 'b']), // e o tabuleiro da pedra dele
+        tema: temaTab(temaPartida(skins, meu && p.pretas === meu ? 'p' : 'b')), // e o tabuleiro da pedra dele
         maioria: J.cfg.maioria_obrigatoria !== false,
         inicio: agoraUrl.lance || 0,
         mudo: () => J.mudo,
@@ -2001,9 +2003,13 @@
     gelo: { nome: 'Gelo Azul', rar: 'ESPECIAL', cls: 'especial' },
     barca: { nome: 'Barcelona', rar: 'CLUBE', cls: 'clube' },
     real: { nome: 'Real Madrid', rar: 'CLUBE', cls: 'clube' },
+    dragao: { nome: 'Dragão', rar: 'EXCLUSIVA', cls: 'exclusiva' },
   };
   // liberadas pra todo mundo (pedido do dono do clã); as outras se ganham nos torneios
   const GRATIS = new Set(['classica', 'barca', 'real']);
+  // exclusivas: o banco dá pra uma pessoa só (seção 11d do SQL), não viram prêmio de torneio
+  const EXCLUSIVAS = new Set(['dragao']);
+  const donoDe = (k) => { const x = TN.pedras.find((y) => y.pedra === k); return x ? nick(x.player) : 'VENO'; };
   const PREMIO_ROT = { 1: 'CAMPEÃO', 2: 'VICE', 3: 'SEMIFINAL' };
   const TN_CAMPOS = 'id,edicao,nome,jogo,vagas,tempo_jogada,final_md3,premios,status,campeao,criado_em,inicio,fim';
   const CF_CAMPOS = 'id,torneio,rodada,pos,a,b,vit_a,vit_b,vencedor,partida';
@@ -2135,7 +2141,7 @@
   }
   async function usarPedra(k) {
     const tem = GRATIS.has(k) || TN.pedras.some((x) => x.player === eu() && x.pedra === k);
-    if (!tem) { toast('Essa você ainda não ganhou. Vença um torneio que dá ela de prêmio!', true); return; }
+    if (!tem) { toast(EXCLUSIVAS.has(k) ? `${PEDRAS[k].nome} é exclusiva do ${donoDe(k)}.` : 'Essa você ainda não ganhou. Vença um torneio que dá ela de prêmio!', true); return; }
     try {
       await rpc('jogos_usar_pedra', { p_pedra: k });
       TN.uso.set(eu(), k);
@@ -2286,13 +2292,14 @@
 
   // ---- título e pedras no perfil ----
   function trofeusPerfil(id) {
-    const ps = TN.pedras.filter((x) => x.player === id);
-    if (!ps.length) return null;
+    const todas = TN.pedras.filter((x) => x.player === id);
+    if (!todas.length) return null;
+    const ps = todas.filter((x) => !EXCLUSIVAS.has(x.pedra)); // a exclusiva não foi ganha em torneio
     const titulos = ps.filter((x) => x.colocacao === 1).length;
-    const tipos = [...new Set(ps.map((x) => x.pedra))];
+    const tipos = [...new Set(todas.map((x) => x.pedra))];
     return el('div', { class: 'jt-pf' },
-      el('span', { class: 'jt-pf-txt' }, titulos ? el('b', { text: `🏆 ${titulos} ${titulos === 1 ? 'título' : 'títulos'}` }) : el('b', { text: '🏆 Torneios' }),
-        ` · ${ps.length} ${ps.length === 1 ? 'pedra ganha' : 'pedras ganhas'}`),
+      ps.length ? el('span', { class: 'jt-pf-txt' }, titulos ? el('b', { text: `🏆 ${titulos} ${titulos === 1 ? 'título' : 'títulos'}` }) : el('b', { text: '🏆 Torneios' }),
+        ` · ${ps.length} ${ps.length === 1 ? 'pedra ganha' : 'pedras ganhas'}`) : el('span', { class: 'jt-pf-txt' }, el('b', { text: '🐉 Pedra exclusiva' })),
       el('span', { class: 'jt-pf-pedras' }, tipos.map((k) => el('span', { title: PEDRAS[k] ? PEDRAS[k].nome : k }, pedraIco(k, 'P', 26)))));
   }
   // o que a janela do fim diz numa partida de torneio
@@ -2597,18 +2604,21 @@
     const tab = tabuleiro({ tab: TAB_VITRINE }, false, null, ver);
     J.skins = antes;
     const nome = PEDRAS[ver].nome;
-    const estado = !meu ? 'Entre com a sua conta pra escolher a sua pedra.'
-      : uso === ver ? 'Essa é a sua pedra agora. Quem jogar com você e quem assistir vê ela.'
+    const excl = EXCLUSIVAS.has(ver);
+    const estado = !meu ? (excl ? `${nome} é exclusiva do ${donoDe(ver)}. Ninguém mais pode usar.` : 'Entre com a sua conta pra escolher a sua pedra.')
+      : uso === ver ? (excl ? 'O Dragão é seu. Quem jogar com você e quem assistir vê o tabuleiro dele.' : 'Essa é a sua pedra agora. Quem jogar com você e quem assistir vê ela.')
       : tem(ver) ? `Toque em ${nome} na lista pra usar.`
+      : excl ? `${nome} é exclusiva do ${donoDe(ver)}. Ninguém mais pode usar.`
       : `${nome} é prêmio de torneio. Ganhe um torneio que dá ela pra liberar.`;
     const item = (k) => {
       const ganhas = minhas.filter((x) => x.pedra === k);
       const sub = k === 'classica' ? 'A tradicional, madeira e marfim'
         : GRATIS.has(k) ? 'Grátis · vem com o tabuleiro do time'
+        : EXCLUSIVAS.has(k) ? (tem(k) ? 'Só você tem · o tabuleiro aparece pra todo mundo da partida' : `🔒 Exclusiva do ${donoDe(k)}`)
         : ganhas.length ? ganhas.map(origem).join(' · ') : '🔒 Prêmio de torneio';
       const tag = uso === k ? 'EM USO' : GRATIS.has(k) ? 'GRÁTIS' : tem(k) ? 'USAR' : '🔒';
       return el('button', {
-        type: 'button', class: 'jt-minha' + (tem(k) ? '' : ' trancada') + (uso === k ? ' em-uso' : ''), 'aria-pressed': String(ver === k),
+        type: 'button', class: 'jt-minha' + (tem(k) ? '' : ' trancada') + (uso === k ? ' em-uso' : '') + (EXCLUSIVAS.has(k) ? ' exclusiva' : ''), 'aria-pressed': String(ver === k),
         onclick: () => { PZ.ver = k; if (meu && tem(k) && uso !== k) usarPedra(k); else desenharPersonalizar(); },
       },
         pedraIco(k, 'P', 38),
@@ -2623,10 +2633,12 @@
           tab,
           el('p', { class: 'jz-estado' + (uso === ver && meu ? ' ok' : ''), text: estado })),
         el('div', { class: 'jz-lista' },
+          rotulo('EXCLUSIVA'),
+          el('div', { class: 'jt-minhas' }, ks.filter((k) => EXCLUSIVAS.has(k)).map(item)),
           rotulo('GRÁTIS PRA TODO MUNDO'),
           el('div', { class: 'jt-minhas' }, ks.filter((k) => GRATIS.has(k)).map(item)),
           rotulo('PRÊMIOS DE TORNEIO'),
-          el('div', { class: 'jt-minhas' }, ks.filter((k) => !GRATIS.has(k)).map(item)),
+          el('div', { class: 'jt-minhas' }, ks.filter((k) => !GRATIS.has(k) && !EXCLUSIVAS.has(k)).map(item)),
           el('p', { class: 'jt-nota', text: 'A pedra que você escolher vale em todas as suas partidas e no replay. As de clube trocam o tabuleiro também: você vê o do seu time.' }))));
   }
 
@@ -2652,7 +2664,7 @@
     const tempo = el('select', { id: 'jtTempo' }, [30, 45, 60, 90, 120].map((s) => el('option', { value: String(s), selected: s === seg, text: s % 60 ? `${s} segundos` : `${s / 60} ${s === 60 ? 'minuto' : 'minutos'}` })));
     const finalSel = el('select', { id: 'jtFinal' }, el('option', { value: '0', text: 'Partida única' }), el('option', { value: '1', text: 'Melhor de 3' }));
     const escolher = (k, rot) => el('div', { class: 'campo' }, el('span', { class: 'jt-lbl', text: rot }),
-      el('div', { class: 'jt-pick', role: 'radiogroup', 'aria-label': rot }, ['', ...Object.keys(PEDRAS).filter((x) => !GRATIS.has(x))].map((sk) => el('button', {
+      el('div', { class: 'jt-pick', role: 'radiogroup', 'aria-label': rot }, ['', ...Object.keys(PEDRAS).filter((x) => !GRATIS.has(x) && !EXCLUSIVAS.has(x))].map((sk) => el('button', {
         type: 'button', role: 'radio', 'aria-checked': String((st.premios[k] || '') === sk),
         onclick: (e) => { st.premios[k] = sk; e.currentTarget.parentElement.querySelectorAll('button').forEach((b) => b.setAttribute('aria-checked', String(b === e.currentTarget))); },
       }, sk ? pedraIco(sk, 'P', 30) : el('span', { class: 'jt-pc nenhuma', text: '—' }), sk ? PEDRAS[sk].nome : 'Nenhuma'))));
