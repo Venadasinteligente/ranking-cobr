@@ -1132,11 +1132,11 @@
       return x;
     };
     const esq = lado(embaixo, 'esq'), dir = lado(outra, 'dir');
-    const fill = el('i', { class: `jg-ch-fill ${embaixo === 'b' ? 'cl' : 'es'}` });
+    const fill = el('i', { class: 'jg-ch-fill' });
     const box = el('div', { class: 'jg-chance pensando', id: 'jgChance', 'data-id': p.id, role: 'img', 'aria-label': 'Chance de vitória: calculando' },
       esq,
       el('div', { class: 'jg-ch-centro' }, el('small', { text: 'CHANCE DE VITÓRIA' }),
-        el('div', { class: `jg-ch-trilho ${outra === 'b' ? 'cl' : 'es'}` }, fill, el('span', { class: 'jg-ch-meio' }))),
+        el('div', { class: 'jg-ch-trilho' }, fill, el('span', { class: 'jg-ch-meio' }))),
       dir);
     Object.assign(box, { _esq: esq, _dir: dir, _fill: fill, _nomes: { b: nick(p.brancas), p: nick(p.pretas) } });
     if (CH.vis && CH.vis.id === p.id) pintarChance(box, CH.vis.pb, null);
@@ -1173,9 +1173,9 @@
     chip.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'translateY(0)', offset: 0.2 }, { opacity: 1, transform: 'translateY(-3px)', offset: 0.75 }, { opacity: 0, transform: 'translateY(-8px)' }],
       { duration: 1600, easing: 'ease-out', fill: 'forwards' }).finished.then(() => chip.remove()).catch(() => chip.remove());
     if (Math.abs(d) >= 20) {
-      box.animate([{ boxShadow: '0 0 0 0 rgba(255, 122, 26, 0)', borderColor: 'var(--linha)' },
+      box.animate([{ boxShadow: '0 0 0 0 rgba(255, 122, 26, 0)', borderColor: 'var(--ch-borda)' },
         { boxShadow: '0 0 0 2px rgba(255, 122, 26, .9), 0 0 32px rgba(255, 122, 26, .65)', borderColor: 'var(--laranja)', offset: 0.25 },
-        { boxShadow: '0 0 0 0 rgba(255, 122, 26, 0)', borderColor: 'var(--linha)' }], { duration: 1300, easing: 'ease-out' });
+        { boxShadow: '0 0 0 0 rgba(255, 122, 26, 0)', borderColor: 'var(--ch-borda)' }], { duration: 1300, easing: 'ease-out' });
       l._num.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.35)', filter: 'brightness(1.5)', offset: 0.3 }, { transform: 'scale(1)' }], { duration: 900, easing: 'ease-out' });
       fill.animate([{ filter: 'brightness(1)' }, { filter: 'brightness(1.6)', offset: 0.3 }, { filter: 'brightness(1)' }], { duration: 1100, easing: 'ease-out' });
     }
