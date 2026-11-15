@@ -33,12 +33,12 @@
   const COROA = `<svg viewBox="0 0 24 24" stroke-width="1.2" stroke-linejoin="round">${C.ICONE_COROA}</svg>`;
 
   // ---------- estado ----------
-  const POR_PAGINA = 6;
+  const MINHAS = 3; // na sala cada um vê só as próprias 3 últimas partidas (pedido do dono do clã)
   const CAMPOS = 'id,jogo,status,convidou,convidado,brancas,pretas,estado,versao,prazo,empate_proposto_por,vencedor,motivo,revanche_de,criado_em,inicio,fim,torneio,confronto,prontos';
   const J = {
     ligado: false, carregou: false, rt: null, conectou: false, tique: null,
     lista: new Map(),        // partidas vivas (convite e andamento): id -> linha
-    ultimas: [], temMais: false,
+    ultimas: [],             // as minhas últimas partidas que acabaram (no máximo MINHAS)
     placar: null, rankTodo: false, // ranking de damas (jogos_placar)
     perfis: new Map(),       // perfil: player_id -> { em, lista: últimas partidas dele }
     tempoPed: null,          // relógio zerado: pedido de "tempo" já mandado ({ id, versao, em, n })
@@ -158,9 +158,11 @@
   }
   async function carregar() {
     const sb = C.sb;
+    const meu = eu();
     const [vivas, ult, cfg, placar] = await Promise.all([
       sb.from('jogos_partidas').select(CAMPOS).in('status', ['convite', 'chamada', 'andamento']),
-      sb.from('jogos_partidas').select(CAMPOS).eq('jogo', 'damas').eq('status', 'fim').order('fim', { ascending: false }).limit(POR_PAGINA),
+      meu ? sb.from('jogos_partidas').select(CAMPOS).eq('jogo', 'damas').eq('status', 'fim').or(`brancas.eq.${meu},pretas.eq.${meu}`).order('fim', { ascending: false }).limit(MINHAS)
+        : { data: [] },
       sb.rpc('jogos_cfg'),
       sb.rpc('jogos_placar', { p_jogo: 'damas' }),
       carregarTorneios().catch((e) => console.warn('torneio:', e.message)),
@@ -170,7 +172,7 @@
     // jogada minha ainda a caminho do servidor: não volta o tabuleiro pra trás
     const pend = J.pendente, doBanco = pend && J.lista.get(pend.id);
     if (doBanco && doBanco.status === 'andamento' && doBanco.versao < pend.versao) J.lista.set(pend.id, pend);
-    if (!ult.error) { J.ultimas = ult.data; J.temMais = ult.data.length === POR_PAGINA; }
+    if (!ult.error) J.ultimas = ult.data || [];
     if (!cfg.error && cfg.data) J.cfg = { ...J.cfg, ...cfg.data };
     if (!placar.error) J.placar = (placar.data || []).slice().sort(ordemPlacar);
     if (J.aberta && J.lista.has(J.aberta.id)) J.aberta = J.lista.get(J.aberta.id);
@@ -199,16 +201,6 @@
     if (r.error) throw r.error;
     return r.data || null;
   }
-  async function maisUltimas(bt) {
-    bt.disabled = true;
-    const de = J.ultimas.length;
-    const r = await C.sb.from('jogos_partidas').select(CAMPOS).eq('jogo', 'damas').eq('status', 'fim').order('fim', { ascending: false }).range(de, de + POR_PAGINA - 1);
-    if (r.error) { bt.disabled = false; toast('Não consegui carregar mais partidas.', true); return; }
-    const ja = new Set(J.ultimas.map((p) => p.id));
-    J.ultimas.push(...r.data.filter((p) => !ja.has(p.id)));
-    J.temMais = r.data.length === POR_PAGINA;
-    desenhar();
-  }
 
   // ---------- ao vivo ----------
   function ligarAoVivo() {
@@ -232,7 +224,10 @@
     if (n.torneio) TN.partidas.set(n.id, n);
     if (!guardar(n)) return;
     if (n.id === partidaDaUrl()) J.ultNoticia = Date.now();
-    if (n.status === 'fim' && !J.ultimas.some((p) => p.id === n.id)) J.ultimas.unshift(n);
+    if (n.status === 'fim' && n.jogo === 'damas' && eu() && (n.brancas === eu() || n.pretas === eu()) && !J.ultimas.some((p) => p.id === n.id)) {
+      J.ultimas.unshift(n);
+      J.ultimas.length = Math.min(J.ultimas.length, MINHAS);
+    }
     if (n.status === 'fim' && (!antes || antes.status !== 'fim')) atualizarPlacar();
     const meu = eu();
     if (meu) {
@@ -452,7 +447,7 @@
         : el('span', { class: 'jg-ult-res', text: 'VITÓRIA' }),
       rp ? el('button', { type: 'button', class: 'jg-ult-play', 'aria-label': `Ver o replay: ${nick(p.brancas)} contra ${nick(p.pretas)}`, onclick: (e) => { e.stopPropagation(); abrirReplay(p); } }, ico(IC_PLAY, 14), 'REPLAY') : null);
   }
-  // cartão grande no topo da sala: a última partida que acabou, com o botão do replay bem à vista
+  // cartão grande no topo da sala: a minha última partida que acabou, com o botão do replay bem à vista
   function destaqueReplay() {
     const com = J.ultimas.filter(temReplay);
     const p = com[0];
@@ -461,23 +456,22 @@
     const perdeu = emp ? null : p.vencedor === p.brancas ? p.pretas : p.brancas;
     const lado = (id, ganhou) => el('div', { class: 'jg-rpd-lado' + (ganhou ? ' ganhou' : '') }, C.avatarChat(nick(id), 'av-m'), el('span', { text: nick(id) }));
     return el('div', { class: 'jg-card jg-rpd' },
-      el('div', { class: 'jg-rpd-top' }, ico(IC_REPLAY, 18), el('b', { text: 'REPLAY DAS PARTIDAS' })),
-      el('p', { class: 'jg-rpd-txt', text: 'Reveja as partidas do clã lance por lance, com o robô mostrando os melhores e os piores lances.' }),
+      el('div', { class: 'jg-rpd-top' }, ico(IC_REPLAY, 18), el('b', { text: 'REPLAY DA SUA ÚLTIMA PARTIDA' })),
+      el('p', { class: 'jg-rpd-txt', text: 'Reveja sua partida lance por lance, com o robô mostrando os melhores e os piores lances.' }),
       el('div', { class: 'jg-rpd-jogo' },
         lado(emp ? p.brancas : p.vencedor, !emp),
         el('div', { class: 'jg-rpd-meio' }, el('b', { text: emp ? 'EMPATE' : 'VENCEU' }), el('small', { text: `${lancesTxt(p.versao)} · ${haPouco(p.fim)}` })),
         lado(emp ? p.pretas : perdeu, false)),
       el('button', { type: 'button', class: 'btn btn-pri btn-grande jg-rpd-bt', onclick: () => abrirReplay(p) }, ico(IC_PLAY, 18), 'ASSISTIR O REPLAY'),
       com.length > 1
-        ? el('button', { type: 'button', class: 'btn btn-sec jg-rpd-todos', text: 'Ver o replay das outras partidas ↓', onclick: () => { const a = $('jgUltimas'); if (a) a.scrollIntoView({ behavior: 'smooth', block: 'start' }); } })
+        ? el('button', { type: 'button', class: 'btn btn-sec jg-rpd-todos', text: 'Ver o replay das suas outras partidas ↓', onclick: () => { const a = $('jgUltimas'); if (a) a.scrollIntoView({ behavior: 'smooth', block: 'start' }); } })
         : null);
   }
   function ultimasPartidas() {
     if (!J.ultimas.length) return null;
     return [
-      el('div', { class: 'jg-rot', id: 'jgUltimas' }, el('span', null, 'ÚLTIMAS PARTIDAS ', el('span', { class: 'jg-rot-dica', text: '· toque pra ver o replay' }))),
-      el('ul', { class: 'jg-ult' }, J.ultimas.map((p) => linhaUltima(p))),
-      J.temMais ? el('button', { type: 'button', class: 'btn btn-sec jg-mais', text: 'Ver mais partidas', onclick: (e) => maisUltimas(e.currentTarget) }) : null,
+      el('div', { class: 'jg-rot', id: 'jgUltimas' }, el('span', null, 'SUAS ÚLTIMAS PARTIDAS ', el('span', { class: 'jg-rot-dica', text: '· toque pra ver o replay' }))),
+      el('ul', { class: 'jg-ult' }, J.ultimas.map((p) => linhaUltima(p, eu()))),
     ];
   }
 
