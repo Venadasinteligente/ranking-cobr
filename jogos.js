@@ -1066,6 +1066,120 @@
     document.addEventListener(ev, () => { const b = document.getElementById('jgTela'); if (b) botaoTela(b); });
   }
 
+  // ---- chance de vitória ao vivo: o robô do replay (damas-robo.js, num Worker) dá nota a cada posição ----
+  // a barra só anda quando a peça termina de pular; virada grande dá um clarão. Tudo por WAAPI/JS:
+  // aparece mesmo com "reduzir movimento" ligado (o CSS desse modo corta transição e animação de CSS)
+  const Robo = window.DamasRobo;
+  const BASE_JS = (() => { try { return document.currentScript.src.replace(/[^/]*$/, ''); } catch (e) { return ''; } })();
+  const CH_NOS = 60000; // o mesmo esforço do replay: a chance ao vivo bate com a da análise depois
+  const CH = { wk: null, sem: false, esperando: new Map(), notas: new Map(), atual: null, vis: null, timer: 0 };
+  const chaveCh = (est) => `${est.tab}${est.vez}${opcoes().maioria ? 'm' : ''}`;
+  const pctTxt = (x) => (x >= 1 ? 100 : x <= 0 ? 0 : Math.min(99, Math.max(1, Math.round(x * 100))));
+  function pedirChance(p, est) {
+    if (!Robo) return;
+    if (p.status === 'fim') { CH.atual = null; mostrarChance(p.id, !p.vencedor ? 0.5 : p.vencedor === p.brancas ? 1 : 0); return; }
+    const k = chaveCh(est);
+    CH.atual = k;
+    const chegou = (e) => {
+      CH.notas.set(k, e);
+      if (CH.notas.size > 300) CH.notas.delete(CH.notas.keys().next().value);
+      if (CH.atual === k) mostrarChance(p.id, Robo.chance(e));
+    };
+    if (CH.notas.has(k)) { chegou(CH.notas.get(k)); return; }
+    // sem Worker: pensa aqui mesmo, com menos esforço pra não travar a tela
+    const aqui = () => setTimeout(() => { if (CH.atual === k) try { chegou(Robo.avaliarPosicao(est.tab, est.vez, { ...opcoes(), nos: 20000 })); } catch (e) {} }, 30);
+    if (CH.sem || typeof Worker !== 'function') { aqui(); return; }
+    if (!CH.wk) {
+      try { CH.wk = new Worker(BASE_JS + 'damas-robo.js'); } catch (e) { CH.sem = true; aqui(); return; }
+      const falhou = () => {
+        try { CH.wk.terminate(); } catch (e) {}
+        CH.wk = null; CH.sem = true; CH.esperando.clear();
+        const id = partidaDaUrl(), x = id && linhaDe(id);
+        if (x) pedirChance(x, x.estado || R.estadoInicial());
+      };
+      CH.wk.onmessage = (ev) => {
+        const d = ev.data || {}, f = CH.esperando.get(d.id);
+        CH.esperando.delete(d.id);
+        if (d.erro) falhou(); else if (f && d.e != null) f(d.e);
+      };
+      CH.wk.onerror = falhou;
+    }
+    if (CH.esperando.has(k)) return;
+    CH.esperando.set(k, chegou);
+    CH.wk.postMessage({ id: k, tab: est.tab, vez: est.vez, maioria: opcoes().maioria, nos: CH_NOS });
+  }
+  function mostrarChance(id, pb) {
+    clearTimeout(CH.timer);
+    const vai = () => {
+      const box = document.getElementById('jgChance');
+      if (!box || box.dataset.id !== id) return;
+      const antes = CH.vis && CH.vis.id === id ? CH.vis.pb : null;
+      CH.vis = { id, pb };
+      pintarChance(box, pb, antes);
+    };
+    // espera a peça do último lance parar de andar
+    const a = J.animando;
+    const t = a && a.id === id && !calmo() ? Math.max(0, (a.caminho.length - 1) * PASSO - (performance.now() - a.t0)) + 120 : 0;
+    if (t > 120) CH.timer = setTimeout(vai, t); else vai();
+  }
+  function barraChance(p, embaixo) {
+    const outra = embaixo === 'b' ? 'p' : 'b';
+    const lado = (cor, pos) => {
+      const num = el('b', { class: 'jg-ch-num', text: '–' });
+      const x = el('div', { class: `jg-ch-lado ${pos}` }, el('i', { class: `jg-ch-pc ${cor === 'b' ? 'cl' : 'es'}` }), num);
+      x._num = num; x._cor = cor;
+      return x;
+    };
+    const esq = lado(embaixo, 'esq'), dir = lado(outra, 'dir');
+    const fill = el('i', { class: `jg-ch-fill ${embaixo === 'b' ? 'cl' : 'es'}` });
+    const box = el('div', { class: 'jg-chance pensando', id: 'jgChance', 'data-id': p.id, role: 'img', 'aria-label': 'Chance de vitória: calculando' },
+      esq,
+      el('div', { class: 'jg-ch-centro' }, el('small', { text: 'CHANCE DE VITÓRIA' }),
+        el('div', { class: `jg-ch-trilho ${outra === 'b' ? 'cl' : 'es'}` }, fill, el('span', { class: 'jg-ch-meio' }))),
+      dir);
+    Object.assign(box, { _esq: esq, _dir: dir, _fill: fill, _nomes: { b: nick(p.brancas), p: nick(p.pretas) } });
+    if (CH.vis && CH.vis.id === p.id) pintarChance(box, CH.vis.pb, null);
+    return box;
+  }
+  // pb = chance das brancas (0..1); antes = a que estava na tela (null: sem animação)
+  function pintarChance(box, pb, antes) {
+    const de = (cor, x) => (cor === 'b' ? x : 1 - x);
+    const esq = box._esq, dir = box._dir, fill = box._fill;
+    const alvo = de(esq._cor, pb) * 100;
+    box.classList.remove('pensando');
+    cancelAnimationFrame(box._raf);
+    for (const l of [esq, dir]) l.classList.toggle('frente', pctTxt(de(l._cor, pb)) > 50);
+    box.setAttribute('aria-label', `Chance de vitória segundo o robô: ${box._nomes.b} ${pctTxt(pb)}%, ${box._nomes.p} ${pctTxt(1 - pb)}%`);
+    const mexeu = antes != null && Math.abs(antes - pb) > 0.001 && fill.animate;
+    fill.style.width = alvo + '%';
+    if (!mexeu) { for (const l of [esq, dir]) l._num.textContent = pctTxt(de(l._cor, pb)) + '%'; return; }
+    const DUR = 800, ease = 'cubic-bezier(.2, .8, .2, 1)';
+    fill.animate([{ width: de(esq._cor, antes) * 100 + '%' }, { width: alvo + '%' }], { duration: DUR, easing: ease });
+    // os números contam até o novo valor junto com a barra
+    const t0 = performance.now();
+    const passo = (agoraT) => {
+      const f = Math.min(1, (agoraT - t0) / DUR), s = 1 - Math.pow(1 - f, 3), x = antes + (pb - antes) * s;
+      for (const l of [esq, dir]) l._num.textContent = pctTxt(de(l._cor, f >= 1 ? pb : x)) + '%';
+      if (f < 1) box._raf = requestAnimationFrame(passo);
+    };
+    box._raf = requestAnimationFrame(passo);
+    // quem ganhou chance: "+N" subindo do lado dele; virada grande (20+ pontos): clarão na barra e no número
+    const d = Math.round(pctTxt(pb) - pctTxt(antes));
+    if (Math.abs(d) < 3) return;
+    const ganhou = d > 0 ? 'b' : 'p', l = esq._cor === ganhou ? esq : dir;
+    const chip = el('span', { class: 'jg-ch-delta', text: `+${Math.abs(d)}`, 'aria-hidden': 'true' });
+    l.append(chip);
+    chip.animate([{ opacity: 0, transform: 'translateY(8px)' }, { opacity: 1, transform: 'translateY(0)', offset: 0.2 }, { opacity: 1, transform: 'translateY(-3px)', offset: 0.75 }, { opacity: 0, transform: 'translateY(-8px)' }],
+      { duration: 1600, easing: 'ease-out', fill: 'forwards' }).finished.then(() => chip.remove()).catch(() => chip.remove());
+    if (Math.abs(d) >= 20) {
+      box.animate([{ boxShadow: '0 0 0 0 rgba(255, 122, 26, 0)', borderColor: 'var(--linha)' },
+        { boxShadow: '0 0 0 2px rgba(255, 122, 26, .9), 0 0 32px rgba(255, 122, 26, .65)', borderColor: 'var(--laranja)', offset: 0.25 },
+        { boxShadow: '0 0 0 0 rgba(255, 122, 26, 0)', borderColor: 'var(--linha)' }], { duration: 1300, easing: 'ease-out' });
+      l._num.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.35)', filter: 'brightness(1.5)', offset: 0.3 }, { transform: 'scale(1)' }], { duration: 900, easing: 'ease-out' });
+      fill.animate([{ filter: 'brightness(1)' }, { filter: 'brightness(1.6)', offset: 0.3 }, { filter: 'brightness(1)' }], { duration: 1100, easing: 'ease-out' });
+    }
+  }
+
   // ---- a tela da partida ----
   function desenharPartida(id) {
     const sec = $('jogos');
@@ -1182,6 +1296,7 @@
         el('button', { type: 'button', class: 'jg-ico', 'aria-label': J.mudo ? 'Ligar o som' : 'Desligar o som', 'aria-pressed': J.mudo ? 'true' : 'false', onclick: trocarMudo }, ico(J.mudo ? IC_MUDO : IC_SOM))),
       el('div', { class: 'jg-quem', id: 'jgQuem', hidden: true }),
       cima,
+      Robo ? barraChance(p, embaixo) : null,
       faixa,
       tab,
       baixo,
@@ -1190,6 +1305,7 @@
     pendurarBaloes();
     ajustarTab();
     animar(tab);
+    pedirChance(p, est);
     atualizarOlhos();
     desenharFim(p);
     if (J.cvAberta) desenharConversa();
@@ -2643,6 +2759,8 @@
     limparVoos();
     fecharFim();
     fecharReplay(); RP.lances.clear(); RP.volta = null;
+    if (CH.wk) CH.wk.terminate();
+    CH.wk = null; CH.esperando.clear(); CH.atual = null; CH.vis = null; clearTimeout(CH.timer);
     limparTorneios();
     if (J.pop) { J.pop.remove(); J.pop = null; J.popId = null; }
     document.body.classList.remove('jg-em-partida');

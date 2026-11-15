@@ -9,11 +9,13 @@
   const Robo = fabrica();
   if (typeof module === 'object' && module.exports) module.exports = Robo;
   else raiz.DamasRobo = Robo;
-  // dentro de um Worker: { id, lances, maioria, nos, indices } -> { id, k, r } por posição e { id, fim }
+  // dentro de um Worker: { id, lances, maioria, nos, indices } -> { id, k, r } por posição e { id, fim };
+  // { id, tab, vez, maioria, nos } -> { id, e }: só a nota daquela posição (a chance de vitória ao vivo)
   if (typeof WorkerGlobalScope !== 'undefined' && raiz instanceof WorkerGlobalScope) {
     raiz.onmessage = (e) => {
       const q = e.data || {};
       try {
+        if (q.tab) { raiz.postMessage({ id: q.id, e: Robo.avaliarPosicao(q.tab, q.vez, { maioria: q.maioria, nos: q.nos }) }); return; }
         Robo.analisarPartida(q.lances, { maioria: q.maioria, nos: q.nos, indices: q.indices }, (k, r) => raiz.postMessage({ id: q.id, k, r }));
         raiz.postMessage({ id: q.id, fim: true });
       } catch (err) {
@@ -345,6 +347,15 @@
     return saida;
   }
 
+  // nota de uma posição solta, pras brancas (tab em texto, vez 'b' ou 'p'): a chance de vitória ao vivo
+  function avaliarPosicao(tab, vez, { maioria = true, nos = 60000 } = {}) {
+    const cor = vez === 'p' ? -1 : 1;
+    const pz = pensar(deTexto(tab), cor, { maioria, nos });
+    if (!pz.lances.length) return cor > 0 ? -MATE : MATE;
+    const melhor = Math.max(...pz.notas);
+    return cor > 0 ? melhor : -melhor;
+  }
+
   // ---------- nota de cada lance ----------
   // chance de vencer (0..1) pra uma nota (100 = uma pedra a mais ≈ 71%)
   const chance = (s) => (s >= MATE - 1000 ? 1 : s <= -MATE + 1000 ? 0 : 1 / (1 + Math.exp(-s / 110)));
@@ -385,5 +396,5 @@
     return n ? soma / n : null;
   }
 
-  return { gerar, fazer, desfazer, avaliar, pensar, posicoes, conferir, analisarPartida, classificar, precisao, chance, precisaoDe, deTexto, paraTexto, TIPOS, MATE };
+  return { gerar, fazer, desfazer, avaliar, pensar, avaliarPosicao, posicoes, conferir, analisarPartida, classificar, precisao, chance, precisaoDe, deTexto, paraTexto, TIPOS, MATE };
 });

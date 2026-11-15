@@ -124,3 +124,19 @@ test('a nota não depende do aparelho: mesma análise duas vezes dá o mesmo res
   const b = Robo.analisarPartida(lances, { nos: 20000, indices: [15, 9, 4] });
   assert.deepEqual(a, b);
 });
+
+test('chance ao vivo: nota de uma posição solta, sempre do lado das brancas', () => {
+  const ini = R.estadoInicial();
+  const e0 = Robo.avaliarPosicao(ini.tab, ini.vez);
+  assert.ok(Math.abs(e0) < 60, `início equilibrado (${e0})`);
+  // brancas com uma pedra a mais: bom pras brancas, jogue quem jogar
+  const mais = montar([[5, 0, 'b'], [5, 2, 'b'], [2, 7, 'p']]);
+  assert.ok(Robo.avaliarPosicao(mais.tab, 'b') > 80);
+  assert.ok(Robo.avaliarPosicao(mais.tab, 'p') > 80);
+  // pretas sem lance nenhum na vez delas: brancas já ganharam
+  const fim = montar([[5, 0, 'b']], 'p');
+  assert.equal(Robo.chance(Robo.avaliarPosicao(fim.tab, 'p')), 1);
+  // o mesmo que a análise do replay dá pra essa posição
+  const ps = Robo.analisarPartida([], { indices: [0] });
+  assert.equal(Robo.avaliarPosicao(ini.tab, 'b'), ps[0].e);
+});
