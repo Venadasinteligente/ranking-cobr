@@ -365,6 +365,7 @@
       minha ? cartaoMinha(minha) : null,
       rec.map((p) => cartaoConvite(p)),
       env.map((p) => cartaoConvite(p)),
+      destaqueReplay(),
       secaoTorneios(),
       listaOnline(minha, rec, env),
       vivas.length ? [rotulo(el('span', { text: 'ACONTECENDO AGORA' }), rotVivo()), el('div', { class: 'jg-card' }, vivas.map(cartaoVivo))] : null,
@@ -443,17 +444,38 @@
         : p.vencedor === quem ? ['venceu ', el('b', { text: nick(perdeu) })] : ['perdeu pra ', el('b', { text: nick(p.vencedor) })])
       : (emp ? [el('b', { text: nick(p.brancas) }), ' e ', el('b', { text: nick(p.pretas) }), ' empataram']
         : [el('b', { class: 'ganhou', text: nick(p.vencedor) }), ' venceu ', el('b', { text: nick(perdeu) })]);
-    return el('li', null, C.avatarChat(nick(quem ? (quem === p.brancas ? p.pretas : p.brancas) : emp ? p.brancas : p.vencedor), 'av-p'),
+    const rp = temReplay(p); // com replay a linha toda abre ele (e tem o botão REPLAY escrito)
+    return el('li', rp ? { class: 'tem-rp', title: 'Ver o replay', onclick: () => abrirReplay(p) } : null, C.avatarChat(nick(quem ? (quem === p.brancas ? p.pretas : p.brancas) : emp ? p.brancas : p.vencedor), 'av-p'),
       el('div', { class: 'jg-ult-txt' }, txt, el('small', { text: `${p.torneio ? '🏆 torneio · ' : ''}${MOTIVO[p.motivo] || 'fim'} · ${lancesTxt(p.versao)} · ${haPouco(p.fim)}` })),
       emp ? el('span', { class: 'jg-ult-res emp', text: 'EMPATE' })
         : quem && p.vencedor !== quem ? el('span', { class: 'jg-ult-res perdeu', text: 'DERROTA' })
         : el('span', { class: 'jg-ult-res', text: 'VITÓRIA' }),
-      temReplay(p) ? el('button', { type: 'button', class: 'jg-ult-play', title: 'Ver o replay', 'aria-label': `Ver o replay: ${nick(p.brancas)} contra ${nick(p.pretas)}`, onclick: () => abrirReplay(p) }, ico(IC_PLAY, 16)) : null);
+      rp ? el('button', { type: 'button', class: 'jg-ult-play', 'aria-label': `Ver o replay: ${nick(p.brancas)} contra ${nick(p.pretas)}`, onclick: (e) => { e.stopPropagation(); abrirReplay(p); } }, ico(IC_PLAY, 14), 'REPLAY') : null);
+  }
+  // cartão grande no topo da sala: a última partida que acabou, com o botão do replay bem à vista
+  function destaqueReplay() {
+    const com = J.ultimas.filter(temReplay);
+    const p = com[0];
+    if (!p) return null;
+    const emp = !p.vencedor;
+    const perdeu = emp ? null : p.vencedor === p.brancas ? p.pretas : p.brancas;
+    const lado = (id, ganhou) => el('div', { class: 'jg-rpd-lado' + (ganhou ? ' ganhou' : '') }, C.avatarChat(nick(id), 'av-m'), el('span', { text: nick(id) }));
+    return el('div', { class: 'jg-card jg-rpd' },
+      el('div', { class: 'jg-rpd-top' }, ico(IC_REPLAY, 18), el('b', { text: 'REPLAY DAS PARTIDAS' })),
+      el('p', { class: 'jg-rpd-txt', text: 'Reveja as partidas do clã lance por lance, com o robô mostrando os melhores e os piores lances.' }),
+      el('div', { class: 'jg-rpd-jogo' },
+        lado(emp ? p.brancas : p.vencedor, !emp),
+        el('div', { class: 'jg-rpd-meio' }, el('b', { text: emp ? 'EMPATE' : 'VENCEU' }), el('small', { text: `${lancesTxt(p.versao)} · ${haPouco(p.fim)}` })),
+        lado(emp ? p.pretas : perdeu, false)),
+      el('button', { type: 'button', class: 'btn btn-pri btn-grande jg-rpd-bt', onclick: () => abrirReplay(p) }, ico(IC_PLAY, 18), 'ASSISTIR O REPLAY'),
+      com.length > 1
+        ? el('button', { type: 'button', class: 'btn btn-sec jg-rpd-todos', text: 'Ver o replay das outras partidas ↓', onclick: () => { const a = $('jgUltimas'); if (a) a.scrollIntoView({ behavior: 'smooth', block: 'start' }); } })
+        : null);
   }
   function ultimasPartidas() {
     if (!J.ultimas.length) return null;
     return [
-      rotulo('ÚLTIMAS PARTIDAS'),
+      el('div', { class: 'jg-rot', id: 'jgUltimas' }, el('span', null, 'ÚLTIMAS PARTIDAS ', el('span', { class: 'jg-rot-dica', text: '· toque pra ver o replay' }))),
       el('ul', { class: 'jg-ult' }, J.ultimas.map((p) => linhaUltima(p))),
       J.temMais ? el('button', { type: 'button', class: 'btn btn-sec jg-mais', text: 'Ver mais partidas', onclick: (e) => maisUltimas(e.currentTarget) }) : null,
     ];
