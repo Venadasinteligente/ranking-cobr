@@ -9,6 +9,7 @@
   if (!C) return;
   const { $, el, trocar, toast } = C;
   const R = window.DamasRegras;
+  const FX = window.DamasFx; // reações animadas e o combo de raio (damas-fx.js)
 
   // ---------- ícones ----------
   function ico(d, t = 18) {
@@ -27,6 +28,8 @@
   const IC_CONVERSA = '<path d="M21 11.5a8.4 8.4 0 0 1-12.3 7.5L3 20.5l1.5-5.2A8.5 8.5 0 1 1 21 11.5z"/>';
   const IC_ENVIAR = '<path d="M4 12l16-8-6 16-2.5-6.5z"/><path d="M11.5 13.5L20 4"/>';
   const IC_FECHAR = '<path d="M6 6l12 12M18 6L6 18"/>';
+  const IC_PLAY = '<path d="M8 5v14l11-7z" fill="currentColor"/>';
+  const IC_REPLAY = '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M10 9l5 3-5 3z" fill="currentColor"/>';
   const COROA = `<svg viewBox="0 0 24 24" stroke-width="1.2" stroke-linejoin="round">${C.ICONE_COROA}</svg>`;
 
   // ---------- estado ----------
@@ -73,10 +76,15 @@
   const nick = (id) => { const r = id && C.jogador(id); return r ? r.nick : 'Alguém'; };
   const erroTxt = (e) => String((e && e.message) || 'Não deu certo. Tente de novo.');
   const mmss = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-  const naSala = () => C.pag === 'jogos' && !partidaDaUrl() && !copaDaUrl();
+  const naSala = () => C.pag === 'jogos' && !partidaDaUrl() && !copaDaUrl() && !replayDaUrl();
   function partidaDaUrl() {
     const m = /^#jogos\/([0-9a-f-]{36})$/i.exec(location.hash);
     return C.pag === 'jogos' && m ? m[1].toLowerCase() : null;
+  }
+  // #jogos/replay/<id> abre o replay da partida; #jogos/replay/<id>/23 já abre no lance 23
+  function replayDaUrl() {
+    const m = /^#jogos\/replay\/([0-9a-f-]{36})(?:\/(\d{1,4}))?$/i.exec(location.hash);
+    return C.pag === 'jogos' && m ? { id: m[1].toLowerCase(), lance: m[2] ? Number(m[2]) : null } : null;
   }
   const vivo = (p) => p.status === 'andamento' || (p.status === 'convite' && ms(p.prazo) > agora());
   const minhaPartida = () => [...J.lista.values()].find((p) => p.status === 'andamento' && eu() && (p.brancas === eu() || p.pretas === eu())) || null;
@@ -439,7 +447,8 @@
       el('div', { class: 'jg-ult-txt' }, txt, el('small', { text: `${p.torneio ? '🏆 torneio · ' : ''}${MOTIVO[p.motivo] || 'fim'} · ${lancesTxt(p.versao)} · ${haPouco(p.fim)}` })),
       emp ? el('span', { class: 'jg-ult-res emp', text: 'EMPATE' })
         : quem && p.vencedor !== quem ? el('span', { class: 'jg-ult-res perdeu', text: 'DERROTA' })
-        : el('span', { class: 'jg-ult-res', text: 'VITÓRIA' }));
+        : el('span', { class: 'jg-ult-res', text: 'VITÓRIA' }),
+      temReplay(p) ? el('button', { type: 'button', class: 'jg-ult-play', title: 'Ver o replay', 'aria-label': `Ver o replay: ${nick(p.brancas)} contra ${nick(p.pretas)}`, onclick: () => abrirReplay(p) }, ico(IC_PLAY, 16)) : null);
   }
   function ultimasPartidas() {
     if (!J.ultimas.length) return null;
@@ -709,6 +718,7 @@
     } catch (e) {}
   }
   function notarMudanca(p, est, minhaCor) {
+    if (FX && FX.preparar3d) FX.preparar3d(); // baixa o 3D do combo de raio enquanto a partida rola
     const v = J.visto;
     J.visto = { id: p.id, versao: p.versao, tab: est.tab, vez: est.vez, status: p.status };
     if (!v || v.id !== p.id) { J.ult = null; J.anim = null; J.animando = null; J.sel = null; J.verQuem = null; J.fogo = null; limparVoos(); buscarUltimoLance(p); return; }
@@ -719,7 +729,8 @@
           J.ult = { id: p.id, versao: p.versao, de: mov.de, para: mov.para };
           const virou = v.tab[mov.de] !== est.tab[mov.para];
           const j = caminhoDe(v, mov);
-          J.anim = { id: p.id, caminho: j ? j.caminho : [mov.de, mov.para], capturas: j ? j.capturas : mov.capturas, virou, tabAntes: v.tab };
+          J.anim = { id: p.id, caminho: j ? j.caminho : [mov.de, mov.para], capturas: j ? j.capturas : mov.capturas, virou, tabAntes: v.tab, combo: mov.capturas.length >= 2 };
+          if (J.anim.combo) comboRaio(p, J.anim.capturas, v.tab, (J.anim.caminho.length - 1) * PASSO + 40);
           if (virou) fezDama(p, v.vez, mov.para, minhaCor);
           somLance(mov.capturas.length, virou);
         } else J.ult = null;
@@ -749,8 +760,11 @@
     return s;
   }
   // girar = quem joga de pretas vê o tabuleiro do lado dele (as pretas embaixo)
-  function tabuleiro(est, girar, m = null) {
-    const box = el('div', { class: 'jg-tab' + (m && m.jogavel ? ' jogavel' : '') });
+  // pedra de clube traz o tabuleiro do time junto: cada jogador vê o da pedra dele (quem assiste, o das brancas)
+  const TABULEIROS = new Set(['barca', 'real']);
+  const temaTab = (sk) => (TABULEIROS.has(sk) ? 'tb-' + sk : '');
+  function tabuleiro(est, girar, m = null, tema = '') {
+    const box = el('div', { class: 'jg-tab' + (m && m.jogavel ? ' jogavel' : '') + (temaTab(tema) ? ' ' + temaTab(tema) : '') });
     for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) {
       const lin = girar ? 7 - r : r, col = girar ? 7 - c : c;
       const i = R.casa(lin, col);
@@ -822,7 +836,9 @@
       const f = peca(letra);
       f.classList.add('jg-some');
       c.append(f);
-      rodar(f, [{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(.15)', opacity: 0 }], { duration: 420, delay: k * PASSO + PASSO * 0.5, easing: 'ease-in' })
+      // combo: a comida fica no lugar até a peça parar (aí o raio cai nela)
+      (a.combo ? rodar(f, [{ opacity: 1 }, { opacity: 1 }], { duration: pulos * PASSO + 60 })
+        : rodar(f, [{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(.15)', opacity: 0 }], { duration: 420, delay: k * PASSO + PASSO * 0.5, easing: 'ease-in' }))
         .finished.then(() => f.remove()).catch(() => {});
     });
   }
@@ -904,10 +920,11 @@
     J.sel = null;
     J.enviando = true;
     J.pendente = otim;
-    J.anim = { id: p.id, caminho: j.caminho.slice(feito), capturas: j.capturas.slice(feito), virou: j.viraDama, tabAntes: p.estado.tab };
+    J.anim = { id: p.id, caminho: j.caminho.slice(feito), capturas: j.capturas.slice(feito), virou: j.viraDama, tabAntes: p.estado.tab, combo: j.capturas.length >= 2 };
     J.ult = { id: p.id, versao: otim.versao, de, para };
     somLance(j.capturas.length - feito, j.viraDama);
     if (j.viraDama) fezDama(p, p.estado.vez, para, p.estado.vez);
+    if (J.anim.combo) comboRaio(p, j.capturas, p.estado.tab, (j.caminho.length - 1 - feito) * PASSO + 40);
     forcar(otim);
     desenhar();
     try {
@@ -1104,7 +1121,7 @@
       faixa = el('div', { class: 'jg-vez dele' }, !p.vencedor ? 'EMPATE' : jogo ? (p.vencedor === meu ? 'VITÓRIA' : 'DERROTA') : ['VITÓRIA DE ', el('b', { text: nick(p.vencedor) })],
         el('small', { text: (MOTIVO[p.motivo] || 'fim').toUpperCase() }));
     }
-    const tab = tabuleiro(vis, souP, m);
+    const tab = tabuleiro(vis, souP, m, J.skins[minhaCor || 'b']);
     if (jogo && andando) tab.addEventListener('click', (e) => { const c = e.target.closest('[data-casa]'); if (c) tocarCasa(Number(c.dataset.casa)); });
 
     let acoes = null;
@@ -1121,10 +1138,12 @@
           el('button', { type: 'button', class: 'btn btn-sec', disabled: pediu === meu, onclick: (e) => proporEmpate(p, e.currentTarget) }, pediu === meu ? '½ Empate proposto' : '½ Propor empate'),
           el('button', { type: 'button', class: 'btn btn-perigo-sec', text: 'Desistir', onclick: () => desistir(p) }));
     } else if (!andando) {
+      const rp = temReplay(p); // com o replay os botões encurtam pra caberem os 3 numa linha
       acoes = el('div', { class: 'jg-acoes' },
-        el('button', { type: 'button', class: 'btn btn-sec', text: 'Ver resultado', onclick: () => { J.fimFechado.delete(p.id); J.assin = null; desenhar(); } }),
-        p.torneio ? el('button', { type: 'button', class: 'btn btn-sec', text: 'Ver a chave', onclick: () => C.irPara('#jogos/copa/' + p.torneio) })
-          : el('button', { type: 'button', class: 'btn btn-sec', text: 'Voltar pra sala', onclick: () => C.irPara('#jogos') }));
+        rp ? el('button', { type: 'button', class: 'btn btn-pri btn-rp', onclick: () => abrirReplay(p) }, ico(IC_REPLAY, 16), 'Replay') : null,
+        el('button', { type: 'button', class: 'btn btn-sec', text: rp ? 'Resultado' : 'Ver resultado', onclick: () => { J.fimFechado.delete(p.id); J.assin = null; desenhar(); } }),
+        p.torneio ? el('button', { type: 'button', class: 'btn btn-sec', text: rp ? 'Chave' : 'Ver a chave', onclick: () => C.irPara('#jogos/copa/' + p.torneio) })
+          : el('button', { type: 'button', class: 'btn btn-sec', text: rp ? 'Sala' : 'Voltar pra sala', onclick: () => C.irPara('#jogos') }));
     }
 
     const tela = el('button', { type: 'button', class: 'jg-ico', id: 'jgTela', hidden: !telaCheiaPode(), onclick: trocarTelaCheia });
@@ -1159,7 +1178,7 @@
   // ---------- quem assiste e reações (imagem 03) ----------
   // cada partida na tela tem o canal partida:<id>: a presença diz quem está jogando e quem está
   // assistindo; o broadcast "reacao" leva os emojis. Na sala só escuta (pro "👀 N assistindo").
-  const EMOJIS = ['😂', '🔥', '😱', '👏', '💀'];
+  const EMOJIS = ['😂', '🔥', '😱', '👏', '💀', '❤️', '😈', '🔪', '✊'];
   const SESSAO = 'v-' + Math.random().toString(36).slice(2);
   const minhaChave = () => (C.euChat && C.euChat()) || (eu() ? 'p-' + eu() : SESSAO);
   const meuNome = () => { const r = eu() && C.jogador(eu()); return r ? r.nick : (C.meuNick && C.meuNick()) || 'Alguém'; };
@@ -1261,12 +1280,14 @@
     if (soEmojis) J.voos.querySelectorAll('.jg-voa').forEach((v) => v.remove());
     else { J.voos.remove(); J.voos = null; }
   }
-  function voar(emoji, nome) {
+  // a mão amassa a dama do adversário de quem mandou (quem assiste: a preta)
+  function alvoDe(pid) { const p = linhaDe(partidaDaUrl()); return p && pid && pid === p.pretas ? 'B' : 'P'; }
+  function voar(emoji, nome, pid) {
     const L = camada();
     if (!L) return;
     const vs = L.querySelectorAll('.jg-voa');
     if (vs.length >= 12) vs[0].remove();
-    const v = el('div', { class: 'jg-voa', style: `left:${(3 + Math.random() * 66).toFixed(1)}%;top:${(12 + Math.random() * 54).toFixed(1)}%` }, el('span', { text: emoji }), el('small', { text: nome }));
+    const v = el('div', { class: 'jg-voa', style: `left:${(3 + Math.random() * 66).toFixed(1)}%;top:${(12 + Math.random() * 54).toFixed(1)}%` }, FX ? FX.figura(emoji, alvoDe(pid), peca) : el('span', { text: emoji }), el('small', { text: nome }));
     L.append(v);
     setTimeout(() => v.remove(), 2900);
   }
@@ -1274,7 +1295,7 @@
     const id = partidaDaUrl(), c = id && J.canais.get(id);
     if (!c || J.semReacoes || Date.now() - J.reagiuEm < 1500) return; // 1 a cada 1,5 s
     J.reagiuEm = Date.now();
-    voar(emoji, meuNome());
+    voar(emoji, meuNome(), eu());
     if (c.ok) Promise.resolve(c.ch.send({ type: 'broadcast', event: 'reacao', payload: { emoji, nome: meuNome(), player_id: eu() || null, k: minhaChave() } })).catch(() => {});
   }
   function receberReacao(id, x) {
@@ -1283,7 +1304,7 @@
     if (t - (J.recebidas.get(k) || 0) < 1200) return; // quem manda rápido demais fica de fora
     J.recebidas.set(k, t);
     const r = x.player_id && C.jogador(x.player_id);
-    voar(x.emoji, r ? r.nick : String(x.nome || 'Alguém').slice(0, 20));
+    voar(x.emoji, r ? r.nick : String(x.nome || 'Alguém').slice(0, 20), x.player_id);
   }
   function trocarReacoes() {
     J.semReacoes = !J.semReacoes;
@@ -1295,8 +1316,20 @@
   function barraReacoes() {
     if (J.semReacoes) return el('div', { class: 'jg-reacoes so' }, el('button', { type: 'button', class: 'jg-esconder', text: 'MOSTRAR REAÇÕES', onclick: trocarReacoes }));
     return el('div', { class: 'jg-reacoes', role: 'group', 'aria-label': 'Reações' },
-      EMOJIS.map((e) => el('button', { type: 'button', text: e, 'aria-label': `Reagir com ${e}`, onclick: () => reagir(e) })),
+      listaReacoes(),
       el('button', { type: 'button', class: 'jg-esconder', text: 'OCULTAR', 'aria-label': 'Ocultar as reações', onclick: trocarReacoes }));
+  }
+  // os botões são feitos uma vez só e reaproveitados (a partida redesenha toda hora e os emojis animados
+  // recomeçariam do zero); um de cada vez faz a animação dele, e o tocado anima na hora
+  function listaReacoes() {
+    if (!J.reacLista) {
+      J.reacLista = el('div', { class: 'jg-reac-lista' }, EMOJIS.map((e) => el('button', {
+        type: 'button', 'aria-label': `Reagir com ${(FX && FX.NOMES[e]) || e}`,
+        onclick: (ev) => { if (FX) FX.tocarBotao(ev.currentTarget); reagir(e); },
+      }, FX ? FX.animado(e, { tocar: false, loop: false, fixo: true }) : e)));
+      if (FX) FX.onda(J.reacLista);
+    }
+    return J.reacLista;
   }
 
   // ---------- conversa da partida ----------
@@ -1533,6 +1566,23 @@
   addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && J.cvAberta) { e.stopPropagation(); fecharConversa(); }
   }, true);
+  // comeu 2 ou mais de uma vez: quando a peça para, um raio cai em cada pedra comida e ela explode
+  function comboRaio(p, capturas, tabAntes, atraso) {
+    if (!FX || capturas.length < 2) return;
+    setTimeout(() => {
+      if (partidaDaUrl() !== p.id) return;
+      const t = document.querySelector('#jogos .jg-tab');
+      if (!t) return;
+      // posições na tela: o raio desce do topo da tela inteira, não só do tabuleiro
+      const alvos = capturas.map((i) => {
+        const c = t.querySelector(`[data-casa="${i}"]`), letra = tabAntes[i];
+        if (!c) return null;
+        const r = c.getBoundingClientRect();
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2, letra, peca: letra && letra !== '.' ? peca(letra) : null };
+      }).filter(Boolean);
+      FX.combo(alvos, t.getBoundingClientRect().width / 8, { tab: () => document.querySelector('#jogos .jg-tab'), som: !J.mudo });
+    }, atraso);
+  }
   // "👑 NICK FEZ DAMA!" no meio do tabuleiro + anel de fogo na peça, pra todo mundo
   function fezDama(p, cor, casa, minhaCor) {
     const quem = minhaCor && cor === minhaCor ? 'VOCÊ' : nick(cor === 'b' ? p.brancas : p.pretas).toUpperCase();
@@ -1656,6 +1706,7 @@
       rev && rev.convidou === outro ? el('p', { class: 'jg-fim-sobe', text: `🔁 ${nick(outro)} pediu revanche!` }) : null,
       btRev,
       jogo ? botaoConversa('btn btn-sec btn-grande') : null,
+      temReplay(p) ? el('button', { type: 'button', class: `btn ${btRev ? 'btn-sec' : 'btn-pri'} btn-grande btn-rp`, onclick: () => { J.fimFechado.add(p.id); abrirReplay(p); } }, ico(IC_REPLAY, 18), 'REPLAY E ANÁLISE') : null,
       el('button', { type: 'button', class: 'btn btn-sec btn-grande', text: 'VOLTAR PRA SALA', onclick: () => { J.fimFechado.add(p.id); C.irPara('#jogos'); } }));
     caixa.querySelector('.jg-fim-taca-box').outerHTML = TACA;
     const novo = !J.fim || J.fimTipo !== p.id + tipo;
@@ -1673,6 +1724,98 @@
     J.assin = null;
     desenhar();
   });
+
+  // ---------- replay da partida (damas-replay.js) com a análise do robô (damas-robo.js) ----------
+  // Só lê: a partida e os lances que o banco já guarda (jogos_lances). Nada de novo no banco.
+  const RP = { id: null, ctl: null, carregando: null, volta: null, lances: new Map() };
+  const temReplay = (p) => !!p && p.status === 'fim' && (p.versao | 0) > 0 && !!window.DamasReplay;
+  const abrirReplay = (p, lance) => C.irPara(`#jogos/replay/${p.id}${lance ? '/' + lance : ''}`);
+  function fecharReplay() {
+    if (RP.ctl) RP.ctl.destruir();
+    RP.ctl = null; RP.id = null; RP.carregando = null;
+  }
+  async function carregarReplay(id) {
+    let p = partidaDe(id) || J.ultimas.find((x) => x.id === id) || null;
+    if (!p) for (const c of J.perfis.values()) { p = c.lista.find((x) => x.id === id) || null; if (p) break; }
+    if (!p || p.status !== 'fim') p = await buscarPartida(id);
+    if (!p) return null;
+    if (p.status !== 'fim') return { p, lances: null };
+    let lances = RP.lances.get(id);
+    if (!lances) {
+      const r = await C.sb.from('jogos_lances').select('n,player,caminho,capturas,virou_dama').eq('partida', id).order('n');
+      if (r.error) throw r.error;
+      lances = r.data || [];
+      RP.lances.set(id, lances);
+      if (RP.lances.size > 8) RP.lances.delete(RP.lances.keys().next().value);
+    }
+    return { p, lances };
+  }
+  // compartilhar: no celular abre o "enviar pra..." (WhatsApp etc.); no PC copia o link
+  async function compartilharReplay(p, k) {
+    const url = `${location.origin}${location.pathname}#jogos/replay/${p.id}${k ? '/' + k : ''}`;
+    const titulo = `Replay: ${nick(p.brancas)} × ${nick(p.pretas)} na damas`;
+    const celular = matchMedia('(pointer: coarse)').matches;
+    if (celular && navigator.share) {
+      try { await navigator.share({ title: titulo, text: k ? `${titulo}. Olha o lance ${k}!` : titulo, url }); return; }
+      catch (e) { if (e && e.name === 'AbortError') return; }
+    }
+    try { await navigator.clipboard.writeText(url); toast(k ? `Link do replay no lance ${k} copiado.` : 'Link do replay copiado.'); }
+    catch (e) { toast('Não deu pra copiar o link.', true); }
+  }
+  function desenharReplay({ id, lance }) {
+    const sec = $('jogos');
+    if (RP.id === id && RP.ctl) {
+      if (!sec.contains(RP.ctl.raiz)) { trocar(sec, RP.ctl.raiz); RP.ctl.montado(); }
+      if (lance != null && lance !== RP.ctl.k) RP.ctl.ir(lance); // colou outro link da mesma partida
+      return;
+    }
+    if (RP.carregando === id) return;
+    fecharReplay();
+    RP.id = id;
+    RP.carregando = id;
+    trocar(sec, el('p', { class: 'jg-vazio', text: 'Carregando o replay…' }));
+    carregarReplay(id).then((x) => {
+      const agoraUrl = replayDaUrl();
+      if (RP.id !== id || !agoraUrl || agoraUrl.id !== id) return;
+      RP.carregando = null;
+      if (!x) { RP.id = null; toast('Partida não encontrada.', true); C.irPara('#jogos'); return; }
+      if (!x.lances) { RP.id = null; toast('Essa partida ainda está rolando: o replay sai quando ela acabar.'); C.irPara('#jogos/' + id); return; }
+      const p = x.p, meu = eu(), volta = RP.volta;
+      const skins = { b: skinDe(p.brancas), p: skinDe(p.pretas) };
+      const rot = !volta ? 'Sala' : volta === '#jogos' ? 'Sala' : /^#jogos\/copa\//.test(volta) ? 'Chave' : /^#jogos\/[0-9a-f-]{36}$/i.test(volta) ? 'Partida' : 'Voltar';
+      RP.ctl = window.DamasReplay.abrir({
+        partida: p,
+        lances: x.lances,
+        nick,
+        avatar: (pid) => C.avatarChat(nick(pid), 'av-m'),
+        peca: (letra) => { J.skins = skins; return peca(letra); }, // a pedra que cada um escolheu vale no replay também
+        girar: !!meu && p.pretas === meu, // quem jogou de pretas vê do lado dele
+        tema: temaTab(skins[meu && p.pretas === meu ? 'p' : 'b']), // e o tabuleiro da pedra dele
+        maioria: J.cfg.maioria_obrigatoria !== false,
+        inicio: agoraUrl.lance || 0,
+        mudo: () => J.mudo,
+        trocarMudo: () => { J.mudo = !J.mudo; try { localStorage.setItem('cobr-jogos-mudo', J.mudo ? '1' : ''); } catch (e) {} },
+        tocar,
+        botaoTela: () => { const b = el('button', { type: 'button', class: 'jg-ico', id: 'jgTela', hidden: !telaCheiaPode(), onclick: trocarTelaCheia }); botaoTela(b); return b; },
+        voltar: () => { if (volta) history.back(); else C.irPara('#jogos'); },
+        voltarTxt: rot,
+        compartilhar: (k) => compartilharReplay(p, k),
+        // o endereço acompanha o lance (dá pra mandar o link já no lance certo); replaceState não dispara a rota
+        aoMudar: (k) => {
+          const h = `#jogos/replay/${id}${k ? '/' + k : ''}`;
+          if (location.hash !== h) { try { history.replaceState(history.state, '', location.pathname + location.search + h); } catch (e) {} }
+        },
+        avisar: (t) => toast(t),
+        resultado: { titulo: !p.vencedor ? 'EMPATE' : `VITÓRIA DE ${nick(p.vencedor).toUpperCase()}`, motivo: motivoFim(p) },
+      });
+      trocar(sec, RP.ctl.raiz);
+      RP.ctl.montado();
+    }).catch((e) => {
+      console.warn('replay:', e && e.message);
+      if (RP.id === id) { RP.id = null; RP.carregando = null; }
+      if (replayDaUrl()) { toast('Não consegui abrir o replay.', true); trocar(sec, el('p', { class: 'jg-vazio', text: 'Não consegui abrir o replay. Volte e tente de novo.' })); }
+    });
+  }
 
   // ---------- convite em qualquer página (imagem 06) ----------
   function desenharPop() {
@@ -1719,6 +1862,8 @@
     brasa: { nome: 'Brasa', rar: 'RARA', cls: 'rara' },
     veneno: { nome: 'Veneno da Cobra', rar: 'ESPECIAL', cls: 'especial' },
     gelo: { nome: 'Gelo Azul', rar: 'ESPECIAL', cls: 'especial' },
+    barca: { nome: 'Barcelona', rar: 'CLUBE', cls: 'clube' },
+    real: { nome: 'Real Madrid', rar: 'CLUBE', cls: 'clube' },
   };
   const PREMIO_ROT = { 1: 'CAMPEÃO', 2: 'VICE', 3: 'SEMIFINAL' };
   const TN_CAMPOS = 'id,edicao,nome,jogo,vagas,tempo_jogada,final_md3,premios,status,campeao,criado_em,inicio,fim';
@@ -2385,8 +2530,10 @@
 
   // ---------- tudo ----------
   function desenhar() {
-    // partida aberta = imersão: o site some (topo, menu, rodapé, barra de baixo) e fica só a damas
-    const imerso = J.ligado && !!partidaDaUrl();
+    // partida (ou replay) aberta = imersão: o site some (topo, menu, rodapé, barra de baixo) e fica só a damas
+    const rp = replayDaUrl();
+    if (!rp && RP.id) fecharReplay();
+    const imerso = J.ligado && (!!partidaDaUrl() || !!rp);
     if (imerso && !document.body.classList.contains('jg-em-partida')) scrollTo(0, 0);
     document.body.classList.toggle('jg-em-partida', imerso);
     if (!imerso) sairTelaCheia();
@@ -2402,7 +2549,7 @@
     if (C.pag !== 'jogos') return;
     if (!J.ligado) { desenharDemo(); return; }
     const copa = copaDaUrl();
-    if (id) desenharPartida(id); else if (copa) desenharCopa(copa); else desenharSala();
+    if (id) desenharPartida(id); else if (rp) desenharReplay(rp); else if (copa) desenharCopa(copa); else desenharSala();
   }
   function desenharDemo() {
     trocar($('jogos'), cabecalho(), el('div', { class: 'jg-card jg-aviso', text: C.DEMO ? 'Sala de jogos disponível só com o site ligado' : 'Carregando…' }));
@@ -2450,6 +2597,7 @@
     if (J.cvAberta) fecharConversa(); J.conversa = null; J.baloes.clear();
     limparVoos();
     fecharFim();
+    fecharReplay(); RP.lances.clear(); RP.volta = null;
     limparTorneios();
     if (J.pop) { J.pop.remove(); J.pop = null; J.popId = null; }
     document.body.classList.remove('jg-em-partida');
@@ -2516,7 +2664,12 @@
   // ---------- ligações com o app.js ----------
   document.addEventListener('cobr:site', () => { ligar(); });
   document.addEventListener('cobr:sair', desligar);
+  // de onde veio o replay (o "Voltar" dele volta pra lá; link aberto direto volta pra sala)
+  let hashAgora = location.hash;
   document.addEventListener('cobr:rota', () => {
+    const antes = hashAgora;
+    hashAgora = location.hash;
+    if (replayDaUrl() && !/^#jogos\/replay\//i.test(antes)) RP.volta = antes !== hashAgora ? antes || '#' : null;
     if (partidaDaUrl() && J.aberta && J.aberta.id !== partidaDaUrl()) J.aberta = null;
     desenhar();
   });

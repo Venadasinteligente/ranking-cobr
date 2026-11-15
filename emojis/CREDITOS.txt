@@ -1,0 +1,7 @@
+Emojis animados (arquivos .json, formato Lottie): Noto Animated Emoji, do Google.
+https://googlefonts.github.io/noto-emoji-animation/
+Licença: Creative Commons Attribution 4.0 (CC BY 4.0) - https://creativecommons.org/licenses/by/4.0/
+O crédito aparece no rodapé do site.
+
+Desenho da faca (1f52a.svg, não tem versão animada): Noto Emoji, do Google - licença Apache 2.0.
+https://github.com/googlefonts/noto-emoji

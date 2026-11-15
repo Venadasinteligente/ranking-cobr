@@ -3184,7 +3184,7 @@ create table if not exists public.jogos_torneio_confrontos (
 create table if not exists public.jogos_pedras (
   id         bigint generated always as identity primary key,
   player     uuid not null references public.players (id) on delete cascade,
-  pedra      text not null check (pedra in ('ouro', 'prata', 'brasa', 'veneno', 'gelo')),
+  pedra      text not null check (pedra in ('ouro', 'prata', 'brasa', 'veneno', 'gelo', 'barca', 'real')),
   torneio    uuid references public.jogos_torneios (id) on delete set null,
   colocacao  integer,                     -- 1 campeão, 2 vice, 3 semifinal
   criado_em  timestamptz not null default now(),
@@ -3192,9 +3192,16 @@ create table if not exists public.jogos_pedras (
 );
 create table if not exists public.jogos_pedra_uso (
   player         uuid primary key references public.players (id) on delete cascade,
-  pedra          text not null default 'classica' check (pedra in ('classica', 'ouro', 'prata', 'brasa', 'veneno', 'gelo')),
+  pedra          text not null default 'classica' check (pedra in ('classica', 'ouro', 'prata', 'brasa', 'veneno', 'gelo', 'barca', 'real')),
   atualizado_em  timestamptz not null default now()
 );
+-- quem já tinha as tabelas: troca a lista de pedras aceitas (entraram Barcelona e Real Madrid)
+alter table public.jogos_pedras drop constraint if exists jogos_pedras_pedra_check;
+alter table public.jogos_pedras add constraint jogos_pedras_pedra_check
+  check (pedra in ('ouro', 'prata', 'brasa', 'veneno', 'gelo', 'barca', 'real'));
+alter table public.jogos_pedra_uso drop constraint if exists jogos_pedra_uso_pedra_check;
+alter table public.jogos_pedra_uso add constraint jogos_pedra_uso_pedra_check
+  check (pedra in ('classica', 'ouro', 'prata', 'brasa', 'veneno', 'gelo', 'barca', 'real'));
 
 do $$
 declare t text;
@@ -3251,7 +3258,7 @@ begin
   if p_tempo is null or p_tempo not between 15 and 600 then raise exception 'Tempo por jogada: de 15 a 600 segundos'; end if;
   foreach k in array array['1', '2', '3'] loop
     if nullif(p_premios ->> k, '') is not null then
-      if p_premios ->> k not in ('ouro', 'prata', 'brasa', 'veneno', 'gelo') then raise exception 'Pedra de prêmio desconhecida'; end if;
+      if p_premios ->> k not in ('ouro', 'prata', 'brasa', 'veneno', 'gelo', 'barca', 'real') then raise exception 'Pedra de prêmio desconhecida'; end if;
       v_prem := v_prem || jsonb_build_object(k, p_premios ->> k);
     end if;
   end loop;
@@ -3517,7 +3524,7 @@ language plpgsql security definer set search_path = public
 as $$
 declare v_eu uuid := jogos_eu();
 begin
-  if p_pedra is null or p_pedra not in ('classica', 'ouro', 'prata', 'brasa', 'veneno', 'gelo') then raise exception 'Pedra desconhecida'; end if;
+  if p_pedra is null or p_pedra not in ('classica', 'ouro', 'prata', 'brasa', 'veneno', 'gelo', 'barca', 'real') then raise exception 'Pedra desconhecida'; end if;
   if p_pedra <> 'classica' and not exists (select 1 from jogos_pedras where player = v_eu and pedra = p_pedra) then
     raise exception 'Você ainda não ganhou essa pedra';
   end if;
