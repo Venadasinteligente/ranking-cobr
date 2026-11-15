@@ -76,7 +76,7 @@
   const nick = (id) => { const r = id && C.jogador(id); return r ? r.nick : 'Alguém'; };
   const erroTxt = (e) => String((e && e.message) || 'Não deu certo. Tente de novo.');
   const mmss = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-  const naSala = () => C.pag === 'jogos' && !partidaDaUrl() && !copaDaUrl() && !replayDaUrl();
+  const naSala = () => C.pag === 'jogos' && !partidaDaUrl() && !copaDaUrl() && !replayDaUrl() && !personalizarDaUrl();
   function partidaDaUrl() {
     const m = /^#jogos\/([0-9a-f-]{36})$/i.exec(location.hash);
     return C.pag === 'jogos' && m ? m[1].toLowerCase() : null;
@@ -338,13 +338,17 @@
   const rotVivo = () => el('span', { class: 'vivo', text: 'AO VIVO' });
 
   // ---------- sala (imagem 01) ----------
-  function cabecalho() {
+  // abas de cima: a sala da damas e a de personalizar a pedra (a do xadrez ainda não abre)
+  function cabecalho(aba = 'sala') {
+    const sk = eu() ? skinDe(eu()) : 'classica';
+    const tabAba = (id, href, ...filhos) => el('a', { class: 'jg-jogo' + (aba === id ? ' ativo' : ''), href, 'aria-current': aba === id ? 'page' : null }, ...filhos);
     return [
       el('div', { class: 'jg-cab' },
         el('h2', null, 'SALA DE ', el('span', { class: 'laranja', text: 'JOGOS' })),
         el('button', { type: 'button', class: 'info-btn', 'data-info': 'damas', 'aria-label': 'Como funciona a damas', text: 'i' })),
-      el('div', { class: 'jg-jogos' },
-        el('span', { class: 'jg-jogo ativo' }, ico(IC_PECA), 'Damas'),
+      el('nav', { class: 'jg-jogos', 'aria-label': 'Abas da sala de jogos' },
+        tabAba('sala', '#jogos', ico(IC_PECA), 'Damas'),
+        tabAba('personalizar', '#jogos/personalizar', pedraIco(sk, 'P', 18), 'Personalizar dama'),
         el('span', { class: 'jg-jogo', 'aria-disabled': 'true' }, ico(IC_XADREZ), 'Xadrez ', el('small', { text: 'EM BREVE' }))),
     ];
   }
@@ -1881,6 +1885,8 @@
     barca: { nome: 'Barcelona', rar: 'CLUBE', cls: 'clube' },
     real: { nome: 'Real Madrid', rar: 'CLUBE', cls: 'clube' },
   };
+  // liberadas pra todo mundo (pedido do dono do clã); as outras se ganham nos torneios
+  const GRATIS = new Set(['classica', 'barca', 'real']);
   const PREMIO_ROT = { 1: 'CAMPEÃO', 2: 'VICE', 3: 'SEMIFINAL' };
   const TN_CAMPOS = 'id,edicao,nome,jogo,vagas,tempo_jogada,final_md3,premios,status,campeao,criado_em,inicio,fim';
   const CF_CAMPOS = 'id,torneio,rodada,pos,a,b,vit_a,vit_b,vencedor,partida';
@@ -2010,14 +2016,13 @@
       catch (e) { toast(erroTxt(e), true); }
     });
   }
-  async function usarPedra(k, d) {
-    const tem = k === 'classica' || TN.pedras.some((x) => x.player === eu() && x.pedra === k);
+  async function usarPedra(k) {
+    const tem = GRATIS.has(k) || TN.pedras.some((x) => x.player === eu() && x.pedra === k);
     if (!tem) { toast('Essa você ainda não ganhou. Vença um torneio que dá ela de prêmio!', true); return; }
     try {
       await rpc('jogos_usar_pedra', { p_pedra: k });
       TN.uso.set(eu(), k);
       toast(`${PEDRAS[k].nome} em uso. Quem jogar com você vê ela no tabuleiro.`);
-      if (d) desenharPedras(d);
       J.assin = null;
       desenhar();
     } catch (e) { toast(erroTxt(e), true); }
@@ -2118,7 +2123,7 @@
     if (!abertos.length && !fins.length && !admin && !eu()) return null;
     return [
       rotulo(el('span', { text: 'TORNEIOS DE DAMAS' }), el('span', { class: 'jt-rot-acoes' },
-        eu() ? el('button', { type: 'button', class: 'jt-link', onclick: abrirPedras }, parPedras(skinDe(eu()), 18), 'Minhas pedras') : null,
+        eu() ? el('button', { type: 'button', class: 'jt-link', onclick: abrirPedras }, parPedras(skinDe(eu()), 18), 'Personalizar dama') : null,
         admin ? el('button', { type: 'button', class: 'jt-link forte', onclick: abrirCriarTorneio, text: '+ Criar torneio' }) : null)),
       abertos.map(cartaoTorneio),
       !abertos.length ? el('div', { class: 'jg-card' }, el('p', { class: 'jg-vazio', text: admin ? 'Nenhum torneio aberto. Toque em "+ Criar torneio".' : 'Nenhum torneio aberto agora. Quando o admin abrir, chega um aviso.' })) : null,
@@ -2441,49 +2446,71 @@
         el('li', null, el('b', { text: 'Empate: ' }), 'vence quem tiver mais peças. Se for igual, joga de novo com as cores trocadas.'),
         el('li', null, el('b', { text: 'Final: ' }), t.final_md3 ? 'melhor de 3 (quem fizer 2 vitórias).' : 'partida única.'),
         el('li', null, el('b', { text: 'Ranking: ' }), 'partida de torneio não conta no ranking de damas.')),
-      eu() ? el('button', { type: 'button', class: 'btn btn-sec btn-grande jt-largo', onclick: abrirPedras }, parPedras(skinDe(eu()), 20), 'Minhas pedras') : null,
+      eu() ? el('button', { type: 'button', class: 'btn btn-sec btn-grande jt-largo', onclick: abrirPedras }, parPedras(skinDe(eu()), 20), 'Personalizar minha dama') : null,
       C.ehAdmin && (t.status === 'inscricao' || t.status === 'andamento') ? el('button', { type: 'button', class: 'btn btn-perigo-sec btn-grande jt-largo', text: 'Cancelar torneio (admin)', onclick: () => cancelarTorneio(t) }) : null));
     requestAnimationFrame(() => { desenharFios(); rodarVoos(t); });
   }
   addEventListener('resize', () => { if (copaDaUrl()) desenharFios(); });
 
-  // ---- minhas pedras ----
-  function abrirPedras() {
-    let d = document.getElementById('dlgPedras');
-    if (!d) {
-      d = el('dialog', { class: 'dlg jt-dlg', id: 'dlgPedras', 'aria-labelledby': 'jtPedrasT' });
-      d.addEventListener('click', (e) => { if (e.target === d) d.close(); });
-      document.body.append(d);
-    }
-    desenharPedras(d);
-    if (!d.open) d.showModal();
-  }
-  function miniTabuleiro(sk) {
-    const pos = { 1: 'P', 3: 'p', 5: 'p', 8: 'p', 10: 'p', 19: 'p', 13: 'b', 24: 'b', 26: 'b', 30: 'B', 33: 'b', 35: 'b' };
-    return el('div', { class: 'jt-mini-tab', 'aria-hidden': 'true' }, Array.from({ length: 36 }, (_, i) => {
-      const c = el('span', { class: ((i / 6 | 0) + (i % 6)) % 2 ? 'es' : 'cl' });
-      const l = pos[i];
-      if (l) { const s = el('span', { class: `jg-p ${l.toLowerCase()}${sk !== 'classica' ? ' sk-' + sk : ''}` }); if (l === 'B' || l === 'P') s.innerHTML = COROA; c.append(s); }
-      return c;
-    }));
-  }
-  function desenharPedras(d) {
-    const meu = eu(), uso = skinDe(meu);
+  // ---- personalizar a dama (aba #jogos/personalizar) ----
+  // cada um vê o tabuleiro de verdade com a pedra e escolhe a dele. As grátis (Clássica e as dos
+  // clubes) qualquer um usa; as outras se ganham nos torneios e dá pra ver antes, trancadas.
+  const PZ = { ver: null, assin: null };
+  const abrirPedras = () => C.irPara('#jogos/personalizar');
+  function personalizarDaUrl() { return C.pag === 'jogos' && /^#jogos\/personalizar$/i.test(location.hash); }
+  // um meio de partida com pedras e damas das duas cores
+  const TAB_VITRINE = (() => {
+    const t = Array(32).fill('.');
+    [0, 1, 3, 5, 6, 9, 11].forEach((i) => { t[i] = 'p'; });
+    [20, 22, 23, 26, 28, 29, 31].forEach((i) => { t[i] = 'b'; });
+    t[14] = 'P'; t[17] = 'B';
+    return t.join('');
+  })();
+  function desenharPersonalizar() {
+    const sec = $('jogos'), meu = eu(), uso = skinDe(meu);
     const minhas = TN.pedras.filter((x) => x.player === meu);
-    const tem = (k) => k === 'classica' || minhas.some((x) => x.pedra === k);
+    const tem = (k) => GRATIS.has(k) || minhas.some((x) => x.pedra === k);
+    const ver = PEDRAS[PZ.ver] ? PZ.ver : uso;
+    const assin = JSON.stringify([ver, uso, meu, minhas.map((x) => x.pedra + x.torneio)]);
+    if (PZ.assin === assin && sec.querySelector('.jz')) return; // nada mudou: não refaz a tela (o tique chama toda hora)
+    PZ.assin = assin;
     const origem = (x) => { const t = torneioDe(x.torneio); return `${(PREMIO_ROT[x.colocacao] || 'prêmio').toLowerCase()} · ${t ? t.nome : 'torneio'}`; };
-    trocar(d, el('div', { class: 'jt-dlg-corpo' },
-      el('div', { class: 'jt-dlg-topo' }, el('h2', { id: 'jtPedrasT', text: 'MINHAS PEDRAS' }), el('button', { type: 'button', class: 'tn-x', 'aria-label': 'Fechar', text: '×', onclick: () => d.close() })),
-      el('p', { class: 'jt-dlg-txt', text: 'A pedra que você escolher aparece em todas as suas partidas, pra você, pro adversário e pra quem assiste. As outras se ganham nos torneios.' }),
-      miniTabuleiro(uso),
-      el('div', { class: 'jt-minhas' }, Object.keys(PEDRAS).map((k) => {
-        const ganhas = minhas.filter((x) => x.pedra === k);
-        const sub = k === 'classica' ? 'Já vem com a conta' : ganhas.length ? ganhas.map(origem).join(' · ') : '🔒 Prêmio de torneio';
-        return el('button', { type: 'button', class: 'jt-minha' + (tem(k) ? '' : ' trancada'), 'aria-pressed': String(uso === k), disabled: !meu, onclick: () => usarPedra(k, d) },
-          pedraIco(k, 'P', 38),
-          el('div', null, el('b', { text: PEDRAS[k].nome }), el('span', { class: `jt-rar ${PEDRAS[k].cls}`, text: PEDRAS[k].rar }), el('small', { text: sub })),
-          el('span', { class: 'jt-tag-eq', text: uso === k ? 'EM USO' : tem(k) ? 'USAR' : '' }));
-      }))));
+    const antes = J.skins;
+    J.skins = { b: ver, p: ver };
+    const tab = tabuleiro({ tab: TAB_VITRINE }, false, null, ver);
+    J.skins = antes;
+    const nome = PEDRAS[ver].nome;
+    const estado = !meu ? 'Entre com a sua conta pra escolher a sua pedra.'
+      : uso === ver ? 'Essa é a sua pedra agora. Quem jogar com você e quem assistir vê ela.'
+      : tem(ver) ? `Toque em ${nome} na lista pra usar.`
+      : `${nome} é prêmio de torneio. Ganhe um torneio que dá ela pra liberar.`;
+    const item = (k) => {
+      const ganhas = minhas.filter((x) => x.pedra === k);
+      const sub = k === 'classica' ? 'A tradicional, madeira e marfim'
+        : GRATIS.has(k) ? 'Grátis · vem com o tabuleiro do time'
+        : ganhas.length ? ganhas.map(origem).join(' · ') : '🔒 Prêmio de torneio';
+      const tag = uso === k ? 'EM USO' : GRATIS.has(k) ? 'GRÁTIS' : tem(k) ? 'USAR' : '🔒';
+      return el('button', {
+        type: 'button', class: 'jt-minha' + (tem(k) ? '' : ' trancada') + (uso === k ? ' em-uso' : ''), 'aria-pressed': String(ver === k),
+        onclick: () => { PZ.ver = k; if (meu && tem(k) && uso !== k) usarPedra(k); else desenharPersonalizar(); },
+      },
+        pedraIco(k, 'P', 38),
+        el('div', null, el('b', { text: PEDRAS[k].nome }), el('span', { class: `jt-rar ${PEDRAS[k].cls}`, text: PEDRAS[k].rar }), el('small', { text: sub })),
+        el('span', { class: 'jt-tag-eq', text: tag }));
+    };
+    const ks = Object.keys(PEDRAS);
+    trocar(sec, cabecalho('personalizar'),
+      el('div', { class: 'jz' },
+        el('div', { class: 'jz-vitrine' },
+          el('div', { class: 'jz-nome' }, parPedras(ver, 30), el('div', null, el('b', { text: nome.toUpperCase() }), el('span', { class: `jt-rar ${PEDRAS[ver].cls}`, text: PEDRAS[ver].rar }))),
+          tab,
+          el('p', { class: 'jz-estado' + (uso === ver && meu ? ' ok' : ''), text: estado })),
+        el('div', { class: 'jz-lista' },
+          rotulo('GRÁTIS PRA TODO MUNDO'),
+          el('div', { class: 'jt-minhas' }, ks.filter((k) => GRATIS.has(k)).map(item)),
+          rotulo('PRÊMIOS DE TORNEIO'),
+          el('div', { class: 'jt-minhas' }, ks.filter((k) => !GRATIS.has(k)).map(item)),
+          el('p', { class: 'jt-nota', text: 'A pedra que você escolher vale em todas as suas partidas e no replay. As de clube trocam o tabuleiro também: você vê o do seu time.' }))));
   }
 
   // ---- admin: novo torneio ----
@@ -2508,7 +2535,7 @@
     const tempo = el('select', { id: 'jtTempo' }, [30, 45, 60, 90, 120].map((s) => el('option', { value: String(s), selected: s === seg, text: s % 60 ? `${s} segundos` : `${s / 60} ${s === 60 ? 'minuto' : 'minutos'}` })));
     const finalSel = el('select', { id: 'jtFinal' }, el('option', { value: '0', text: 'Partida única' }), el('option', { value: '1', text: 'Melhor de 3' }));
     const escolher = (k, rot) => el('div', { class: 'campo' }, el('span', { class: 'jt-lbl', text: rot }),
-      el('div', { class: 'jt-pick', role: 'radiogroup', 'aria-label': rot }, ['', ...Object.keys(PEDRAS).filter((x) => x !== 'classica')].map((sk) => el('button', {
+      el('div', { class: 'jt-pick', role: 'radiogroup', 'aria-label': rot }, ['', ...Object.keys(PEDRAS).filter((x) => !GRATIS.has(x))].map((sk) => el('button', {
         type: 'button', role: 'radio', 'aria-checked': String((st.premios[k] || '') === sk),
         onclick: (e) => { st.premios[k] = sk; e.currentTarget.parentElement.querySelectorAll('button').forEach((b) => b.setAttribute('aria-checked', String(b === e.currentTarget))); },
       }, sk ? pedraIco(sk, 'P', 30) : el('span', { class: 'jt-pc nenhuma', text: '—' }), sk ? PEDRAS[sk].nome : 'Nenhuma'))));
@@ -2565,7 +2592,9 @@
     if (C.pag !== 'jogos') return;
     if (!J.ligado) { desenharDemo(); return; }
     const copa = copaDaUrl();
-    if (id) desenharPartida(id); else if (rp) desenharReplay(rp); else if (copa) desenharCopa(copa); else desenharSala();
+    if (!personalizarDaUrl()) { PZ.assin = null; PZ.ver = null; }
+    if (id) desenharPartida(id); else if (rp) desenharReplay(rp); else if (copa) desenharCopa(copa);
+    else if (personalizarDaUrl()) desenharPersonalizar(); else desenharSala();
   }
   function desenharDemo() {
     trocar($('jogos'), cabecalho(), el('div', { class: 'jg-card jg-aviso', text: C.DEMO ? 'Sala de jogos disponível só com o site ligado' : 'Carregando…' }));
@@ -2673,7 +2702,7 @@
         C.linhaRegra('Empate', 'vence quem tem mais peças; igual, joga de novo'),
         C.linhaRegra('Final', 'partida única ou melhor de 3'),
         C.linhaRegra('Prêmios', 'pedras personalizadas pro 1º, 2º e semifinal'),
-        C.linhaRegra('Pedra', 'escolha em "Minhas pedras": vale em todas as partidas')),
+        C.linhaRegra('Pedra', 'escolha na aba "Personalizar dama" (Barcelona e Real Madrid são grátis)')),
     ];
   };
 

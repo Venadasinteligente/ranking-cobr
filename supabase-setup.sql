@@ -3525,7 +3525,8 @@ as $$
 declare v_eu uuid := jogos_eu();
 begin
   if p_pedra is null or p_pedra not in ('classica', 'ouro', 'prata', 'brasa', 'veneno', 'gelo', 'barca', 'real') then raise exception 'Pedra desconhecida'; end if;
-  if p_pedra <> 'classica' and not exists (select 1 from jogos_pedras where player = v_eu and pedra = p_pedra) then
+  -- Clássica, Barcelona e Real Madrid são grátis pra todo mundo; as outras só quem ganhou no torneio
+  if p_pedra not in ('classica', 'barca', 'real') and not exists (select 1 from jogos_pedras where player = v_eu and pedra = p_pedra) then
     raise exception 'Você ainda não ganhou essa pedra';
   end if;
   insert into jogos_pedra_uso (player, pedra) values (v_eu, p_pedra)

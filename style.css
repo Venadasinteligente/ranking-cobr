@@ -3273,6 +3273,8 @@ button.pd-membro:hover { border-color: var(--linha-forte); }
 .jg-jogo.ativo { border-color: var(--laranja); color: var(--texto); background: var(--laranja-fundo); box-shadow: inset 0 0 0 1px var(--laranja); }
 .jg-jogo small { font-size: 10px; letter-spacing: 1.5px; color: var(--texto-3); font-weight: 700; }
 .jg-jogo svg { color: var(--laranja-claro); }
+a.jg-jogo { text-decoration: none; cursor: pointer; }
+a.jg-jogo:not(.ativo):hover { border-color: var(--laranja); color: var(--texto); }
 .jg-rot { display: flex; align-items: center; justify-content: space-between; margin: 22px 0 10px; font-size: 12px; letter-spacing: 2.5px; color: var(--texto-3); font-weight: 700; }
 .jg-rot .vivo { display: inline-flex; align-items: center; gap: 6px; color: var(--perigo); letter-spacing: 1.5px; }
 .jg-rot .vivo::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--perigo); box-shadow: 0 0 10px var(--perigo); }
@@ -3866,10 +3868,6 @@ button.jg-olhos { font-family: inherit; cursor: pointer; }
 .jt-dlg-topo { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .jt-dlg-topo h2 { margin: 0; font-family: var(--f-titulo); font-size: 34px; font-weight: 600; line-height: 1; }
 .jt-dlg-txt { margin: 0; font-size: 14px; color: var(--texto-2); }
-.jt-mini-tab { display: grid; grid-template-columns: repeat(6, 1fr); width: min(100%, 240px); aspect-ratio: 1; margin: 0 auto; border-radius: 12px; overflow: hidden; border: 2px solid var(--linha-forte); }
-.jt-mini-tab > span { position: relative; }
-.jt-mini-tab .cl { background: linear-gradient(145deg, #3E2C1F, #33241A); }
-.jt-mini-tab .es { background: #120C08; }
 .jt-minhas { display: grid; gap: 8px; }
 .jt-minha { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--linha); background: var(--painel-2); color: var(--texto); font: inherit; text-align: left; cursor: pointer; }
 .jt-minha > div { flex: 1; min-width: 0; }
@@ -3877,6 +3875,22 @@ button.jg-olhos { font-family: inherit; cursor: pointer; }
 .jt-minha small { display: block; font-size: 11px; color: var(--texto-3); }
 .jt-minha[aria-pressed="true"] { border-color: var(--laranja); background: var(--laranja-fundo); }
 .jt-minha.trancada { opacity: .55; }
+.jt-minha.trancada[aria-pressed="true"] { opacity: .9; }
+.jt-minha.em-uso .jt-tag-eq { color: var(--laranja-claro); }
+/* aba Personalizar dama: o tabuleiro de verdade com a pedra e a lista do lado (no celular, embaixo) */
+.jz { display: grid; gap: 18px; }
+.jz-vitrine { display: grid; gap: 12px; justify-items: center; align-content: start; }
+.jz-vitrine > .jg-tab { width: min(100%, 460px); }
+.jz-nome { display: flex; align-items: center; gap: 10px; width: min(100%, 460px); }
+.jz-nome b { display: block; font-family: var(--f-titulo); font-size: 26px; font-weight: 600; line-height: 1.05; letter-spacing: .5px; }
+.jz-estado { width: min(100%, 460px); margin: 0; font-size: 14px; color: var(--texto-2); text-align: center; }
+.jz-estado.ok { color: var(--laranja-claro); font-weight: 600; }
+.jz-lista > .jg-rot:first-child { margin-top: 0; }
+.jz-lista > .jt-nota { margin-top: 14px; }
+@media (min-width: 900px) {
+  .jz { grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); align-items: start; }
+  .jz-vitrine { position: sticky; top: 90px; }
+}
 .jt-tag-eq { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: var(--texto-3); }
 .jt-minha[aria-pressed="true"] .jt-tag-eq { color: var(--laranja-claro); }
 .jt-rar { display: inline-block; padding: 1px 6px; border-radius: 5px; font-size: 9px; font-weight: 700; letter-spacing: 1.2px; vertical-align: 2px; }
