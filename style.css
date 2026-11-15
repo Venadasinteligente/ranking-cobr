@@ -3349,13 +3349,10 @@ a.jg-jogo:not(.ativo):hover { border-color: var(--laranja); color: var(--texto);
 
 /* chance de vitória ao vivo (o robô avalia cada posição): esquerda = quem está embaixo no tabuleiro */
 .jg-chance { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 5px 12px 6px; border-radius: 14px; background: var(--painel-2); border: 1px solid var(--linha); }
-.jg-ch-lado { position: relative; display: flex; align-items: center; gap: 6px; min-width: 64px; }
-.jg-ch-lado.dir { flex-direction: row-reverse; }
-.jg-ch-pc { flex: none; width: 14px; height: 14px; border-radius: 50%; box-shadow: 0 1px 2px rgba(0, 0, 0, .6); }
-.jg-ch-pc.cl { background: radial-gradient(circle at 35% 30%, #FFF6E8, #E9C79A 60%, #C98F4E); }
-.jg-ch-pc.es { background: radial-gradient(circle at 35% 30%, #4A4440, #1C1917); border: 1.5px solid var(--laranja); }
-.jg-ch-num { display: inline-block; min-width: 3.2ch; font-family: var(--f-titulo); font-size: 27px; font-weight: 500; line-height: 1; padding-top: 3px; color: var(--texto-3); font-variant-numeric: tabular-nums; }
-.jg-ch-lado.dir .jg-ch-num { text-align: right; }
+.jg-ch-lado { position: relative; display: flex; flex-direction: column; align-items: flex-start; min-width: 58px; max-width: 96px; }
+.jg-ch-lado.dir { align-items: flex-end; }
+.jg-ch-nome { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 700; line-height: 1.2; color: var(--texto); }
+.jg-ch-num { display: inline-block; font-family: var(--f-titulo); font-size: 27px; font-weight: 500; line-height: 1; padding-top: 2px; color: var(--texto-3); font-variant-numeric: tabular-nums; }
 .jg-ch-lado.frente .jg-ch-num { color: var(--laranja-claro); text-shadow: 0 0 14px rgba(255, 122, 26, .5); }
 .jg-chance.pensando .jg-ch-num { opacity: .45; }
 .jg-ch-centro { display: grid; gap: 4px; min-width: 0; }

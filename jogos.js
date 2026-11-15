@@ -1124,9 +1124,10 @@
   }
   function barraChance(p, embaixo) {
     const outra = embaixo === 'b' ? 'p' : 'b';
+    // o nome de cada um em cima da porcentagem (com pedra personalizada a cor não diz de quem é)
     const lado = (cor, pos) => {
-      const num = el('b', { class: 'jg-ch-num', text: '–' });
-      const x = el('div', { class: `jg-ch-lado ${pos}` }, el('i', { class: `jg-ch-pc ${cor === 'b' ? 'cl' : 'es'}` }), num);
+      const num = el('b', { class: 'jg-ch-num', text: '–' }), nome = nick(cor === 'b' ? p.brancas : p.pretas);
+      const x = el('div', { class: `jg-ch-lado ${pos}` }, el('small', { class: 'jg-ch-nome', text: nome, title: nome }), num);
       x._num = num; x._cor = cor;
       return x;
     };
