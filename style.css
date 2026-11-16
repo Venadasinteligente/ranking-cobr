@@ -3757,11 +3757,24 @@ button.jg-olhos { font-family: inherit; cursor: pointer; }
 .jg-p.sk-real:not(.vitima)::before { content: ""; position: absolute; inset: -40%; z-index: 2; pointer-events: none; background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, .45) 50%, transparent 60%); animation: jt-brilho 4s ease-in-out infinite; }
 /* Times brasileiros (grátis, vêm com o tabuleiro do time). Tudo é imagem pronta (arte-clubes/<time>/*.webp, feitas dos
    SVGs da mesma pasta pelo arte-clubes/gerar.html), igual o Dragão: as casas já vêm desenhadas na imagem do tabuleiro
-   e o navegador não refaz degradê nenhum a cada jogada. Nada anima. */
+   e o navegador não refaz degradê nenhum a cada jogada. Nada anima.
+   As pedras são fichas (borda com dentinhos do time e medalhão no meio); a dama usa a face com o medalhão limpo. */
 .jg-tab.tb-corinthians, .jg-tab.tb-flamengo, .jg-tab.tb-saopaulo, .jg-tab.tb-palmeiras, .jg-tab.tb-santos, .jg-tab.tb-vasco { background-position: center; background-size: 100% 100%; background-repeat: no-repeat; background-color: #111; }
 .jg-tab.tb-corinthians .jg-c, .jg-tab.tb-flamengo .jg-c, .jg-tab.tb-saopaulo .jg-c, .jg-tab.tb-palmeiras .jg-c, .jg-tab.tb-santos .jg-c, .jg-tab.tb-vasco .jg-c { background: none; }
 .jg-p.sk-corinthians, .jg-p.sk-flamengo, .jg-p.sk-saopaulo, .jg-p.sk-palmeiras, .jg-p.sk-santos, .jg-p.sk-vasco { background-position: center; background-size: cover; border: 2px solid; }
 .jg-p.sk-corinthians::after, .jg-p.sk-flamengo::after, .jg-p.sk-saopaulo::after, .jg-p.sk-palmeiras::after, .jg-p.sk-santos::after, .jg-p.sk-vasco::after { display: none; }
+.jg-p.sk-corinthians.b:has(svg) { background-image: url(arte-clubes/corinthians/dama-b.webp); }
+.jg-p.sk-corinthians.p:has(svg) { background-image: url(arte-clubes/corinthians/dama-p.webp); }
+.jg-p.sk-flamengo.b:has(svg) { background-image: url(arte-clubes/flamengo/dama-b.webp); }
+.jg-p.sk-flamengo.p:has(svg) { background-image: url(arte-clubes/flamengo/dama-p.webp); }
+.jg-p.sk-saopaulo.b:has(svg) { background-image: url(arte-clubes/saopaulo/dama-b.webp); }
+.jg-p.sk-saopaulo.p:has(svg) { background-image: url(arte-clubes/saopaulo/dama-p.webp); }
+.jg-p.sk-palmeiras.b:has(svg) { background-image: url(arte-clubes/palmeiras/dama-b.webp); }
+.jg-p.sk-palmeiras.p:has(svg) { background-image: url(arte-clubes/palmeiras/dama-p.webp); }
+.jg-p.sk-santos.b:has(svg) { background-image: url(arte-clubes/santos/dama-b.webp); }
+.jg-p.sk-santos.p:has(svg) { background-image: url(arte-clubes/santos/dama-p.webp); }
+.jg-p.sk-vasco.b:has(svg) { background-image: url(arte-clubes/vasco/dama-b.webp); }
+.jg-p.sk-vasco.p:has(svg) { background-image: url(arte-clubes/vasco/dama-p.webp); }
 .jg-p.sk-corinthians.p svg, .jg-p.sk-flamengo.p svg, .jg-p.sk-saopaulo.p svg, .jg-p.sk-palmeiras.p svg, .jg-p.sk-santos.p svg, .jg-p.sk-vasco.p svg { filter: drop-shadow(0 0 3px rgba(0, 0, 0, .7)); }
 .jg-tab.tb-corinthians { background-image: url(arte-clubes/corinthians/tabuleiro.webp); border-color: #F2F2F2; box-shadow: 0 0 0 4px #050505, 0 0 34px rgba(255,255,255,.22); }
 .jg-tab.tb-corinthians .jg-c .crd { color: rgba(255,255,255,.55); }

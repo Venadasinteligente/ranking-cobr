@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+<!-- face da pedra clara do São Paulo (dama: miolo limpo, a coroa vai por cima). Vira WebP pelo arte-clubes/gerar.html -->
+<defs><clipPath id="c"><circle cx="50" cy="50" r="50"/></clipPath><clipPath id="m"><circle cx="50" cy="50" r="31"/></clipPath>
+<radialGradient id="corpo" cx=".38" cy=".3" r=".8"><stop offset="0" stop-color="#FFFFFF"/><stop offset=".55" stop-color="#EEEEF0"/><stop offset="1" stop-color="#A9A9AF"/></radialGradient>
+<linearGradient id="borda" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".35"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".45"/></linearGradient>
+<radialGradient id="ms" cx=".5" cy=".42" r=".55"><stop offset=".65" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".45"/></radialGradient>
+<radialGradient id="verniz" cx=".36" cy=".2" r=".5"><stop offset="0" stop-color="#fff" stop-opacity=".75"/><stop offset=".6" stop-color="#fff" stop-opacity=".12"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+<radialGradient id="sombra" cx=".5" cy=".42" r=".6"><stop offset=".72" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".4"/></radialGradient></defs>
+<g clip-path="url(#c)">
+<rect width="100" height="100" fill="url(#corpo)"/>
+<circle cx="50" cy="50" r="45" fill="none" stroke="#D7141F" stroke-width="9" stroke-dasharray="14.84 55.84" stroke-dashoffset="0.00"/><circle cx="50" cy="50" r="45" fill="none" stroke="#141414" stroke-width="9" stroke-dasharray="14.84 55.84" stroke-dashoffset="-35.34"/>
+<circle cx="50" cy="50" r="45" fill="none" stroke="url(#borda)" stroke-width="10"/>
+<circle cx="50" cy="50" r="39.5" fill="none" stroke="rgba(0,0,0,.35)" stroke-width="1.6"/>
+<circle cx="50" cy="50" r="38" fill="none" stroke="#fff" stroke-opacity=".25" stroke-width="1"/>
+<g clip-path="url(#m)"><circle cx="50" cy="50" r="31" fill="#F6F6F6"/><circle cx="50" cy="50" r="31" fill="url(#ms)"/></g>
+<circle cx="50" cy="50" r="31" fill="none" stroke="#D7141F" stroke-width="2.8"/>
+<rect width="100" height="100" fill="url(#sombra)"/>
+<ellipse cx="40" cy="28" rx="30" ry="20" fill="url(#verniz)"/>
+</g>
+</svg>

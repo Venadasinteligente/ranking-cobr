@@ -23,6 +23,8 @@
     { nome: 'tabuleiro', lado: 1080, q: 0.86, fundo: true },
     { nome: 'pedra-b', lado: 160, q: 0.92 },
     { nome: 'pedra-p', lado: 160, q: 0.92 },
+    { nome: 'dama-b', lado: 160, q: 0.92 },
+    { nome: 'dama-p', lado: 160, q: 0.92 },
   ];
   function carregar(src) {
     return new Promise((ok, erro) => { const i = new Image(); i.onload = () => ok(i); i.onerror = erro; i.src = src; });

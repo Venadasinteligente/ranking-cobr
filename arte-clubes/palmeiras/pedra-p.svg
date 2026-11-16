@@ -1,10 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
 <!-- face da pedra escura do Palmeiras. Vira WebP pelo arte-clubes/gerar.html -->
-<defs><clipPath id="c"><circle cx="50" cy="50" r="50"/></clipPath><clipPath id="m"><circle cx="50" cy="50" r="30"/></clipPath>
-<radialGradient id="l" cx=".34" cy=".24" r=".42"><stop offset="0" stop-color="#fff" stop-opacity="0.45"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
-<radialGradient id="s" cx=".5" cy=".45" r=".62"><stop offset=".6" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.45"/></radialGradient>
-<radialGradient id="ms" cx=".5" cy=".5" r=".5"><stop offset=".7" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".35"/></radialGradient><radialGradient id="f" cx=".38" cy=".3" r=".8"><stop offset="0" stop-color="#3FB56C"/><stop offset=".5" stop-color="#006437"/><stop offset="1" stop-color="#00230F"/></radialGradient></defs>
-<g clip-path="url(#c)"><rect width="100" height="100" fill="url(#f)"/>
-<rect width="100" height="100" fill="url(#s)"/><rect width="100" height="100" fill="url(#l)"/></g>
-<circle cx="50" cy="50" r="30" fill="none" stroke="#F2F2F2" stroke-width="3"/>
+<defs><clipPath id="c"><circle cx="50" cy="50" r="50"/></clipPath><clipPath id="m"><circle cx="50" cy="50" r="31"/></clipPath>
+<radialGradient id="corpo" cx=".38" cy=".3" r=".8"><stop offset="0" stop-color="#43B972"/><stop offset=".55" stop-color="#006437"/><stop offset="1" stop-color="#002010"/></radialGradient>
+<linearGradient id="borda" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".35"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".45"/></linearGradient>
+<radialGradient id="ms" cx=".5" cy=".42" r=".55"><stop offset=".65" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".45"/></radialGradient>
+<radialGradient id="verniz" cx=".36" cy=".2" r=".5"><stop offset="0" stop-color="#fff" stop-opacity=".75"/><stop offset=".6" stop-color="#fff" stop-opacity=".12"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+<radialGradient id="sombra" cx=".5" cy=".42" r=".6"><stop offset=".72" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".4"/></radialGradient></defs>
+<g clip-path="url(#c)">
+<rect width="100" height="100" fill="url(#corpo)"/>
+<circle cx="50" cy="50" r="45" fill="none" stroke="#F2F2F2" stroke-width="9" stroke-dasharray="14.84 20.50" stroke-dashoffset="0.00"/>
+<circle cx="50" cy="50" r="45" fill="none" stroke="url(#borda)" stroke-width="10"/>
+<circle cx="50" cy="50" r="39.5" fill="none" stroke="rgba(255,255,255,.2)" stroke-width="1.6"/>
+<circle cx="50" cy="50" r="38" fill="none" stroke="#fff" stroke-opacity=".25" stroke-width="1"/>
+<g clip-path="url(#m)"><circle cx="50" cy="50" r="31" fill="#00592F"/><rect x="23.0" y="0" width="8" height="100" fill="#0A7A45"/><rect x="39.0" y="0" width="8" height="100" fill="#0A7A45"/><rect x="55.0" y="0" width="8" height="100" fill="#0A7A45"/><rect x="71.0" y="0" width="8" height="100" fill="#0A7A45"/><circle cx="50" cy="50" r="31" fill="url(#ms)"/></g>
+<circle cx="50" cy="50" r="31" fill="none" stroke="#F2F2F2" stroke-width="2.8"/>
+<rect width="100" height="100" fill="url(#sombra)"/>
+<ellipse cx="40" cy="28" rx="30" ry="20" fill="url(#verniz)"/>
+</g>
 </svg>
