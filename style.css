@@ -3755,56 +3755,35 @@ button.jg-olhos { font-family: inherit; cursor: pointer; }
 .jg-tab.tb-real .jg-c.cl .crd { color: rgba(50, 25, 100, .55); }
 
 .jg-p.sk-real:not(.vitima)::before { content: ""; position: absolute; inset: -40%; z-index: 2; pointer-events: none; background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, .45) 50%, transparent 60%); animation: jt-brilho 4s ease-in-out infinite; }
-/* Dragão (exclusiva do VENO): o desenho fica em tabuleiro-dragao.svg, atrás das casas; os olhos
-   (tabuleiro-dragao-olhos.svg) ficam por cima das casas e por baixo das pedras.
-   Leve de propósito (travava): os desenhos são parados e a única coisa que mexe é a camada de brasas,
-   que só desliza (transform), sem o navegador redesenhar nada. Ela fica por cima de tudo, assim as pedras
-   não precisam virar camada própria. Anima mesmo com "reduzir movimento" (é o charme da pedra). */
+/* Dragão (exclusiva do VENO). Tudo é imagem pronta (arte-dragao/*.webp, feitas dos SVGs da mesma pasta pelo
+   gerar.html): desenho em SVG ou degradê o navegador refaz a cada jogada e a partida travava.
+   O fundo fica atrás das casas; os olhos por cima das casas e por baixo das pedras; as brasas por cima de
+   tudo (assim as pedras não viram camada própria) e só deslizam com transform, sem redesenhar nada.
+   Anima mesmo com "reduzir movimento" (é o charme da pedra). */
 .jg-tab.tb-dragao {
-  border-color: #FF7A1A; background: url(tabuleiro-dragao.svg) center / 100% 100% no-repeat, #0A0202;
+  border-color: #FF7A1A; background: url(arte-dragao/tabuleiro.webp) center / 100% 100% no-repeat, #0A0202;
   box-shadow: 0 0 0 4px #1A0504, 0 0 30px rgba(255, 90, 20, .5), 0 0 70px rgba(200, 30, 10, .28);
 }
-.jg-tab.tb-dragao::before { content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none; background: url(tabuleiro-dragao-olhos.svg) center / 100% 100% no-repeat; }
-.jg-tab.tb-dragao::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 200%; z-index: 3; pointer-events: none; background: url(tabuleiro-dragao-brasas.svg) 0 0 / 100% 50% repeat-y; will-change: transform; animation: tb-dragao-brasas 16s linear infinite; }
+.jg-tab.tb-dragao::before { content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none; background: url(arte-dragao/olhos.webp) center / 100% 100% no-repeat; }
+.jg-tab.tb-dragao::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 200%; z-index: 3; pointer-events: none; background: url(arte-dragao/brasas.webp) 0 0 / 100% 50% repeat-y; will-change: transform; animation: tb-dragao-brasas 16s linear infinite; }
 @keyframes tb-dragao-brasas { 0% { transform: translate3d(0, 0, 0); } 50% { transform: translate3d(6px, -25%, 0); } 100% { transform: translate3d(0, -50%, 0); } }
 .jg-tab.tb-dragao .jg-p { z-index: 2; }
-.jg-tab.tb-dragao .jg-c.cl { background: linear-gradient(145deg, rgba(255, 160, 80, .07), rgba(0, 0, 0, .14)); box-shadow: inset 0 0 0 1px rgba(255, 140, 60, .1); }
-.jg-tab.tb-dragao .jg-c.es { background: radial-gradient(circle at 50% 45%, rgba(255, 90, 20, .1), transparent 70%), rgba(12, 2, 1, .64); box-shadow: inset 0 0 0 1px rgba(255, 110, 40, .14); }
-.jg-tab.tb-dragao .jg-c .crd { color: rgba(255, 196, 130, .7); text-shadow: 0 1px 2px #000; }
+.jg-tab.tb-dragao .jg-c.cl { background: rgba(20, 4, 2, .1); }
+.jg-tab.tb-dragao .jg-c.es { background: rgba(12, 2, 1, .64); }
+.jg-tab.tb-dragao .jg-c .crd { color: rgba(255, 196, 130, .75); }
 
-/* pedras do Dragão: escama de ouro (claras) e obsidiana com lava (escuras); a pedra simples é um olho de dragão */
-.jg-p.sk-dragao { overflow: hidden; }
-.jg-p.sk-dragao.b {
-  background:
-    radial-gradient(circle at 34% 24%, rgba(255, 255, 255, .8), transparent 30%),
-    radial-gradient(circle at 50% 0, transparent 52%, rgba(110, 50, 0, .45) 56%, transparent 64%) 0 0 / 8px 6px,
-    radial-gradient(circle at 50% 0, transparent 52%, rgba(110, 50, 0, .45) 56%, transparent 64%) 4px 3px / 8px 6px,
-    radial-gradient(circle at 40% 30%, #FFEDB0, #F4B53C 50%, #93480A 100%);
-  border: 2px solid #FFD36B;
-  box-shadow: inset 0 -3px 0 rgba(110, 40, 0, .55), 0 4px 8px rgba(0, 0, 0, .65), 0 0 12px rgba(255, 170, 40, .55);
-}
-.jg-p.sk-dragao.p {
-  background:
-    radial-gradient(circle at 34% 24%, rgba(255, 150, 70, .4), transparent 36%),
-    radial-gradient(circle at 50% 0, transparent 52%, rgba(255, 90, 20, .3) 56%, transparent 64%) 0 0 / 8px 6px,
-    radial-gradient(circle at 50% 0, transparent 52%, rgba(255, 90, 20, .3) 56%, transparent 64%) 4px 3px / 8px 6px,
-    radial-gradient(circle at 50% 60%, #5E1407, #240503 55%, #080101);
-  border: 2px solid #FF5A1A;
-  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .6), 0 4px 8px rgba(0, 0, 0, .7), 0 0 14px rgba(255, 80, 20, .65);
-}
-/* o olho: pupila em fenda; na dama o olho dá lugar à coroa */
-.jg-p.sk-dragao::after { inset: 24%; }
-.jg-p.sk-dragao.b::after {
-  background: radial-gradient(ellipse 15% 46% at 50% 50%, #120000 82%, transparent 100%), radial-gradient(circle at 42% 38%, #FF8A5A, #C41E00 55%, #4A0500);
-  border: 2px solid rgba(110, 50, 0, .75); box-shadow: 0 0 6px rgba(200, 30, 0, .6);
-}
-.jg-p.sk-dragao.p::after {
-  background: radial-gradient(ellipse 15% 46% at 50% 50%, #120000 82%, transparent 100%), radial-gradient(circle at 42% 38%, #FFF4B0, #FFB02A 50%, #E04A00);
-  border: 2px solid rgba(255, 120, 40, .7); box-shadow: 0 0 9px rgba(255, 140, 30, .9);
-}
-.jg-p.sk-dragao:has(svg)::after { inset: 18%; background: none; box-shadow: none; }
-.jg-p.sk-dragao.b svg { fill: #8A1A04; stroke: #4A0A00; filter: drop-shadow(0 1px 1px rgba(255, 230, 160, .6)); }
-.jg-p.sk-dragao.p svg { fill: #FF8A2A; stroke: #FFE0A0; filter: drop-shadow(0 0 4px rgba(255, 120, 30, .95)); }
+/* pedras do Dragão: escama de ouro (claras) e obsidiana com lava (escuras); a pedra simples é um olho de dragão,
+   na dama o olho dá lugar à coroa */
+.jg-p.sk-dragao.b { background: url(arte-dragao/pedra-b.webp) center / cover; border: 2px solid #FFD36B; box-shadow: inset 0 -3px 0 rgba(110, 40, 0, .55), 0 4px 8px rgba(0, 0, 0, .65), 0 0 12px rgba(255, 170, 40, .55); }
+.jg-p.sk-dragao.p { background: url(arte-dragao/pedra-p.webp) center / cover; border: 2px solid #FF5A1A; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .6), 0 4px 8px rgba(0, 0, 0, .7), 0 0 14px rgba(255, 80, 20, .65); }
+.jg-p.sk-dragao.b:has(svg) { background-image: url(arte-dragao/dama-b.webp); }
+.jg-p.sk-dragao.p:has(svg) { background-image: url(arte-dragao/dama-p.webp); }
+.jg-p.sk-dragao::after { display: none; }
+.jg-p.sk-dragao:has(svg)::after { display: block; inset: 18%; }
+.jg-p.sk-dragao.b::after { border: 2px solid rgba(110, 50, 0, .75); }
+.jg-p.sk-dragao.p::after { border: 2px solid rgba(255, 120, 40, .7); }
+.jg-p.sk-dragao.b svg { fill: #8A1A04; stroke: #4A0A00; }
+.jg-p.sk-dragao.p svg { fill: #FF8A2A; stroke: #FFE0A0; filter: drop-shadow(0 0 3px rgba(255, 120, 30, .9)); }
 .jt-minha.exclusiva { border-color: rgba(255, 90, 20, .55); background: linear-gradient(135deg, rgba(130, 22, 6, .5), var(--painel-2) 65%); box-shadow: 0 0 18px rgba(255, 80, 20, .22); }
 .jt-minha.exclusiva.trancada { opacity: .8; }
 .jt-rar.exclusiva { background: linear-gradient(90deg, #FF3A0A, #FFB347, #FF3A0A) 0 0 / 200% 100%; color: #2A0500; }

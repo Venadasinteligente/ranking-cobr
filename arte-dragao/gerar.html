@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Gerar imagens do Dragão</title>
+<style>
+  body { margin: 0; padding: 20px; background: #140a06; color: #eee; font: 15px/1.4 system-ui, sans-serif; }
+  a { color: #ffb347; display: inline-block; margin: 4px 12px 4px 0; }
+  img { max-width: 160px; margin: 8px; background: #333; vertical-align: middle; }
+</style>
+</head>
+<body>
+<!-- O tabuleiro e as pedras do Dragão usam imagens prontas (WebP) feitas a partir dos SVGs desta pasta:
+     desenho em SVG o navegador refaz a cada jogada e a partida travava. Mudou um SVG? Abra esta página
+     pelo site (ex.: http://localhost/arte-dragao/gerar.html), baixe as imagens e troque as .webp desta pasta. -->
+<p>Gerando…</p>
+<div id="saida"></div>
+<script>
+  const LISTA = [
+    { nome: 'tabuleiro', lado: 1080, q: 0.86, fundo: true },
+    { nome: 'olhos', lado: 1080, q: 0.9 },
+    { nome: 'brasas', lado: 1080, q: 0.9 },
+    { nome: 'pedra-b', lado: 160, q: 0.92 },
+    { nome: 'pedra-p', lado: 160, q: 0.92 },
+    { nome: 'dama-b', lado: 160, q: 0.92 },
+    { nome: 'dama-p', lado: 160, q: 0.92 },
+  ];
+  function carregar(src) {
+    return new Promise((ok, erro) => { const i = new Image(); i.onload = () => ok(i); i.onerror = erro; i.src = src; });
+  }
+  window.gerar = async () => {
+    const res = {};
+    for (const x of LISTA) {
+      const img = await carregar(x.nome + '.svg');
+      const c = document.createElement('canvas');
+      c.width = c.height = x.lado;
+      const g = c.getContext('2d');
+      if (x.fundo) { g.fillStyle = '#0a0202'; g.fillRect(0, 0, x.lado, x.lado); }
+      g.drawImage(img, 0, 0, x.lado, x.lado);
+      res[x.nome] = c.toDataURL('image/webp', x.q);
+    }
+    return res;
+  };
+  window.gerar().then((res) => {
+    document.querySelector('p').textContent = 'Pronto. Baixe e troque as .webp desta pasta:';
+    const s = document.getElementById('saida');
+    for (const [nome, url] of Object.entries(res)) {
+      const a = document.createElement('a'); a.href = url; a.download = nome + '.webp'; a.textContent = nome + '.webp';
+      const im = document.createElement('img'); im.src = url; im.alt = nome;
+      s.append(a, im, document.createElement('br'));
+    }
+  });
+</script>
+</body>
+</html>
