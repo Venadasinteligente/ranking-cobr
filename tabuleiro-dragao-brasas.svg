@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800">
+<!-- brasas do tabuleiro do Dragão: ladrilho parado que repete na vertical; o style.css (.jg-tab.tb-dragao::after)
+     só desliza a camada pra cima, coisa que a placa de vídeo faz sem redesenhar nada -->
+<defs><radialGradient id="a"><stop offset="0" stop-color="#fffbe0"/><stop offset=".3" stop-color="#fff2b0"/><stop offset="1" stop-color="#fff2b0" stop-opacity="0"/></radialGradient><radialGradient id="b"><stop offset="0" stop-color="#fffbe0"/><stop offset=".3" stop-color="#ffb347"/><stop offset="1" stop-color="#ffb347" stop-opacity="0"/></radialGradient><radialGradient id="c"><stop offset="0" stop-color="#fffbe0"/><stop offset=".3" stop-color="#ff6a1a"/><stop offset="1" stop-color="#ff6a1a" stop-opacity="0"/></radialGradient></defs>
+<circle cx="10" cy="360" r="4.7" fill="url(#a)" opacity="0.92"/>
+<circle cx="329" cy="413" r="5.6" fill="url(#b)" opacity="0.60"/>
+<circle cx="180" cy="562" r="3.8" fill="url(#b)" opacity="0.77"/>
+<circle cx="655" cy="311" r="3.5" fill="url(#a)" opacity="0.85"/>
+<circle cx="472" cy="441" r="5.6" fill="url(#a)" opacity="0.62"/>
+<circle cx="631" cy="29" r="4.1" fill="url(#b)" opacity="0.84"/>
+<circle cx="21" cy="312" r="7.9" fill="url(#b)" opacity="0.50"/>
+<circle cx="486" cy="749" r="4.8" fill="url(#c)" opacity="0.46"/>
+<circle cx="570" cy="634" r="8.2" fill="url(#a)" opacity="0.54"/>
+<circle cx="634" cy="740" r="7.0" fill="url(#c)" opacity="0.89"/>
+<circle cx="347" cy="214" r="6.4" fill="url(#a)" opacity="0.97"/>
+<circle cx="659" cy="287" r="7.8" fill="url(#a)" opacity="0.82"/>
+<circle cx="752" cy="438" r="6.7" fill="url(#b)" opacity="0.92"/>
+<circle cx="348" cy="725" r="8.5" fill="url(#b)" opacity="0.90"/>
+<circle cx="406" cy="191" r="3.3" fill="url(#a)" opacity="0.90"/>
+<circle cx="95" cy="287" r="6.0" fill="url(#b)" opacity="0.71"/>
+<circle cx="93" cy="308" r="4.0" fill="url(#b)" opacity="0.75"/>
+<circle cx="731" cy="95" r="8.4" fill="url(#c)" opacity="0.88"/>
+<circle cx="451" cy="301" r="7.7" fill="url(#b)" opacity="0.73"/>
+<circle cx="249" cy="425" r="4.4" fill="url(#c)" opacity="0.76"/>
+<circle cx="720" cy="132" r="3.9" fill="url(#c)" opacity="0.83"/>
+<circle cx="235" cy="648" r="5.0" fill="url(#c)" opacity="0.72"/>
+<circle cx="407" cy="196" r="3.6" fill="url(#c)" opacity="0.93"/>
+<circle cx="215" cy="596" r="4.9" fill="url(#c)" opacity="0.69"/>
+<circle cx="11" cy="36" r="3.2" fill="url(#b)" opacity="0.61"/>
+<circle cx="640" cy="261" r="6.5" fill="url(#c)" opacity="0.72"/>
+<circle cx="600" cy="151" r="6.6" fill="url(#b)" opacity="0.58"/>
+<circle cx="217" cy="398" r="6.4" fill="url(#b)" opacity="0.62"/>
+<circle cx="393" cy="407" r="3.6" fill="url(#b)" opacity="0.90"/>
+<circle cx="397" cy="446" r="4.2" fill="url(#c)" opacity="0.66"/>
+<circle cx="91" cy="455" r="5.1" fill="url(#a)" opacity="0.73"/>
+<circle cx="729" cy="319" r="3.9" fill="url(#c)" opacity="0.91"/>
+<circle cx="576" cy="203" r="4.6" fill="url(#a)" opacity="0.62"/>
+<circle cx="726" cy="546" r="6.1" fill="url(#b)" opacity="0.73"/>
+<circle cx="356" cy="584" r="3.1" fill="url(#c)" opacity="0.88"/>
+<circle cx="25" cy="616" r="5.7" fill="url(#b)" opacity="0.45"/>
+<circle cx="669" cy="761" r="7.9" fill="url(#a)" opacity="0.54"/>
+<circle cx="297" cy="381" r="8.5" fill="url(#c)" opacity="0.71"/>
+</svg>

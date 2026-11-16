@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800">
+<!-- olhos do Dragão queimando por cima das casas e por baixo das pedras (style.css: .jg-tab.tb-dragao::before).
+     Ficam no mesmo lugar dos olhos do tabuleiro-dragao.svg. Sem animação (ver o comentário de lá). -->
+<defs><radialGradient id="olhoCor" cx=".55" cy=".5" r=".62"><stop offset="0" stop-color="#fffbd0"/><stop offset=".3" stop-color="#ffe04a"/><stop offset=".72" stop-color="#ff7a0a"/><stop offset="1" stop-color="#a81800"/></radialGradient><radialGradient id="olhoAura"><stop offset="0" stop-color="#ff8a1a" stop-opacity=".55"/><stop offset="1" stop-color="#ff3a0a" stop-opacity="0"/></radialGradient><g id="olhoDir"><ellipse cx="474" cy="306" rx="62" ry="34" fill="url(#olhoAura)"/><path d="M418 300C450 276 496 258 548 262L536 282C496 280 458 292 430 314Z" fill="#1c0403"/><path d="M420 298C452 276 498 262 546 264" fill="none" stroke="#ff8a4a" stroke-opacity=".45" stroke-width="1.6"/><path d="M430 320Q462 286 520 288Q494 330 430 320Z" fill="#060000"/><g><path d="M436 317Q464 291 514 292Q490 325 436 317Z" fill="url(#olhoCor)"/><ellipse cx="477" cy="305" rx="3.6" ry="13" fill="#140000" transform="rotate(14 477 305)"/><circle cx="490" cy="297" r="2.4" fill="#fff" opacity=".85"/></g></g></defs>
+<use href="#olhoDir"/>
+<use href="#olhoDir" transform="matrix(-1 0 0 1 800 0)"/>
+</svg>

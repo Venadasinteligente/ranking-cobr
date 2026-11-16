@@ -1,16 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800">
-<!-- tabuleiro do Dragão (pedra exclusiva do VENO): fica atrás das casas do tabuleiro (style.css: .jg-tab.tb-dragao) -->
-<style>
-.olho{transform-box:fill-box;transform-origin:50% 50%;animation:pisca 7s ease-in-out infinite}
-@keyframes pisca{0%,90%,100%{transform:scaleY(1)}93%{transform:scaleY(.08)}96%{transform:scaleY(1)}}
-.luz{animation:luz 2.8s ease-in-out infinite}
-@keyframes luz{0%,100%{opacity:.6}50%{opacity:1}}
-.fogo{animation:fogo 1.3s ease-in-out infinite alternate}
-@keyframes fogo{from{opacity:.55}to{opacity:1}}
-.chama{transform-box:fill-box;transform-origin:50% 100%;animation:chama 1.1s ease-in-out infinite alternate}
-@keyframes chama{from{transform:scale(.94,.82) skewX(3deg)}to{transform:scale(1.05,1.1) skewX(-3deg)}}
-</style>
+<!-- tabuleiro do Dragão (pedra exclusiva do VENO): fica atrás das casas do tabuleiro (style.css: .jg-tab.tb-dragao).
+     Sem animação de propósito: SVG animado obriga o navegador a redesenhar tudo a cada quadro e o jogo trava. -->
 <defs>
+  <radialGradient id="vinheta" cx="400" cy="400" r="566" gradientUnits="userSpaceOnUse">
+    <stop offset=".72" stop-color="#000" stop-opacity="0"/>
+    <stop offset="1" stop-color="#000" stop-opacity=".6"/>
+  </radialGradient>
   <radialGradient id="fundo" cx="400" cy="330" r="640" gradientUnits="userSpaceOnUse">
     <stop offset="0" stop-color="#8a2006"/>
     <stop offset=".25" stop-color="#420a04"/>
@@ -151,7 +146,7 @@
     <!-- mandíbula, boca acesa e dentes de baixo -->
     <path d="M400 528L456 516C468 540 466 566 454 582C440 598 422 604 400 606Z" fill="url(#couro)"/>
     <path d="M400 528L456 516C468 540 466 566 454 582C440 598 422 604 400 606Z" fill="url(#escamasMiudas)"/>
-    <path class="fogo" d="M400 512L446 504L460 520C458 542 444 558 400 564Z" fill="url(#bocaCor)" filter="url(#brilho)"/>
+    <path d="M400 512L446 504L460 520C458 542 444 558 400 564Z" fill="url(#bocaCor)" filter="url(#brilho)"/>
     <path d="M412 562L418 540L424 562ZM428 560L436 534L443 557ZM444 554L452 522L458 546Z" fill="url(#dente)"/>
   </g>
 
@@ -165,14 +160,14 @@
     <path d="M420 298C452 276 498 262 546 264" fill="none" stroke="#ff8a4a" stroke-opacity=".4" stroke-width="1.6"/>
     <!-- olho -->
     <path d="M430 320Q462 286 520 288Q494 330 430 320Z" fill="#060000"/>
-    <g class="olho">
-      <path class="luz" d="M436 317Q464 291 514 292Q490 325 436 317Z" fill="url(#olhoCor)" filter="url(#brilho)"/>
+    <g>
+      <path d="M436 317Q464 291 514 292Q490 325 436 317Z" fill="url(#olhoCor)" filter="url(#brilho)"/>
       <ellipse cx="477" cy="305" rx="3.6" ry="13" fill="#140000" transform="rotate(14 477 305)"/>
       <circle cx="490" cy="297" r="2.4" fill="#fff" opacity=".85"/>
     </g>
     <!-- narina com fogo -->
     <path d="M410 478C418 466 432 464 438 472C432 482 420 488 410 478Z" fill="#050000"/>
-    <path class="fogo" d="M415 477C421 470 430 469 433 473C429 479 421 481 415 477Z" fill="#ff7a1a" filter="url(#brilho)"/>
+    <path d="M415 477C421 470 430 469 433 473C429 479 421 481 415 477Z" fill="#ff7a1a" filter="url(#brilho)"/>
   </g>
 </defs>
 
@@ -189,21 +184,21 @@
 
 <!-- fogueira na base, atrás do dragão -->
 <g opacity=".9">
-  <g transform="translate(40 812) scale(1.15)"><use class="chama" style="animation-delay:-.2s" href="#labareda"/></g>
-  <g transform="translate(118 812) scale(.9 1.25)"><use class="chama" style="animation-delay:-.75s" href="#labareda"/></g>
-  <g transform="translate(196 812) scale(1 1.05)"><use class="chama" style="animation-delay:-.4s" href="#labareda"/></g>
-  <g transform="translate(270 812) scale(.8 .85)"><use class="chama" style="animation-delay:-1s" href="#labareda"/></g>
-  <g transform="translate(530 812) scale(-.8 .85)"><use class="chama" style="animation-delay:-.55s" href="#labareda"/></g>
-  <g transform="translate(604 812) scale(-1 1.05)"><use class="chama" style="animation-delay:-.15s" href="#labareda"/></g>
-  <g transform="translate(682 812) scale(-.9 1.25)"><use class="chama" style="animation-delay:-.9s" href="#labareda"/></g>
-  <g transform="translate(760 812) scale(-1.15 1.15)"><use class="chama" style="animation-delay:-.35s" href="#labareda"/></g>
+  <g transform="translate(40 812) scale(1.15)"><use href="#labareda"/></g>
+  <g transform="translate(118 812) scale(.9 1.25)"><use href="#labareda"/></g>
+  <g transform="translate(196 812) scale(1 1.05)"><use href="#labareda"/></g>
+  <g transform="translate(270 812) scale(.8 .85)"><use href="#labareda"/></g>
+  <g transform="translate(530 812) scale(-.8 .85)"><use href="#labareda"/></g>
+  <g transform="translate(604 812) scale(-1 1.05)"><use href="#labareda"/></g>
+  <g transform="translate(682 812) scale(-.9 1.25)"><use href="#labareda"/></g>
+  <g transform="translate(760 812) scale(-1.15 1.15)"><use href="#labareda"/></g>
 </g>
 
 <use href="#lado"/>
 <use href="#lado" transform="matrix(-1 0 0 1 800 0)"/>
 
 <!-- placas da barriga com fogo por dentro -->
-<path class="luz" d="M352 560H448V800H352Z" fill="#ff5a1a" opacity=".85" filter="url(#borraLeve)"/>
+<path d="M352 560H448V800H352Z" fill="#ff5a1a" opacity=".85" filter="url(#borraLeve)"/>
 <g fill="url(#placa)" stroke="#120302" stroke-width="2">
   <path d="M350 548Q400 566 450 548L452 580Q400 598 348 580Z"/>
   <path d="M348 588Q400 606 452 588L455 622Q400 640 345 622Z"/>
@@ -233,8 +228,8 @@
 <use href="#rosto" transform="matrix(-1 0 0 1 800 0)"/>
 
 <!-- brilho do fogo saindo da boca -->
-<ellipse class="fogo" cx="400" cy="560" rx="70" ry="22" fill="#ff7a1a" opacity=".45" filter="url(#borra)"/>
+<ellipse cx="400" cy="560" rx="70" ry="22" fill="#ff7a1a" opacity=".45" filter="url(#borra)"/>
 
 <!-- vinheta -->
-<rect width="800" height="800" fill="none" stroke="#000" stroke-opacity=".55" stroke-width="60" filter="url(#borra)"/>
+<rect width="800" height="800" fill="url(#vinheta)"/>
 </svg>

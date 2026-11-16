@@ -3755,16 +3755,18 @@ button.jg-olhos { font-family: inherit; cursor: pointer; }
 .jg-tab.tb-real .jg-c.cl .crd { color: rgba(50, 25, 100, .55); }
 
 .jg-p.sk-real:not(.vitima)::before { content: ""; position: absolute; inset: -40%; z-index: 2; pointer-events: none; background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, .45) 50%, transparent 60%); animation: jt-brilho 4s ease-in-out infinite; }
-/* Dragão (exclusiva do VENO): o desenho fica em tabuleiro-dragao.svg, atrás das casas; os olhos e as brasas
-   (tabuleiro-dragao-frente.svg) ficam por cima das casas e por baixo das pedras.
-   Anima sempre, mesmo com "reduzir movimento" (é o charme da pedra, e é leve). */
+/* Dragão (exclusiva do VENO): o desenho fica em tabuleiro-dragao.svg, atrás das casas; os olhos
+   (tabuleiro-dragao-olhos.svg) ficam por cima das casas e por baixo das pedras.
+   Leve de propósito (travava): os desenhos são parados e a única coisa que mexe é a camada de brasas,
+   que só desliza (transform), sem o navegador redesenhar nada. Ela fica por cima de tudo, assim as pedras
+   não precisam virar camada própria. Anima mesmo com "reduzir movimento" (é o charme da pedra). */
 .jg-tab.tb-dragao {
   border-color: #FF7A1A; background: url(tabuleiro-dragao.svg) center / 100% 100% no-repeat, #0A0202;
-  box-shadow: 0 0 0 4px #1A0504, 0 0 26px rgba(255, 90, 20, .45), 0 0 60px rgba(200, 30, 10, .25);
-  animation: tb-dragao-arde 2.6s ease-in-out infinite;
+  box-shadow: 0 0 0 4px #1A0504, 0 0 30px rgba(255, 90, 20, .5), 0 0 70px rgba(200, 30, 10, .28);
 }
-@keyframes tb-dragao-arde { 50% { border-color: #FFB347; box-shadow: 0 0 0 4px #2A0805, 0 0 42px rgba(255, 120, 30, .7), 0 0 90px rgba(220, 40, 10, .42); } }
-.jg-tab.tb-dragao::after { content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none; background: url(tabuleiro-dragao-frente.svg) center / 100% 100% no-repeat; }
+.jg-tab.tb-dragao::before { content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none; background: url(tabuleiro-dragao-olhos.svg) center / 100% 100% no-repeat; }
+.jg-tab.tb-dragao::after { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 200%; z-index: 3; pointer-events: none; background: url(tabuleiro-dragao-brasas.svg) 0 0 / 100% 50% repeat-y; will-change: transform; animation: tb-dragao-brasas 16s linear infinite; }
+@keyframes tb-dragao-brasas { 0% { transform: translate3d(0, 0, 0); } 50% { transform: translate3d(6px, -25%, 0); } 100% { transform: translate3d(0, -50%, 0); } }
 .jg-tab.tb-dragao .jg-p { z-index: 2; }
 .jg-tab.tb-dragao .jg-c.cl { background: linear-gradient(145deg, rgba(255, 160, 80, .07), rgba(0, 0, 0, .14)); box-shadow: inset 0 0 0 1px rgba(255, 140, 60, .1); }
 .jg-tab.tb-dragao .jg-c.es { background: radial-gradient(circle at 50% 45%, rgba(255, 90, 20, .1), transparent 70%), rgba(12, 2, 1, .64); box-shadow: inset 0 0 0 1px rgba(255, 110, 40, .14); }
@@ -3798,18 +3800,14 @@ button.jg-olhos { font-family: inherit; cursor: pointer; }
 }
 .jg-p.sk-dragao.p::after {
   background: radial-gradient(ellipse 15% 46% at 50% 50%, #120000 82%, transparent 100%), radial-gradient(circle at 42% 38%, #FFF4B0, #FFB02A 50%, #E04A00);
-  border: 2px solid rgba(255, 120, 40, .7); box-shadow: 0 0 8px rgba(255, 140, 30, .85);
-  animation: pd-dragao-olho 2.2s ease-in-out infinite;
+  border: 2px solid rgba(255, 120, 40, .7); box-shadow: 0 0 9px rgba(255, 140, 30, .9);
 }
-@keyframes pd-dragao-olho { 50% { box-shadow: 0 0 14px 2px rgba(255, 160, 40, 1); filter: brightness(1.15); } }
-.jg-p.sk-dragao:has(svg)::after { inset: 18%; background: none; box-shadow: none; animation: none; }
+.jg-p.sk-dragao:has(svg)::after { inset: 18%; background: none; box-shadow: none; }
 .jg-p.sk-dragao.b svg { fill: #8A1A04; stroke: #4A0A00; filter: drop-shadow(0 1px 1px rgba(255, 230, 160, .6)); }
 .jg-p.sk-dragao.p svg { fill: #FF8A2A; stroke: #FFE0A0; filter: drop-shadow(0 0 4px rgba(255, 120, 30, .95)); }
-.jg-p.sk-dragao.b:not(.vitima)::before { content: ""; position: absolute; inset: -40%; z-index: 2; pointer-events: none; background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, .5) 50%, transparent 60%); animation: jt-brilho 3.6s ease-in-out infinite; }
 .jt-minha.exclusiva { border-color: rgba(255, 90, 20, .55); background: linear-gradient(135deg, rgba(130, 22, 6, .5), var(--painel-2) 65%); box-shadow: 0 0 18px rgba(255, 80, 20, .22); }
 .jt-minha.exclusiva.trancada { opacity: .8; }
-.jt-rar.exclusiva { background: linear-gradient(90deg, #FF3A0A, #FFB347, #FF3A0A) 0 0 / 200% 100%; color: #2A0500; animation: jt-rar-fogo 2.4s linear infinite; }
-@keyframes jt-rar-fogo { to { background-position: -200% 0; } }
+.jt-rar.exclusiva { background: linear-gradient(90deg, #FF3A0A, #FFB347, #FF3A0A) 0 0 / 200% 100%; color: #2A0500; }
 
 /* peça tocada / que tem que jogar continua marcada por cima da pedra de prêmio */
 .jg-tab .jg-p.sel { box-shadow: 0 0 0 3px var(--laranja-claro), 0 0 18px 2px var(--laranja), 0 4px 7px rgba(0, 0, 0, .65); }
