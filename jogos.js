@@ -782,7 +782,7 @@
   // girar = quem joga de pretas vê o tabuleiro do lado dele (as pretas embaixo)
   // pedra de clube traz o tabuleiro do time junto: cada jogador vê o da pedra dele (quem assiste, o das brancas)
   // o Dragão (exclusiva do VENO) é a exceção: com ele na partida, todo mundo vê o tabuleiro do dragão
-  const TABULEIROS = new Set(['barca', 'real', 'dragao']);
+  const TABULEIROS = new Set(['barca', 'real', 'corinthians', 'flamengo', 'saopaulo', 'palmeiras', 'santos', 'vasco', 'dragao']);
   const temaTab = (sk) => (TABULEIROS.has(sk) ? 'tb-' + sk : '');
   const temaPartida = (skins, cor) => (skins.b === 'dragao' || skins.p === 'dragao' ? 'dragao' : skins[cor]);
   function tabuleiro(est, girar, m = null, tema = '') {
@@ -2003,10 +2003,16 @@
     gelo: { nome: 'Gelo Azul', rar: 'ESPECIAL', cls: 'especial' },
     barca: { nome: 'Barcelona', rar: 'CLUBE', cls: 'clube' },
     real: { nome: 'Real Madrid', rar: 'CLUBE', cls: 'clube' },
+    corinthians: { nome: 'Corinthians', rar: 'CLUBE', cls: 'clube' },
+    flamengo: { nome: 'Flamengo', rar: 'CLUBE', cls: 'clube' },
+    saopaulo: { nome: 'São Paulo', rar: 'CLUBE', cls: 'clube' },
+    palmeiras: { nome: 'Palmeiras', rar: 'CLUBE', cls: 'clube' },
+    santos: { nome: 'Santos', rar: 'CLUBE', cls: 'clube' },
+    vasco: { nome: 'Vasco', rar: 'CLUBE', cls: 'clube' },
     dragao: { nome: 'Dragão', rar: 'EXCLUSIVA', cls: 'exclusiva' },
   };
   // liberadas pra todo mundo (pedido do dono do clã); as outras se ganham nos torneios
-  const GRATIS = new Set(['classica', 'barca', 'real']);
+  const GRATIS = new Set(['classica', 'barca', 'real', 'corinthians', 'flamengo', 'saopaulo', 'palmeiras', 'santos', 'vasco']);
   // exclusivas: o banco dá pra uma pessoa só (seção 11d do SQL), não viram prêmio de torneio
   const EXCLUSIVAS = new Set(['dragao']);
   const donoDe = (k) => { const x = TN.pedras.find((y) => y.pedra === k); return x ? nick(x.player) : 'VENO'; };
@@ -2833,7 +2839,7 @@
         C.linhaRegra('Empate', 'vence quem tem mais peças; igual, joga de novo'),
         C.linhaRegra('Final', 'partida única ou melhor de 3'),
         C.linhaRegra('Prêmios', 'pedras personalizadas pro 1º, 2º e semifinal'),
-        C.linhaRegra('Pedra', 'escolha na aba "Personalizar dama" (Barcelona e Real Madrid são grátis)')),
+        C.linhaRegra('Pedra', 'escolha na aba "Personalizar dama" (as dos times são grátis)')),
     ];
   };
 
