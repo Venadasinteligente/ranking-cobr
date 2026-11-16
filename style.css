@@ -3802,7 +3802,7 @@ button.jg-olhos { font-family: inherit; cursor: pointer; }
 .jg-p.sk-palmeiras.b svg { fill: #006437; stroke: #00301A; }
 .jg-p.sk-palmeiras.p { background-image: url(arte-clubes/palmeiras/pedra-p.webp); border-color: #E6F2EA; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .5), 0 4px 8px rgba(0, 0, 0, .7), 0 0 10px rgba(60,200,110,.45); }
 .jg-p.sk-palmeiras.p svg { fill: #FFFFFF; stroke: #CFF5DC; }
-.jg-tab.tb-santos { background-image: url(arte-clubes/santos/tabuleiro.webp); border-color: #F2F2F2; box-shadow: 0 0 0 4px #050505, 0 0 34px rgba(255,255,255,.2); }
+.jg-tab.tb-santos { background-image: url(arte-clubes/santos/tabuleiro.webp); border-color: #D9DCE1; box-shadow: 0 0 0 4px #050505, 0 0 0 5px rgba(200,205,212,.5), 0 0 38px rgba(220,225,232,.28); }
 .jg-tab.tb-santos .jg-c .crd { color: rgba(255,255,255,.55); }
 .jg-p.sk-santos.b { background-image: url(arte-clubes/santos/pedra-b.webp); border-color: #1A1A1A; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .3), 0 4px 8px rgba(0, 0, 0, .6); }
 .jg-p.sk-santos.b svg { fill: #111111; stroke: #000000; }
