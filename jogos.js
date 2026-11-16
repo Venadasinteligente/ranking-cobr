@@ -782,7 +782,7 @@
   // girar = quem joga de pretas vê o tabuleiro do lado dele (as pretas embaixo)
   // pedra de clube traz o tabuleiro do time junto: cada jogador vê o da pedra dele (quem assiste, o das brancas)
   // o Dragão (exclusiva do VENO) é a exceção: com ele na partida, todo mundo vê o tabuleiro do dragão
-  const TABULEIROS = new Set(['barca', 'real', 'corinthians', 'flamengo', 'saopaulo', 'palmeiras', 'santos', 'vasco', 'dragao']);
+  const TABULEIROS = new Set(['barca', 'real', 'corinthians', 'flamengo', 'saopaulo', 'palmeiras', 'santos', 'vasco', 'fortaleza', 'dragao']);
   const temaTab = (sk) => (TABULEIROS.has(sk) ? 'tb-' + sk : '');
   const temaPartida = (skins, cor) => (skins.b === 'dragao' || skins.p === 'dragao' ? 'dragao' : skins[cor]);
   function tabuleiro(est, girar, m = null, tema = '') {
@@ -2009,10 +2009,11 @@
     palmeiras: { nome: 'Palmeiras', rar: 'CLUBE', cls: 'clube' },
     santos: { nome: 'Santos', rar: 'CLUBE', cls: 'clube' },
     vasco: { nome: 'Vasco', rar: 'CLUBE', cls: 'clube' },
+    fortaleza: { nome: 'Fortaleza', rar: 'CLUBE', cls: 'clube' },
     dragao: { nome: 'Dragão', rar: 'EXCLUSIVA', cls: 'exclusiva' },
   };
   // liberadas pra todo mundo (pedido do dono do clã); as outras se ganham nos torneios
-  const GRATIS = new Set(['classica', 'barca', 'real', 'corinthians', 'flamengo', 'saopaulo', 'palmeiras', 'santos', 'vasco']);
+  const GRATIS = new Set(['classica', 'barca', 'real', 'corinthians', 'flamengo', 'saopaulo', 'palmeiras', 'santos', 'vasco', 'fortaleza']);
   // exclusivas: o banco dá pra uma pessoa só (seção 11d do SQL), não viram prêmio de torneio
   const EXCLUSIVAS = new Set(['dragao']);
   const donoDe = (k) => { const x = TN.pedras.find((y) => y.pedra === k); return x ? nick(x.player) : 'VENO'; };
